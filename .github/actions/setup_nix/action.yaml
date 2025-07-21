@@ -1,0 +1,66 @@
+name: Setup Nix
+description: Setup Nix, with caching support, to speed up future workflow runs
+
+inputs:
+  cache-id:
+    description: A unique ID to differentiate caches
+    required: true
+
+outputs:
+  was-cached:
+    description: Whether the cache was restored or not
+    value: ${{ steps.nix-restore-and-save.outputs.cache-hit == 'true' || steps.nix-restore.outputs.cache-hit == 'true' }}
+
+runs:
+  using: composite
+  steps:
+    # This step runs ONLY on scheduled workflows.
+    # It both restores existing cache AND saves updated cache when the job completes.
+    - name: Restore and Save Nix Cache
+      id: nix-restore-and-save
+      if: ${{ github.event_name == 'schedule' }}
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+      with:
+        path: /tmp/nix-cache
+        key: nix-cache-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ inputs.cache-id }}-${{ hashFiles('**/flake.lock') }}
+
+    # This step runs on NON-scheduled events.
+    # It only restores existing cache without saving updates.
+    # This prevents cache thrashing on every PR.
+    - name: Restore Nix Cache
+      id: nix-restore
+      if: ${{ github.event_name != 'schedule' }}
+      uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684
+      with:
+        path: /tmp/nix-cache
+        key: nix-cache-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ inputs.cache-id }}-${{ hashFiles('**/flake.lock') }}
+
+    - name: Setup Nix from Cache
+      if: ${{ steps.nix-restore-and-save.outputs.cache-hit == 'true' || steps.nix-restore.outputs.cache-hit == 'true' }}
+      shell: bash
+      run: |
+        set -ex
+        sudo mkdir -p /nix
+        sudo chown -R "${USER}:" /nix
+
+        sudo mkdir -p /etc/nix
+        echo "extra-experimental-features = flakes nix-command" > nix.conf
+        sudo mv nix.conf /etc/nix/nix.conf
+
+        # Restore nix directories from cache
+        if [ -d /tmp/nix-cache/store ]; then
+          sudo cp -r /tmp/nix-cache/store /nix/
+        fi
+
+        if [ -d /tmp/nix-cache/var ]; then
+          sudo cp -r /tmp/nix-cache/var /nix/
+        fi
+
+        echo "/nix/var/nix/profiles/per-user/root/profile/bin" >> $GITHUB_PATH
+        echo "/nix/var/nix/profiles/default/bin" >> $GITHUB_PATH
+
+        sudo chown -R "${USER}:" /nix
+
+    - name: Install Nix
+      if: ${{ steps.nix-restore-and-save.outputs.cache-hit != 'true' && steps.nix-restore.outputs.cache-hit != 'true' }}
+      uses: DeterminateSystems/nix-installer-action@3ebd1aebb47f95493b62de6eec0cac3cd74e50a9
