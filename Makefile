@@ -19,6 +19,7 @@ lint-spacing-and-indentation:
 # Lint commit message conventions defined in
 # the ./tools/commitlint/commitlint.config.js file.
 lint-commit-messages:
-	commitlint --edit --config ./tools/commitlint/commitlint.config.js
+	commitlint --config ./tools/commitlint/commitlint.config.js \
+		--from $$(git rev-list --max-parents=0 HEAD) --to HEAD
 
 .PHONY: default help lint lint-spacing-and-indentation lint-commit-messages

@@ -1,0 +1,39 @@
+name: Cache Nix
+description: Cache Nix to speedup future workflow runs
+
+inputs:
+  cache-id:
+    description: A unique ID to differentiate caches
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        sudo systemctl stop nix-daemon
+        sudo chown -R "${USER}:" /nix
+
+        sudo mkdir -p /tmp/nix-cache
+
+        if [ -d /nix/store ]; then
+          sudo cp -r /nix/store /tmp/nix-cache/
+        fi
+
+        if [ -d /nix/var/nix/db ]; then
+          sudo mkdir -p /tmp/nix-cache/var/nix
+          sudo cp -r /nix/var/nix/db /tmp/nix-cache/var/nix/
+        fi
+
+        if [ -d /nix/var/nix/profiles ]; then
+          sudo mkdir -p /tmp/nix-cache/var/nix
+          sudo cp -r /nix/var/nix/profiles /tmp/nix-cache/var/nix/
+        fi
+
+        sudo chown -R "${USER}:" /tmp/nix-cache
+        sudo rm -rf /nix
+
+    - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684
+      with:
+        path: /tmp/nix-cache
+        key: nix-cache-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ inputs.cache-id }}-${{ hashFiles('**/flake.lock') }}

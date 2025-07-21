@@ -1,0 +1,74 @@
+name: All
+
+permissions:
+  contents: read
+
+on:
+  merge_group:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Git commit sha, on which, to run this workflow
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: nix develop ./tools/nix --command bash {0}
+
+jobs:
+  lint-spacing-and-indentation:
+    name: All - lint-spacing-and-indentation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
+
+      - name: Setup Nix
+        id: setup-nix
+        uses: ./.github/actions/setup_nix
+        with:
+          cache-id: all
+
+      - name: Lint Spacing and Indentation
+        run: make lint-spacing-and-indentation
+
+      - name: Cache Nix
+        uses: ./.github/actions/cache_nix
+        if: ${{ steps.setup-nix.outputs.was-cached != 'true' }}
+        with:
+          cache-id: all
+
+  lint-commit-messages:
+    name: All - lint-commit-messages
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
+
+      - name: Setup Nix
+        id: setup-nix
+        uses: ./.github/actions/setup_nix
+        with:
+          cache-id: all
+
+      - name: Lint Commit Messages
+        run: make lint-commit-messages
+
+      - name: Cache Nix
+        uses: ./.github/actions/cache_nix
+        if: ${{ steps.setup-nix.outputs.was-cached != 'true' }}
+        with:
+          cache-id: all
