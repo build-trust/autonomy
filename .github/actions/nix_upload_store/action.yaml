@@ -9,13 +9,24 @@ runs:
         sudo systemctl stop nix-daemon
         sudo chown -R "${USER}:" /nix
 
-        sudo mkdir -p /tmp/nix-cache/store \
-          && sudo cp -r /nix/store /tmp/nix-cache/store
+        # Create cache directory and copy nix store contents
+        sudo mkdir -p /tmp/nix-cache
 
-        sudo mkdir -p /tmp/nix-cache/var/nix/db \
-          && sudo cp -r /nix/var/nix/db /tmp/nix-cache/var/nix/db
+        # Copy store contents directly to cache root
+        if [ -d /nix/store ]; then
+          sudo cp -r /nix/store /tmp/nix-cache/
+        fi
 
-        sudo mkdir -p /tmp/nix-cache/var/nix/profiles \
-          && sudo cp -r /nix/var/nix/profiles /tmp/nix-cache/var/nix/profiles
+        # Copy database
+        if [ -d /nix/var/nix/db ]; then
+          sudo mkdir -p /tmp/nix-cache/var/nix
+          sudo cp -r /nix/var/nix/db /tmp/nix-cache/var/nix/
+        fi
+
+        # Copy profiles  
+        if [ -d /nix/var/nix/profiles ]; then
+          sudo mkdir -p /tmp/nix-cache/var/nix
+          sudo cp -r /nix/var/nix/profiles /tmp/nix-cache/var/nix/
+        fi
 
         sudo rm -rf /nix

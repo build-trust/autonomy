@@ -33,6 +33,7 @@ jobs:
           ref: ${{ github.event.inputs.commit_sha }}
 
       - name: Install Nix
+        id: nix-installer
         uses: ./.github/actions/cache_nix
         with:
           cache-unique-id: all
@@ -54,6 +55,7 @@ jobs:
           ref: ${{ github.event.inputs.commit_sha }}
 
       - name: Install Nix
+        id: nix-installer
         uses: ./.github/actions/cache_nix
         with:
           cache-unique-id: all

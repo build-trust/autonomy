@@ -38,13 +38,18 @@ runs:
         sudo mkdir -p /nix
         sudo chown -R "${USER}:" /nix
 
-        sudo mkdir /etc/nix
-        echo "extra-experimental-features = flakes" > nix.conf
-        echo "extra-experimental-features = nix-command" >> nix.conf
-
+        sudo mkdir -p /etc/nix
+        echo "extra-experimental-features = flakes nix-command" > nix.conf
         sudo mv nix.conf /etc/nix/nix.conf
 
-        sudo mv /tmp/nix-cache/** /nix
+        # Restore nix directories from cache
+        if [ -d /tmp/nix-cache/store ]; then
+          sudo cp -r /tmp/nix-cache/store /nix/
+        fi
+        
+        if [ -d /tmp/nix-cache/var ]; then
+          sudo cp -r /tmp/nix-cache/var /nix/
+        fi
 
         echo "/nix/var/nix/profiles/per-user/root/profile/bin" >> $GITHUB_PATH
         echo "/nix/var/nix/profiles/default/bin" >> $GITHUB_PATH
