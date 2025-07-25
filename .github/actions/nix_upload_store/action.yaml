@@ -34,6 +34,9 @@ runs:
           sudo cp -r /nix/var/nix/profiles /tmp/nix-cache/var/nix/
         fi
 
+        # Fix permissions so GitHub Actions can archive the files
+        sudo chown -R "${USER}:" /tmp/nix-cache
+
         sudo rm -rf /nix
 
     - name: Save Cache
