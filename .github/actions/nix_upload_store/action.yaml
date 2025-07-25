@@ -23,7 +23,7 @@ runs:
           sudo cp -r /nix/var/nix/db /tmp/nix-cache/var/nix/
         fi
 
-        # Copy profiles  
+        # Copy profiles
         if [ -d /nix/var/nix/profiles ]; then
           sudo mkdir -p /tmp/nix-cache/var/nix
           sudo cp -r /nix/var/nix/profiles /tmp/nix-cache/var/nix/

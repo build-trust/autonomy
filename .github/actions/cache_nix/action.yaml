@@ -46,7 +46,7 @@ runs:
         if [ -d /tmp/nix-cache/store ]; then
           sudo cp -r /tmp/nix-cache/store /nix/
         fi
-        
+
         if [ -d /tmp/nix-cache/var ]; then
           sudo cp -r /tmp/nix-cache/var /nix/
         fi
