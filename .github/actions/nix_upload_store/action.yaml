@@ -1,6 +1,11 @@
 name: Nix Cache
 description: Cache Nix File To Temporary Directory
 
+inputs:
+  cache-unique-id:
+    description: Unique ID to differentiate caches
+    required: true
+
 runs:
   using: composite
   steps:
@@ -30,3 +35,9 @@ runs:
         fi
 
         sudo rm -rf /nix
+
+    - name: Save Cache
+      uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684
+      with:
+        path: /tmp/nix-cache
+        key: nix-cache-${{ runner.os }}-${{ github.workflow }}-${{ github.job }}-${{ inputs.cache-unique-id }}-${{ hashFiles('**/flake.lock') }}
