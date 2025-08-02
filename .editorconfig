@@ -17,3 +17,7 @@ indent_size = 2
 # Make requires tab for indentation.
 [Makefile]
 indent_style = tab
+
+[*.lock]
+indent_style = unset
+indent_size = unset

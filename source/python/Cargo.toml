@@ -1,0 +1,16 @@
+[package]
+name = "autonomy_in_rust_for_python"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[lib]
+name = "autonomy"
+crate-type = ["cdylib"]
+doc = false
+
+[dependencies]
+pyo3 = { version = "0.24.1", features = ["abi3-py312", "experimental-async"] }
+
+[features]
+default = []
