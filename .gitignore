@@ -1,3 +1,5 @@
 *.DS_store
-.envrc
 .direnv
+.venv
+target
+*.so

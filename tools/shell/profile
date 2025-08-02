@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+for tool in commitlint eclint uv; do
+  if ! type "$tool" >/dev/null 2>&1; then
+    echo "Error: $tool is not set up." >&2
+    exit 1
+  fi
+done
+
+if [ ! -d ".venv" ]; then
+  uv venv --python python3.12
+  source .venv/bin/activate
+  pushd source/python
+  uv sync --active
+  popd
+fi
+
+source .venv/bin/activate
