@@ -15,8 +15,16 @@
       devShells = forEachSupportedSystem ({ pkgs, system }: {
         default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
+            git
+            gnumake
             commitlint
             eclint
+            uv
+            python312
+            rustc
+            cargo
+            rustfmt
+            clippy
           ];
         };
       });
