@@ -5,6 +5,7 @@ COPY tools/nix ./tools/nix
 
 RUN nix-channel --update \
   && echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf \
+  && echo "sandbox = false" >> /etc/nix/nix.conf \
   && nix develop ./tools/nix --command echo "Nix environment built and cached" \
   && mkdir -p /root/.local/bin \
   && mkdir -p /root/.cache
