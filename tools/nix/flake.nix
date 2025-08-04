@@ -25,6 +25,7 @@
             cargo
             rustfmt
             clippy
+            nodejs_24
           ];
         };
       });
