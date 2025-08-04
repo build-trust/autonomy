@@ -45,6 +45,7 @@ runs:
 
         sudo mkdir -p /etc/nix
         echo "extra-experimental-features = flakes nix-command" > nix.conf
+        echo "download-buffer-size = 268435456" >> nix.conf
         sudo mv nix.conf /etc/nix/nix.conf
 
         # Restore nix directories from cache
