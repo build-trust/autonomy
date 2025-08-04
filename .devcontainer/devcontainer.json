@@ -1,4 +1,9 @@
 {
-  "name": "Autonomy Builder",
-  "image": "ghcr.io/build-trust/autonomy-builder"
+  "name": "Builder",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/autonomy",
+  "overrideCommand": false
 }
