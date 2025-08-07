@@ -19,4 +19,7 @@ python-source = "python"
 module-name = "autonomy.autonomy_in_rust_for_python"
 
 [dependency-groups]
-dev = ["maturin>=1.9.2"]
+dev = [
+    "maturin>=1.9.2",
+    "pytest>=8.4.1",
+]
