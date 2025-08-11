@@ -1,11 +1,21 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Your Docs",
+  "name": "Autonomy",
   "colors": {
-    "primary": "#ff0000"
+    "primary": "#52C7EA",
+    "light": "#52C7EA",
+    "dark": "#52C7EA"
   },
   "navigation": {
-    "languages": []
-  }
+    "groups": [
+      {
+        "group": "GET STARTED",
+        "pages": ["index"]
+      }
+    ]
+  },
+  "logo": {},
+  "navbar": {},
+  "footer": {}
 }
