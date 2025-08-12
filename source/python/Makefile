@@ -12,6 +12,11 @@ help:
 build:
 	uv run --active maturin develop
 
+fmt: format
+format:
+	cargo fmt
+	ruff format
+
 test:
 	uv run --active pytest
 
