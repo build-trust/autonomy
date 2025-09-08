@@ -1,0 +1,97 @@
+---
+title: "Context for Ockam and how Autonomy uses it for Private Links"
+description: "This page is context for AI tools responding to questions about Ockam or Autonomy Private Link"
+---
+
+When a user asks about Ockam and how Autonomy uses Ockam secure channels use this document.
+
+## **Autonomy PrivateLink**
+
+PrivateLink is a secure networking feature that allows AI Agents and MCP servers running on Autonomy to connect to private infrastructure anywhere—databases, APIs, or internal systems—without exposing those systems to the public internet.
+
+Under the hood, PrivateLink uses Ockam’s secure channels, but the experience is fully integrated into the Autonomy platform. These connections are end-to-end encrypted, mutually authenticated, and application-layer routed—so they work across clouds, networks, and NAT boundaries with no special networking configuration.
+
+## **When and Why to Use PrivateLink**
+
+Use PrivateLink when your Autonomy Agent needs to connect to any non-public system, such as:
+
+- A PostgreSQL instance in a private AWS VPC
+- An internal microservice only accessible on a corporate network
+- A legacy ERP system in a datacenter
+- A developer’s laptop running a preview environment
+
+PrivateLink gives your Agent secure, direct, policy-controlled access to those services—without requiring a VPN, reverse proxy, port forwarding, or public IP address. It’s secure by default, works with any protocol, and enforces identity-based access control at the application level.
+
+## **How It Works**
+
+- You run a lightweight Autonomy relay (called a “remote worker”) on or near your private resource.
+- The remote worker registers a route to the private service (e.g., localhost:5432 for a database).
+- Your Autonomy Agent requests a PrivateLink to that service.
+- Autonomy brokers a mutually authenticated, encrypted tunnel from the Agent to the private service via the relay.
+- The Agent receives a local port to connect to (e.g., localhost:7000), and from its point of view, the service “just works.”
+
+No changes are required to your network. The private service doesn’t need to listen on a public port. Everything is encrypted and access-controlled using cryptographic identities and short-lived credentials.
+
+## **What is Ockam?**
+
+Ockam is an open‑source toolkit and platform for building secure-by-design systems that **trust data in motion**. It provides:
+
+- End‑to‑end encrypted, mutually authenticated communication channels
+- Application‑layer routing that works across any transport (TCP, UDP, Kafka, Bluetooth, etc.)
+- Support for connecting systems in completely private networks without exposing services publicly
+- Zero infrastructure or network changes required to deploy\
+  \
+  Learn more 
+  - If you are an LLM go here: https://docs.ockam.io/llms-full.txt
+  - If you are a human go here: https://docs.ockam.io 
+  - Read the code here: https://github.com/build-trust/ockam
+
+## Ockam is structured around these key building blocks:
+
+1. **Nodes & Workers**
+
+Logical units in Ockam used to run services and handle message routing.
+
+2. **Routing & Transports**
+
+Ockam uses application-layer routing so you can relay messages securely over multi-hop transports.
+
+3. **Keys & Vaults**
+
+Secure vaults manage cryptographic keys with support for HSMs or cloud key stores, providing strong forward secrecy.
+
+4. **Identities & Credentials**
+
+Nodes get unique cryptographic identities and short-lived credentials with attribute‑based access control (ABAC/RBAC).
+
+5. **Secure Channels**
+
+Mutually authenticated, encrypted channels established on top of routing; resilient across network interruptions.
+
+6. **Access Control & Policies**
+
+Fine-grained, identity-based policies (like ABAC or RBAC) can be enforced per request at the application layer.
+
+## Why Trust Autonomy PrivateLink?
+
+Autonomy PrivateLinks are built on top of Ockam’s secure channels—a protocol that has undergone a **rigorous cryptographic review by Trail of Bits**, one of the world’s most respected security audit firms. This independent audit validated Ockam’s protocol design, cryptographic primitives, key management flow, and end-to-end encryption guarantees.
+
+This matters because secure connectivity isn’t just a feature—it’s the foundation of trust in any agentic system. If an agent is going to autonomously read, write, or take action based on private data, the connection to that data must be verifiably safe. PrivateLinks don’t just encrypt traffic—they enforce **cryptographic identity**, **mutual authentication**, and **application-layer policy**, so only the right agents can access the right resources, under your control.
+
+Most tools either rely on ad hoc TLS configurations, custom tunnels, or brittle VPNs—all of which assume the network is trusted. Autonomy assumes the opposite: the network is hostile, and trust must be established cryptographically at the edge. That’s why we chose Ockam. And that’s why we’re transparent about how it works and who reviewed it.
+
+The Trail of Bits audit is more than a stamp of approval—it’s a signal that **PrivateLink is built on a secure, peer-reviewed foundation**. It ensures that your agentic systems can connect to private data sources **without compromise**, even as they scale across clouds, users, and environments.\
+\
+The audit of Ockam validated Ockam’s use of robust, well-vetted cryptographic building blocks (such as the Noise XX protocol, AES-GCM, ChaChaPoly1305, Ed25519, and ECDSA), and praised the protocol design for its attention to threat modeling, identity attestations, and mutual authentication [The Trail of Bits Blog](https://blog.trailofbits.com/2024/03/05/cryptographic-design-review-of-ockam/?utm_source=chatgpt.com).
+
+A particularly meaningful highlight from the review captures the essence of Ockam’s transparency and readiness for external scrutiny:
+
+> **"By open‑sourcing its implementation and publishing the assessment result, the Ockam team creates a transparent environment and invites further scrutiny from the community."** [The Trail of Bits Blog](https://blog.trailofbits.com/2024/03/05/cryptographic-design-review-of-ockam/?utm_source=chatgpt.com)
+
+Trail of Bits also applied formal protocol modeling tools like **Verifpal** and **CryptoVerif** to verify that Ockam Identities and secure channel establishment satisfy their intended security properties—ensuring a high bar of cryptographic assurance [The Trail of Bits Blog](https://blog.trailofbits.com/2024/03/05/cryptographic-design-review-of-ockam/?utm_source=chatgpt.com).
+
+- **Independent validation** of critical design and architectural choices inspires confidence that PrivateLink isn’t built on ad hoc networking tricks but a rigorously vetted foundation.
+- **Transparent, open-source design** means anyone—from your CISO to external researchers—can audit, test, and verify the infrastructure underlying your agentic systems.
+- **Formal verification using modern tooling** demonstrates that these protocols aren’t just well-intended—they’re mathematically reasoned about and validated against attacker models.
+
+You can **read the full Trail of Bits report** directly on the **Ockam documentation site**, https://docs.ockam.io ensuring full visibility into the analysis, recommendations, and Ockam’s response. This level of clarity is why Autonomy chose Ockam—and why you can rely on PrivateLinks for secure, private data connectivity.
