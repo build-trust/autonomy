@@ -1,38 +1,108 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Autonomy",
-  "description": "Autonomy documentation. Learn how to use Autonomy to ship autonomous products",
+  "name": "Ockam AI",
   "colors": {
     "primary": "#52C7EA",
     "light": "#52C7EA",
     "dark": "#52C7EA"
   },
+  "favicon": "/favicon.svg",
   "navigation": {
     "groups": [
       {
         "group": "GET STARTED",
-        "pages": ["index"]
+        "pages": [
+          "index",
+          "start-here"
+        ]
+      },
+      {
+        "group": "AGENTS",
+        "pages": [
+          "agents/agents",
+          "agents/models",
+          "agents/memory",
+          "agents/knowledge",
+          "agents/tools",
+          "agents/planning"
+        ]
+      },
+      {
+        "group": "COLLABORATION",
+        "pages": [
+          "collaboration/messages",
+          "collaboration/flows"
+        ]
+      },
+      {
+        "group": "ENTERPRISE CONNECTIONS",
+        "pages": [
+          "integration/portals",
+          "integration/mcp"
+        ]
       }
     ]
   },
-  "logo": {},
-  "navbar": {},
-  {
-        "header": "Autonomy",
-        "items": [
-          {
-            "label": "autonomy.computer",
-            "href": "https://autonomy.computer"
-          },
-          {
-            "label": "Sign Up",
-            "href": "https://my.autonomy.computer"
-          },
-        ]
-    },
-  "footer": {
-    "socials": {
-      "linkedin": "https://www.linkedin.com/company/autonomy-computer",
-      "github": "https://github.com/build-trust"
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
   },
+  "navbar": {
+    "links": [
+      {
+        "label": "Ockam.ai",
+        "href": "https://ockam.ai"
+      },
+            {
+        "label": "Open Source Code",
+        "href": "https://github.com/build-trust/ockam"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Sign up",
+      "href": "https://ockam.io/signup"
+    }
+  },
+  "footer": {}
+}
+
+
+// {
+//   "$schema": "https://mintlify.com/docs.json",
+//   "theme": "mint",
+//   "name": "Autonomy",
+//   "description": "Autonomy documentation. Learn how to use Autonomy to ship autonomous products",
+//   "colors": {
+//     "primary": "#52C7EA",
+//     "light": "#52C7EA",
+//     "dark": "#52C7EA"
+//   },
+//   "navigation": {
+//     "groups": [
+//       {
+//         "group": "GET STARTED",
+//         "pages": ["index"]
+//       }
+//     ]
+//   },
+//   "logo": {},
+//   "navbar": {
+//         "header": "Autonomy",
+//         "items": [
+//           {
+//             "label": "autonomy.computer",
+//             "href": "https://autonomy.computer"
+//           },
+//           {
+//             "label": "Sign Up",
+//             "href": "https://my.autonomy.computer"
+//           },
+//         ]
+//     },
+//   "footer": {
+//     "socials": {
+//       "linkedin": "https://www.linkedin.com/company/autonomy-computer",
+//       "github": "https://github.com/build-trust"
+//   },
