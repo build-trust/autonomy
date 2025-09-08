@@ -18,16 +18,19 @@
   },
   "logo": {},
   "navbar": {},
-  "header": "Autonomy",
+  {
+        "header": "Autonomy",
         "items": [
           {
-            "label": "Autonomy",
+            "label": "autonomy.computer",
             "href": "https://autonomy.computer"
           },
           {
             "label": "Sign Up",
             "href": "https://my.autonomy.computer"
-  },
+          },
+        ]
+    },
   "footer": {
     "socials": {
       "linkedin": "https://www.linkedin.com/company/autonomy-computer",
