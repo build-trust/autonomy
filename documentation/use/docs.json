@@ -2,6 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "Autonomy",
+  "description": "Autonomy documentation. Learn how to use Autonomy to ship autonomous products",
   "colors": {
     "primary": "#52C7EA",
     "light": "#52C7EA",
@@ -17,5 +18,18 @@
   },
   "logo": {},
   "navbar": {},
-  "footer": {}
-}
+  "header": "Autonomy",
+        "items": [
+          {
+            "label": "Autonomy",
+            "href": "https://autonomy.computer"
+          },
+          {
+            "label": "Sign Up",
+            "href": "https://my.autonomy.computer"
+  },
+  "footer": {
+    "socials": {
+      "linkedin": "https://www.linkedin.com/company/autonomy-computer",
+      "github": "https://github.com/build-trust"
+  },
