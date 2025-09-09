@@ -403,11 +403,10 @@ main() {
   fi
   echo
   heading "LEARN MORE:"
-  echo "   Learn more at https://github.com/build-trust/autonomy"
+  echo "   Learn more at https://autonomy.computer/docs"
   echo
   heading "FEEDBACK:"
-  echo "   If you have questions or feedback, please start a discussion"
-  echo "   on Github https://github.com/build-trust/autonomy/discussions/new"
+  echo "   If you have questions or feedback, please email us at: support@autonomy.computer"
   echo
 
   exit 0
