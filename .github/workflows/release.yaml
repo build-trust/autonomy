@@ -156,7 +156,7 @@ jobs:
           ref: ${{ github.event.inputs.commit_sha }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           path: artifacts
 
@@ -164,10 +164,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RELEASE_TAG="v0.158.0"
-          RELEASE_NAME="Release v0.158.0"
+          set -ex
+
+          VERSION=$(grep '^version = ' source/rust/autonomy_command/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          RELEASE_TAG="v$VERSION"
+          RELEASE_NAME="Release v$VERSION"
           COMMIT_SHA="${{ github.event.inputs.commit_sha || github.sha }}"
-          RELEASE_BODY="Release v0.158.0"
+          RELEASE_BODY="Release v$VERSION"
 
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_NAME" \
@@ -181,8 +184,10 @@ jobs:
               for binary_file in "$artifact_dir"/*; do
                 if [ -f "$binary_file" ]; then
                   asset_name="autonomy-${target}"
-                  echo "Uploading $binary_file as $asset_name"
-                  gh release upload "$RELEASE_TAG" "$binary_file#$asset_name"
+                  # Copy binary with the target-specific name
+                  cp "$binary_file" "$asset_name"
+                  echo "Uploading $asset_name"
+                  gh release upload "$RELEASE_TAG" "$asset_name"
                 fi
               done
             fi
