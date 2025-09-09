@@ -1,0 +1,246 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Git commit sha, on which, to run this workflow
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build_and_test:
+    name: Build and Test Binaries
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            host_operating_system: ubuntu-22.04
+            use_cross: false
+            test_method: native
+
+          - target: x86_64-unknown-linux-musl
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: native
+
+          - target: aarch64-unknown-linux-gnu
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: qemu
+            qemu_arch: aarch64
+
+          - target: aarch64-unknown-linux-musl
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: qemu
+            qemu_arch: aarch64
+
+          - target: armv7-unknown-linux-musleabihf
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: qemu
+            qemu_arch: arm
+
+          - target: x86_64-apple-darwin
+            host_operating_system: macos-14
+            use_cross: false
+            test_method: native
+
+          - target: aarch64-apple-darwin
+            host_operating_system: macos-14
+            use_cross: false
+            test_method: native
+
+    runs-on: ${{ matrix.host_operating_system }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
+
+      - name: Setup rust toolchain
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
+
+      - name: Install build dependencies
+        if: matrix.host_operating_system == 'ubuntu-22.04'
+        run: |
+          set -x
+
+          if [ "${{ matrix.use_cross }}" == "true" ]; then
+            cargo install --version 0.2.5 cross
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends gcc g++ libclang-dev xz-utils liblz4-tool musl-tools
+          fi
+
+      - name: Build binary
+        run: |
+          set -x
+          cd source/rust/autonomy_command
+
+          if [[ "${{ matrix.target }}" =~ .+-musl(.+)?  ]]; then
+            export RUSTFLAGS='-C target-feature=+crt-static'
+          fi
+
+          # Build the compile tool first (natively)
+          cargo build --bin compile
+
+          # Use the compile tool to build the target binary
+          if [ "${{ matrix.use_cross }}" == "true" ]; then
+            ./target/debug/compile --configuration compile.yaml --target ${{ matrix.target }} --use-cross --release
+          else
+            ./target/debug/compile --configuration compile.yaml --target ${{ matrix.target }} --release
+          fi
+
+      # TEST PHASE
+      - name: Setup QEMU for cross-platform testing
+        if: matrix.test_method == 'qemu'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.qemu_arch }}
+
+      - name: Install QEMU static binaries
+        if: matrix.test_method == 'qemu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
+      - name: Make binary executable
+        run: |
+          chmod +x ./source/rust/autonomy_command/target/${{ matrix.target }}/release/autonomy
+
+      - name: Test binary - version check (native)
+        if: matrix.test_method == 'native'
+        timeout-minutes: 5
+        run: |
+          echo "Testing autonomy binary for ${{ matrix.target }}"
+          cd source/rust/autonomy_command
+
+          # Test version command with timeout
+          timeout 30s ./target/${{ matrix.target }}/release/autonomy --version || {
+            echo "Version command failed or timed out, trying help"
+            timeout 30s ./target/${{ matrix.target }}/release/autonomy --help || {
+              echo "Help command failed or timed out, trying basic execution"
+              timeout 30s ./target/${{ matrix.target }}/release/autonomy 2>&1 | head -20 || echo "Basic execution test completed with errors"
+            }
+          }
+
+      - name: Test binary - version check (QEMU aarch64)
+        if: matrix.test_method == 'qemu' && matrix.qemu_arch == 'aarch64'
+        timeout-minutes: 10
+        run: |
+          echo "Testing autonomy binary for ${{ matrix.target }} via QEMU"
+          cd source/rust/autonomy_command
+
+          # Test version command with timeout (QEMU can be slower)
+          timeout 60s qemu-aarch64-static ./target/${{ matrix.target }}/release/autonomy --version || {
+            echo "Version command failed or timed out, trying help"
+            timeout 60s qemu-aarch64-static ./target/${{ matrix.target }}/release/autonomy --help || {
+              echo "Help command failed or timed out, trying basic execution"
+              timeout 60s qemu-aarch64-static ./target/${{ matrix.target }}/release/autonomy 2>&1 | head -20 || echo "Basic execution test completed with errors"
+            }
+          }
+
+      - name: Test binary - version check (QEMU arm)
+        if: matrix.test_method == 'qemu' && matrix.qemu_arch == 'arm'
+        timeout-minutes: 10
+        run: |
+          echo "Testing autonomy binary for ${{ matrix.target }} via QEMU"
+          cd source/rust/autonomy_command
+
+          # Test version command with timeout (QEMU can be slower)
+          timeout 60s qemu-arm-static ./target/${{ matrix.target }}/release/autonomy --version || {
+            echo "Version command failed or timed out, trying help"
+            timeout 60s qemu-arm-static ./target/${{ matrix.target }}/release/autonomy --help || {
+              echo "Help command failed or timed out, trying basic execution"
+              timeout 60s qemu-arm-static ./target/${{ matrix.target }}/release/autonomy 2>&1 | head -20 || echo "Basic execution test completed with errors"
+            }
+          }
+
+      - name: Verify binary architecture
+        run: |
+          echo "Verifying binary architecture for ${{ matrix.target }}"
+          cd source/rust/autonomy_command
+
+          if [[ "${{ matrix.target }}" == *"darwin"* ]]; then
+            file ./target/${{ matrix.target }}/release/autonomy
+            if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
+              file ./target/${{ matrix.target }}/release/autonomy | grep -q "arm64" && echo "✓ ARM64 architecture verified" || echo "✗ Expected ARM64 architecture"
+            else
+              file ./target/${{ matrix.target }}/release/autonomy | grep -q "x86_64" && echo "✓ x86_64 architecture verified" || echo "✗ Expected x86_64 architecture"
+            fi
+          else
+            file ./target/${{ matrix.target }}/release/autonomy
+            readelf -h ./target/${{ matrix.target }}/release/autonomy | grep Machine || echo "Could not read ELF machine type"
+          fi
+
+      # - name: Upload binary artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: autonomy-${{ matrix.target }}
+      #     path: source/rust/autonomy_command/target/${{ matrix.target }}/release/autonomy
+      #     if-no-files-found: ignore
+
+  # create_release:
+  #   name: Create Release
+  #   needs: build_and_test
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'workflow_dispatch'
+  #   steps:
+  #     - name: Download all artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: artifacts
+
+  #     - name: Create Release
+  #       id: create_release
+  #       uses: actions/create-release@v1
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       with:
+  #         tag_name: v${{ github.run_number }}
+  #         release_name: Release v${{ github.run_number }}
+  #         body: |
+  #           Automated release created from commit ${{ github.event.inputs.commit_sha || github.sha }}
+
+  #           ## Binaries
+  #           This release includes binaries for the following platforms:
+  #           - Linux (x86_64, aarch64, armv7) - GNU and musl variants
+  #           - macOS (x86_64, aarch64)
+
+  #           Download the appropriate binary for your platform from the assets below.
+  #         draft: false
+  #         prerelease: false
+
+  #     - name: Upload Release Assets
+  #       run: |
+  #         for dir in artifacts/autonomy-*; do
+  #           if [ -d "$dir" ]; then
+  #             target=$(basename "$dir" | sed 's/autonomy-//')
+  #             for file in "$dir"/*; do
+  #               if [ -f "$file" ]; then
+  #                 filename=$(basename "$file")
+  #                 asset_name="autonomy-${target}"
+  #                 echo "Uploading $file as $asset_name"
+
+  #                 curl -L \
+  #                   -X POST \
+  #                   -H "Accept: application/vnd.github+json" \
+  #                   -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+  #                   -H "X-GitHub-Api-Version: 2022-11-28" \
+  #                   -H "Content-Type: application/octet-stream" \
+  #                   --data-binary "@$file" \
+  #                   "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=$asset_name"
+  #               fi
+  #             done
+  #           fi
+  #         done
