@@ -1,0 +1,183 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Git commit sha, on which, to run this workflow
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build_and_test:
+    name: Build and Test Binaries
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            host_operating_system: macos-14
+            use_cross: false
+            test_method: native
+
+          - target: x86_64-apple-darwin
+            host_operating_system: macos-14
+            use_cross: false
+            test_method: native
+
+          - target: x86_64-unknown-linux-gnu
+            host_operating_system: ubuntu-22.04
+            use_cross: false
+            test_method: native
+
+          - target: x86_64-unknown-linux-musl
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: native
+
+          - target: aarch64-unknown-linux-gnu
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: qemu
+            qemu_architecture: aarch64
+
+          - target: aarch64-unknown-linux-musl
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: qemu
+            qemu_architecture: aarch64
+
+          - target: armv7-unknown-linux-musleabihf
+            host_operating_system: ubuntu-22.04
+            use_cross: true
+            test_method: qemu
+            qemu_architecture: arm
+
+    runs-on: ${{ matrix.host_operating_system }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
+
+      - name: Setup rust toolchain
+        run: |
+          rustup show
+          rustup target add ${{ matrix.target }}
+
+      - name: Install build dependencies
+        if: matrix.host_operating_system == 'ubuntu-22.04'
+        run: |
+          set -x
+
+          if [ "${{ matrix.use_cross }}" == "true" ]; then
+            cargo install cross --git https://github.com/cross-rs/cross
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              gcc g++ libclang-dev xz-utils liblz4-tool musl-tools
+          fi
+
+          if [ "${{ matrix.test_method }}" == "qemu" ]; then
+            sudo apt-get update
+            sudo apt-get install -y qemu-user-static
+
+            # Install libraries needed for QEMU to properly execute dynamically
+            # linked binaries for the target architectures.
+            if [ "${{ matrix.qemu_architecture }}" == "aarch64" ]; then
+              sudo apt-get install -y libc6-dev-arm64-cross
+            elif [ "${{ matrix.qemu_architecture }}" == "arm" ]; then
+              sudo apt-get install -y libc6-dev-armhf-cross
+            fi
+          fi
+
+      - name: Build binary
+        run: |
+          set -ex
+          cd source/rust/autonomy_command
+
+          # Build the compile tool first (natively for the host)
+          # This must be done before setting RUSTFLAGS=+crt-static to avoid
+          # the Rust compiler bug where proc-macros cannot be built with static
+          # linking https://github.com/rust-lang/rust/issues/78210
+          cargo build --bin compile
+
+          # Set RUSTFLAGS for musl targets only when building the target binary
+          # The compile tool will use these flags when building the final autonomy binary
+          if [[ "${{ matrix.target }}" =~ .+-musl(.+)?  ]]; then
+            export RUSTFLAGS='-C target-feature=+crt-static'
+          fi
+
+          # Use the compile tool to build the target binary
+          if [ "${{ matrix.use_cross }}" == "true" ]; then
+            ./target/debug/compile --configuration compile.yaml \
+              --target ${{ matrix.target }} --use-cross --release
+          else
+            ./target/debug/compile --configuration compile.yaml \
+              --target ${{ matrix.target }} --release
+          fi
+
+          BINARY_PATH="./target/${{ matrix.target }}/release/autonomy"
+          chmod +x "$BINARY_PATH"
+
+          if [ "${{ matrix.test_method }}" == "qemu" ]; then
+            qemu-${{ matrix.qemu_architecture }}-static "$BINARY_PATH" --version
+          else
+            "$BINARY_PATH" --version
+          fi
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: autonomy.${{ matrix.target }}
+          path: source/rust/autonomy_command/target/${{ matrix.target }}/release/autonomy
+          if-no-files-found: error
+          compression-level: 0
+
+  create_release:
+    name: Create Release
+    needs: build_and_test
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.commit_sha }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          path: artifacts
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TAG="v0.158.0"
+          RELEASE_NAME="Release v0.158.0"
+          COMMIT_SHA="${{ github.event.inputs.commit_sha || github.sha }}"
+          RELEASE_BODY="Release v0.158.0"
+
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_NAME" \
+            --notes "$RELEASE_BODY" \
+            --target "$COMMIT_SHA" \
+            --draft
+
+          for artifact_dir in artifacts/autonomy.*; do
+            if [ -d "$artifact_dir" ]; then
+              target=$(basename "$artifact_dir" | sed 's/autonomy\.//')
+              for binary_file in "$artifact_dir"/*; do
+                if [ -f "$binary_file" ]; then
+                  asset_name="autonomy-${target}"
+                  echo "Uploading $binary_file as $asset_name"
+                  gh release upload "$RELEASE_TAG" "$binary_file#$asset_name"
+                fi
+              done
+            fi
+          done
