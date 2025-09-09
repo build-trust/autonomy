@@ -89,13 +89,13 @@ jobs:
             # Install libraries needed for QEMU to properly execute dynamically
             # linked binaries for the target architectures.
             if [ "${{ matrix.qemu_architecture }}" == "aarch64" ]; then
-              sudo apt-get install -y libc6-dev-arm64-cross
+              sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
             elif [ "${{ matrix.qemu_architecture }}" == "arm" ]; then
-              sudo apt-get install -y libc6-dev-armhf-cross
+              sudo apt-get install -y gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
             fi
           fi
 
-      - name: Build binary
+      - name: Build binaryc
         run: |
           set -ex
           cd source/rust/autonomy_command
@@ -125,7 +125,13 @@ jobs:
           chmod +x "$BINARY_PATH"
 
           if [ "${{ matrix.test_method }}" == "qemu" ]; then
-            qemu-${{ matrix.qemu_architecture }}-static "$BINARY_PATH" --version
+            if [ "${{ matrix.qemu_architecture }}" == "aarch64" ]; then
+              QEMU_LD_PREFIX=/usr/aarch64-linux-gnu qemu-${{ matrix.qemu_architecture }}-static "$BINARY_PATH" --version
+            elif [ "${{ matrix.qemu_architecture }}" == "arm" ]; then
+              QEMU_LD_PREFIX=/usr/arm-linux-gnueabihf qemu-${{ matrix.qemu_architecture }}-static "$BINARY_PATH" --version
+            else
+              qemu-${{ matrix.qemu_architecture }}-static "$BINARY_PATH" --version
+            fi
           else
             "$BINARY_PATH" --version
           fi
