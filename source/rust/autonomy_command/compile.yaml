@@ -1,0 +1,8 @@
+autonomy:
+  support_email: support@autonomy.computer
+  brand_name: Autonomy
+  home_dir: $HOME/.autonomy
+  build_args:
+  commands:
+    - cluster
+    - zone
