@@ -1,0 +1,97 @@
+---
+title: "MCP"
+icon: "link-horizontal"
+mode: "wide"
+---
+<Tip>
+You can find all the code for this example [on Github](https://github.com/build-trust/autonomy/tree/develop/examples/007).
+</Tip>
+
+```yaml autonomy.yaml
+name: example007
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+
+      - name: mcp
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - name: BRAVE_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: brave
+                key: key
+        args:
+          ["--sse-port", "8001", "--pass-environment",
+            "--", "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+```yaml secrets.yaml
+- name: brave
+  fields:
+    key: "YOUR KEY HERE"
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python:latest
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node, McpTool, McpClient, Tool
+from datetime import datetime
+
+
+def current_iso8601_utc_time():
+    """
+    Returns the current UTC time in ISO 8601 format.
+    """
+    return datetime.utcnow().isoformat() + "Z"
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="""
+            You are Henry, an expert legal assistant.
+
+            When you are given a question, decide if your response can be better
+            with a web search. If so, use the web search tool to improve your response.
+        """,
+        model=Model("claude-3-7-sonnet-v1"),
+        tools=[
+            McpTool("brave_search", "brave_web_search"),
+            Tool(current_iso8601_utc_time),
+        ],
+    )
+
+
+Node.start(
+    main,
+    mcp_clients=[
+        McpClient(name="brave_search", address="http://localhost:8001/sse"),
+    ],
+)
+```
+
+<CodeGroup>
+
+```bash httpie
+http POST \
+"https://25df35de87aa441b88f22a6c2a830a17-example006.ai.autonomy.network/agents/henry" \
+message="Find links to cases currently in the US Supreme Court"
+```
+
+```bash curl
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{ "message": "Find links to cases currently in the US Supreme Court" }' \
+"https://25df35de87aa441b88f22a6c2a830a17-example006.ai.autonomy.network/agents/henry"
+```
+</CodeGroup>
+
