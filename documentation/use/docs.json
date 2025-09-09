@@ -1,19 +1,18 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Ockam AI",
+  "name": "Autonomy",
   "colors": {
     "primary": "#52C7EA",
     "light": "#52C7EA",
     "dark": "#52C7EA"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.png",
   "navigation": {
     "groups": [
       {
         "group": "GET STARTED",
         "pages": [
-          "index",
           "start-here"
         ]
       },
@@ -38,31 +37,31 @@
       {
         "group": "ENTERPRISE CONNECTIONS",
         "pages": [
-          "integration/portals",
+          "integration/private_link",
           "integration/mcp"
         ]
       }
     ]
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
   },
   "navbar": {
     "links": [
       {
-        "label": "Ockam.ai",
-        "href": "https://ockam.ai"
+        "label": "Autonomy Website",
+        "href": "https://autonomy.computer"
       },
             {
         "label": "Open Source Code",
-        "href": "https://github.com/build-trust/ockam"
+        "href": "https://github.com/build-trust"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Sign up",
-      "href": "https://ockam.io/signup"
+      "href": "https://my.autonomy.computer"
     }
   },
   "footer": {}
