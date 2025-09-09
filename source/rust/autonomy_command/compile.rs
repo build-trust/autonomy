@@ -23,6 +23,18 @@ struct Args {
     /// Prints the processed configuration without building the binaries
     #[clap(long)]
     dry_run: bool,
+
+    /// Target triple for cross-compilation (e.g., x86_64-unknown-linux-gnu)
+    #[clap(long)]
+    target: Option<String>,
+
+    /// Use cross for cross-compilation instead of cargo
+    #[clap(long)]
+    use_cross: bool,
+
+    /// Build in release mode
+    #[clap(long)]
+    release: bool,
 }
 
 /// Builds the binaries with the passed configuration:
@@ -47,7 +59,7 @@ fn main() -> Result<()> {
     let cmd = OckamCommand::command();
     let top_level_commands = top_level_command_names(&cmd);
     for (bin_name, brand_config) in config.items {
-        build_binary(bin_name, brand_config, &top_level_commands, args.dry_run)?;
+        build_binary(bin_name, brand_config, &top_level_commands, &args)?;
     }
     Ok(())
 }
@@ -57,7 +69,7 @@ fn build_binary(
     bin_name: String,
     brand_settings: Brand,
     top_level_commands: &[String],
-    dry_run: bool,
+    args: &Args,
 ) -> Result<()> {
     brand_settings.validate()?;
 
@@ -70,14 +82,36 @@ fn build_binary(
     let brand_name = brand_settings.brand_name(&bin_name);
     let home_dir = brand_settings.home_dir(&bin_name);
 
-    if dry_run {
+    if args.dry_run {
         return Ok(());
     }
 
-    let mut cmd = std::process::Command::new("cargo");
-    cmd.args(["build", "--bin", &bin_name]);
-    if let Some(build_args) = &brand_settings.build_args {
-        cmd.args(build_args);
+    // Determine build command and arguments
+    let (build_cmd, mut build_args) = if args.use_cross {
+        ("cross", vec!["build"])
+    } else {
+        ("cargo", vec!["build"])
+    };
+
+    // Add target if specified
+    if let Some(target) = &args.target {
+        build_args.extend_from_slice(&["--target", target]);
+    }
+
+    // Add release flag if specified
+    if args.release {
+        build_args.push("--release");
+    }
+
+    // Add binary name
+    build_args.extend_from_slice(&["--bin", &bin_name]);
+
+    let mut cmd = std::process::Command::new(build_cmd);
+    cmd.args(&build_args);
+
+    // Add any additional build args from config
+    if let Some(config_build_args) = &brand_settings.build_args {
+        cmd.args(config_build_args);
     }
 
     cmd.envs([
