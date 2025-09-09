@@ -1,0 +1,27 @@
+---
+title: 'Planning'
+description: ''
+icon: list-tree
+mode: "wide"
+---
+
+<Tip>
+  You can find all the code for this example [on Github](https://github.com/build-trust/autonomy/tree/develop/examples/008).
+</Tip>
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node, ReActPlanner
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant.",
+        model=Model("llama3.2"),
+        planner=ReActPlanner(Model("deepseek-r1")),
+    )
+
+
+Node.start(main)
+```
