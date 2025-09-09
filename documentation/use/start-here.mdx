@@ -13,7 +13,7 @@ description: "Deploy your first agent"
     Install `autonomy` command by running the following in your terminal.
 
     ```bash
-    curl -sSfL install.autonomy.computer | bash && source "$HOME/.autonomy/env"
+    curl -sSfL autonomy.computer/install | bash -s -- --version v0.158.0 && source "$HOME/.autonomy/env"
     ```
   </Step>
   <Step title="Deploy your first agent">
@@ -59,7 +59,6 @@ description: "Deploy your first agent"
 </Steps>
 
 ### The generated code
-
 
 Within the `hello` directory, `Autonomy` has created the following three files:
 
