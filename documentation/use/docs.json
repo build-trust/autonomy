@@ -69,4 +69,7 @@
       "linkedin": "https://www.linkedin.com/company/autonomy-computer",
       "github": "https://github.com/build-trust"
   },
+  "seo": {
+    "indexing": all
+  }
 }
