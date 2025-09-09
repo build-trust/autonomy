@@ -64,5 +64,9 @@
       "href": "https://my.autonomy.computer"
     }
   },
-  "footer": {}
+  "footer": {
+    "socials": {
+      "linkedin": "https://www.linkedin.com/company/autonomy-computer",
+      "github": "https://github.com/build-trust"
+  },
 }
