@@ -56,7 +56,7 @@
       },
             {
         "label": "Open Source Code",
-        "href": "https://github.com/build-trust"
+        "href": "https://github.com/build-trust/autonomy"
       }
     ],
     "primary": {
@@ -68,7 +68,8 @@
   "footer": {
     "socials": {
       "linkedin": "https://www.linkedin.com/company/autonomy-computer",
-      "github": "https://github.com/build-trust"
+      "github": "https://github.com/build-trust",
+      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng"
     }
   }
 }
