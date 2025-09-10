@@ -13,7 +13,8 @@
       {
         "group": "GET STARTED",
         "pages": [
-          "start-here"
+          "start-here", 
+          "pricing"
         ]
       },
       {
