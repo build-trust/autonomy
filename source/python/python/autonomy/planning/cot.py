@@ -30,9 +30,7 @@ class CotPlan(Plan):
     step_messages: list[ConversationMessage] = []
     if contextual_knowledge:
       step_messages.append(
-        SystemMessage(
-          f"This information could be useful for proper planning:\n{contextual_knowledge}"
-        )
+        SystemMessage(f"This information could be useful for proper planning:\n{contextual_knowledge}")
       )
 
     for message in messages:
@@ -71,9 +69,7 @@ Make sure that the last step reaches the goal of the task.
 """
         ),
         UserMessage(self.query),
-        AssistantMessage(
-          f"""<think>Alright, so I need to create a plan to address the task: "{self.query}". """
-        ),
+        AssistantMessage(f"""<think>Alright, so I need to create a plan to address the task: "{self.query}". """),
       ],
     )
 
@@ -95,8 +91,6 @@ class CoTPlanner(Planner):
     stream: bool = False,
   ) -> Plan:
     if messages[-1].role != ConversationRole.USER:
-      raise Exception(
-        f"Role {messages[-1].role} is not supported in the last message, only 'USER' is allowed."
-      )
+      raise Exception(f"Role {messages[-1].role} is not supported in the last message, only 'USER' is allowed.")
 
     return CotPlan(self.model, messages[-1].content, stream=stream)

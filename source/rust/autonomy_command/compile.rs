@@ -146,7 +146,6 @@ fn build_binary(
     Ok(())
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct Config {
     #[serde(flatten)]

@@ -78,9 +78,7 @@ class Memory:
           ]
         else:
           messages = [
-            message
-            for conversation in self.conversations.get(some_scope, {}).values()
-            for message in conversation
+            message for conversation in self.conversations.get(some_scope, {}).values() for message in conversation
           ]
       else:
         messages = self.conversations.get(some_scope, {}).get(some_conversation, [])

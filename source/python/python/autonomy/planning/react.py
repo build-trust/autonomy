@@ -38,18 +38,14 @@ class ReActPlanner(Planner):
   ) -> Plan:
     return ReActPlan(await self._plan(messages, contextual_knowledge))
 
-  async def _plan(
-    self, messages: list[ConversationMessage], contextual_knowledge: Optional[str]
-  ) -> list[str]:
+  async def _plan(self, messages: list[ConversationMessage], contextual_knowledge: Optional[str]) -> list[str]:
     if len(messages) == 0:
       return []
 
     step_messages: list[ConversationMessage] = []
     if contextual_knowledge:
       step_messages.append(
-        SystemMessage(
-          f"This information could be useful for proper planning:\n{contextual_knowledge}"
-        )
+        SystemMessage(f"This information could be useful for proper planning:\n{contextual_knowledge}")
       )
 
     step_messages.append(
@@ -92,9 +88,7 @@ Make sure that the last step reaches the goal of the task.
     )
 
     if messages[-1].role != ConversationRole.USER:
-      raise Exception(
-        f"Role {messages[-1].role} is not supported in the last message, only 'USER' is allowed."
-      )
+      raise Exception(f"Role {messages[-1].role} is not supported in the last message, only 'USER' is allowed.")
 
     step_messages.append(messages[-1])
 
