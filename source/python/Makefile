@@ -3,11 +3,16 @@ default: build
 # List available targets
 help:
 	@echo "Available targets:"
-	@echo "  default - Run build"
-	@echo "  build   - Build this project"
-	@echo "  test    - Run tests"
-	@echo "  clean   - Delete all build artifacts"
-	@echo "  help    - Show this help message"
+	@echo "  default                  - Run build"
+	@echo "  build                    - Build this project"
+	@echo "  test                     - Run tests"
+	@echo "  format (fmt)             - Format code using cargo fmt and ruff format"
+	@echo "  clean                    - Delete all build artifacts"
+	@echo "  images                   - Build and push all AMD64 images"
+	@echo "  build-images-amd64       - Build AMD64 Docker images"
+	@echo "  push-images-amd64-hash   - Push AMD64 images with commit hash tags"
+	@echo "  push-images-amd64-latest - Push AMD64 images with latest tags"
+	@echo "  help                     - Show this help message"
 
 build:
 	uv run --active maturin develop
@@ -20,8 +25,50 @@ format:
 test:
 	uv run --active pytest
 
+build-images-amd64:
+	docker run --rm -v "$(shell pwd)":/io \
+		--platform linux/amd64 \
+		ghcr.io/pyo3/maturin build \
+			--release \
+			--target x86_64-unknown-linux-gnu \
+			--manifest-path /io/Cargo.toml
+	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
+
+	docker pull cgr.dev/chainguard/python:latest-dev
+	docker pull cgr.dev/chainguard/python:latest
+
+	DOCKER_BUILDKIT=0 docker build --platform linux/amd64 \
+		-t ghcr.io/build-trust/autonomy-python-dev:latest \
+		-t ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH) --target dev --file Dockerfile .
+
+	DOCKER_BUILDKIT=0 docker build --platform linux/amd64 \
+		-t ghcr.io/build-trust/autonomy-python:latest \
+		-t ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH) --file Dockerfile .
+
+push-images-amd64-hash:
+	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
+	docker push ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)
+	docker push ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)
+
+push-images-amd64-latest:
+	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
+
+	docker tag ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH) \
+		ghcr.io/build-trust/autonomy-python-dev:latest
+	docker push ghcr.io/build-trust/autonomy-python-dev:latest
+
+	docker tag ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH) \
+		ghcr.io/build-trust/autonomy-python:latest
+	docker push ghcr.io/build-trust/autonomy-python:latest
+
+images:
+	$(MAKE) build-images-amd64
+	$(MAKE) push-images-amd64-hash
+	$(MAKE) push-images-amd64-latest
+
 clean:
 	rm -rf target
 	rm -rf python/autonomy/*.abi3.so
 
-.PHONY: default help build test clean
+.PHONY: default help fmt format build test clean
+.PHONY: build-images-amd64 push-images-amd64-latest push-images-amd64-hash images
