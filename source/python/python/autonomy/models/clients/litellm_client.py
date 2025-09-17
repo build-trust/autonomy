@@ -135,9 +135,7 @@ def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional
         cluster_id = os.environ.get("CLUSTER")
         if not cluster_id:
           logger = get_logger("model")
-          logger.warning(
-            "CLUSTER is not set. Cannot automatically manage inference profiles. Returning None."
-          )
+          logger.warning("CLUSTER is not set. Cannot automatically manage inference profiles. Returning None.")
           return None
 
       except Exception as e:
@@ -172,9 +170,7 @@ def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional
       # Determine the source ARN for the new profile
       if model_identifier in BEDROCK_INFERENCE_PROFILE_MAP:
         source_profile_id = BEDROCK_INFERENCE_PROFILE_MAP[model_identifier]
-        model_source_arn = (
-          f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{source_profile_id}"
-        )
+        model_source_arn = f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{source_profile_id}"
       else:
         # This is a standard foundation model
         model_source_arn = f"arn:aws:bedrock:{region}::foundation-model/{model_identifier}"
@@ -275,12 +271,8 @@ class LiteLLMClient(InfoContext, DebugContext):
     messages, kwargs = self.prepare_llm_call(messages, is_thinking)
     return litellm.token_counter(self.name, messages=messages, tools=tools)
 
-  def prepare_llm_call(
-    self, messages: List[dict] | List[ConversationMessage], is_thinking: bool, **kwargs
-  ):
-    messages = normalize_messages(
-      messages, is_thinking, self.support_tools(), self.support_forced_assistant_answer()
-    )
+  def prepare_llm_call(self, messages: List[dict] | List[ConversationMessage], is_thinking: bool, **kwargs):
+    messages = normalize_messages(messages, is_thinking, self.support_tools(), self.support_forced_assistant_answer())
 
     # parameters provided in kwargs will override the default parameters
     kwargs = {**self.kwargs, **kwargs}
@@ -344,8 +336,10 @@ class LiteLLMClient(InfoContext, DebugContext):
     if stream:
       return self._complete_chat_stream(messages, is_thinking, **kwargs)
     else:
+
       async def _complete():
         return await self._complete_chat(messages, **kwargs)
+
       return _complete()
 
   async def _complete_chat_stream(self, messages: List[dict], is_thinking: bool, **kwargs):
@@ -360,9 +354,7 @@ class LiteLLMClient(InfoContext, DebugContext):
     if chunks is None:
       if _cache_inference:
         chunks = []
-        async for chunk in await router.acompletion(
-          self.name, messages=messages, stream=True, **kwargs
-        ):
+        async for chunk in await router.acompletion(self.name, messages=messages, stream=True, **kwargs):
           chunks.append(chunk)
           if chunk.choices[0].finish_reason:
             break
@@ -447,12 +439,8 @@ class LiteLLMClient(InfoContext, DebugContext):
     with open(file, "wb") as f:
       f.write(dill.dumps(data))
 
-  def _hash_completion_request(
-    self, model_name: str, messages: List[dict], stream: bool, kwargs: dict
-  ) -> str:
-    request = json.dumps(
-      {"model": model_name, "messages": messages, "stream": stream, **kwargs}, sort_keys=True
-    )
+  def _hash_completion_request(self, model_name: str, messages: List[dict], stream: bool, kwargs: dict) -> str:
+    request = json.dumps({"model": model_name, "messages": messages, "stream": stream, **kwargs}, sort_keys=True)
     return hashlib.sha256(request.encode("utf-8")).hexdigest()
 
   def _hash_embedding_request(self, model_name: str, text: List[str], kwargs: dict) -> str:
@@ -475,9 +463,7 @@ def normalize_messages(
       for message in messages:
         msg_dict = {
           "role": message.role.value,
-          "content": message.content.text
-          if hasattr(message.content, "text")
-          else str(message.content),
+          "content": message.content.text if hasattr(message.content, "text") else str(message.content),
         }
         # Add tool_calls if present
         if hasattr(message, "tool_calls") and message.tool_calls:
@@ -575,11 +561,7 @@ def normalize_messages(
 
   # if the last message is an assistant message, we need to change it to user when
   # force_assistant_answer is not supported
-  if (
-    not forced_assistant_answer_supported
-    and len(messages) > 0
-    and messages[-1]["role"] == "assistant"
-  ):
+  if not forced_assistant_answer_supported and len(messages) > 0 and messages[-1]["role"] == "assistant":
     messages[-1]["role"] = "user"
 
   # if thinking, we need to add <think> tag at the beginning of the last message

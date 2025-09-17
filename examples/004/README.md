@@ -38,7 +38,7 @@ autonomy --rm
 ```
 
 This will start the service and output URLs for:
-- HTTP API server at `http://localhost:32100`  
+- HTTP API server at `http://localhost:32100`
 - Logs at `http://localhost:32101`
 
 ### Test the API

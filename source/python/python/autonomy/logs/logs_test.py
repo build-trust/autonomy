@@ -60,9 +60,7 @@ class TestLogs:
       "default": "DEBUG",
       "agent": "INFO",
       "ockam_rust_modules": "ockam_core=info",
-    }, (
-      "the default level for python modules is debug, agent is info, rust modules is info for ockam_core only"
-    )
+    }, "the default level for python modules is debug, agent is info, rust modules is info for ockam_core only"
     assert result.get("node", result.get("default")) == "DEBUG", (
       "the default level can be used for an unspecified module"
     )

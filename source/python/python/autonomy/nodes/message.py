@@ -346,9 +346,7 @@ class Reference:
   ) -> AsyncGenerator[StreamedConversationSnippet, None]:
     if isinstance(message, str):
       message = TextContent(message)
-    request = StreamedConversationSnippet(
-      ConversationSnippet(scope, conversation, [UserMessage(message)])
-    )
+    request = StreamedConversationSnippet(ConversationSnippet(scope, conversation, [UserMessage(message)]))
     async for response in self.send_request_stream(request, timeout=timeout):
       yield response
 
@@ -447,9 +445,7 @@ class AgentReference(Reference, InvokableTool):
 
   async def spec(self) -> dict:
     if self.exposed_as is None:
-      raise ValueError(
-        "To expose an agent as a tool, the 'exposed_as' parameter must be populated."
-      )
+      raise ValueError("To expose an agent as a tool, the 'exposed_as' parameter must be populated.")
 
     return {
       "type": "function",

@@ -228,9 +228,7 @@ class RemoteNode:
     from ..agents import validate_name
 
     validate_name(name)
-    await self.send_generic_request(
-      "start_worker", name, worker, policy=policy, exposed_as=exposed_as
-    )
+    await self.send_generic_request("start_worker", name, worker, policy=policy, exposed_as=exposed_as)
 
   async def stop_worker(self, name: str):
     await self.send_generic_request("stop_worker", name)

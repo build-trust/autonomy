@@ -10,90 +10,90 @@ from .operation import FlowOperation, START
 from ..autonomy_in_rust_for_python import debug
 
 FlowVertex = Union[
-    str,
-    Reference,
+  str,
+  Reference,
 ]
 
 
 class FlowEdge:
-    def __init__(self, destination: FlowVertex, condition: str, operation: FlowOperation):
-        self.destination = destination
-        self.condition = condition
-        self.operation = operation
+  def __init__(self, destination: FlowVertex, condition: str, operation: FlowOperation):
+    self.destination = destination
+    self.condition = condition
+    self.operation = operation
 
 
 def vertex_to_id(vertex: FlowVertex) -> str:
-    if isinstance(vertex, Reference):
-        return f"{vertex.node.name}__{vertex.reference_type.value}__{vertex.name}"
+  if isinstance(vertex, Reference):
+    return f"{vertex.node.name}__{vertex.reference_type.value}__{vertex.name}"
 
-    return vertex
+  return vertex
 
 
 def route(edges: Dict[str, FlowEdge], conversation_snippet: ConversationSnippet) -> FlowEdge | None:
-    last_message = conversation_snippet.messages[-1]
+  last_message = conversation_snippet.messages[-1]
 
-    # Extract text content from the message
-    if hasattr(last_message.content, 'text'):
-        last_output = last_message.content.text
-    else:
-        # Fallback for other content types or if content is already a string
-        last_output = str(last_message.content)
+  # Extract text content from the message
+  if hasattr(last_message.content, "text"):
+    last_output = last_message.content.text
+  else:
+    # Fallback for other content types or if content is already a string
+    last_output = str(last_message.content)
 
-    edge = None
+  edge = None
+  if last_output:
+    # Truncate output for some degree of robustness
+    last_output = last_output.splitlines()[0]
+    last_output = last_output.lower()
+    last_output = last_output.translate(str.maketrans("", "", string.punctuation))
+    last_output = re.sub(r"\s+", " ", last_output).strip()
     if last_output:
-        # Truncate output for some degree of robustness
-        last_output = last_output.splitlines()[0]
-        last_output = last_output.lower()
-        last_output = last_output.translate(str.maketrans("", "", string.punctuation))
-        last_output = re.sub(r"\s+", " ", last_output).strip()
-        if last_output:
-            edge = edges.get(last_output)
+      edge = edges.get(last_output)
 
-    if not edge:
-        edge = edges.get("")
-    else:
-        # Remove the condition message
-        conversation_snippet.messages.pop()
+  if not edge:
+    edge = edges.get("")
+  else:
+    # Remove the condition message
+    conversation_snippet.messages.pop()
 
-    if not edge:
-        return None
+  if not edge:
+    return None
 
-    debug(f"Route: {last_output} -> {edge}")
+  debug(f"Route: {last_output} -> {edge}")
 
-    return edge
+  return edge
 
 
 @dataclass
 class FlowState:
-    name: str
-    graph: Dict[str, Dict[str, FlowEdge]] = field(default_factory=dict)
-    current_vertex: FlowVertex = field(default=START)
+  name: str
+  graph: Dict[str, Dict[str, FlowEdge]] = field(default_factory=dict)
+  current_vertex: FlowVertex = field(default=START)
 
-    def reset(self):
-        self.current_vertex = START
+  def reset(self):
+    self.current_vertex = START
 
-    def add(self, vertex: FlowVertex, edge: FlowEdge):
-        vertex_id = vertex_to_id(vertex)
-        existing_edge = self.graph.get(vertex_id)
+  def add(self, vertex: FlowVertex, edge: FlowEdge):
+    vertex_id = vertex_to_id(vertex)
+    existing_edge = self.graph.get(vertex_id)
 
-        # TODO: Raise exception on override
-        if existing_edge:
-            existing_edge[edge.condition] = edge
-        else:
-            self.graph[vertex_id] = {edge.condition: edge}
+    # TODO: Raise exception on override
+    if existing_edge:
+      existing_edge[edge.condition] = edge
+    else:
+      self.graph[vertex_id] = {edge.condition: edge}
 
-        debug(f"Added to Flow: {vertex_id} -> {edge}")
+    debug(f"Added to Flow: {vertex_id} -> {edge}")
 
-    def next_edge(self, conversation_snippet: ConversationSnippet) -> FlowEdge:
-        current_vertex_id = vertex_to_id(self.current_vertex)
-        edges = self.graph.get(current_vertex_id)
+  def next_edge(self, conversation_snippet: ConversationSnippet) -> FlowEdge:
+    current_vertex_id = vertex_to_id(self.current_vertex)
+    edges = self.graph.get(current_vertex_id)
 
-        if not edges:
-            raise KeyError(f"Current vertex id '{current_vertex_id}' not found in graph")
+    if not edges:
+      raise KeyError(f"Current vertex id '{current_vertex_id}' not found in graph")
 
-        edge = route(edges, conversation_snippet)
+    edge = route(edges, conversation_snippet)
 
-        if edge:
-            self.current_vertex = edge.destination
+    if edge:
+      self.current_vertex = edge.destination
 
-        return edge
+    return edge

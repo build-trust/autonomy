@@ -7,9 +7,7 @@ from typing import Protocol
 DEFAULT_LOG_FORMAT = os.getenv(
   "DEFAULT_LOG_FORMAT", "%(asctime)s %(log_color)s%(levelname)5s%(reset)s %(name)-14s %(message)s"
 )
-FORMAT = DEFAULT_LOG_FORMAT + (
-  " [%(pathname)s:%(lineno)d]" if os.getenv("OCKAM_LOG_SHOW_SOURCE", False) else ""
-)
+FORMAT = DEFAULT_LOG_FORMAT + (" [%(pathname)s:%(lineno)d]" if os.getenv("OCKAM_LOG_SHOW_SOURCE", False) else "")
 
 LOG_LEVELS = {}
 
@@ -56,9 +54,7 @@ def set_log_levels(log_levels: str):
     os.environ["OCKAM_LOG_LEVEL"] = LOG_LEVELS.get("ockam_rust_modules")
 
 
-def create_logging_config(
-  levels: dict, log_format: str
-) -> dict[str, int | bool | dict | str | None]:
+def create_logging_config(levels: dict, log_format: str) -> dict[str, int | bool | dict | str | None]:
   return {
     "version": 1,
     "disable_existing_loggers": False,

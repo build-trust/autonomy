@@ -101,9 +101,7 @@ def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional
         cluster_id = os.environ.get("CLUSTER")
         if not cluster_id:
           logger = get_logger("model")
-          logger.warning(
-            "CLUSTER is not set. Cannot automatically manage inference profiles. Returning None."
-          )
+          logger.warning("CLUSTER is not set. Cannot automatically manage inference profiles. Returning None.")
           return None
 
       except Exception as e:
@@ -138,9 +136,7 @@ def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional
       # Determine the source ARN for the new profile
       if model_identifier in BEDROCK_INFERENCE_PROFILE_MAP:
         source_profile_id = BEDROCK_INFERENCE_PROFILE_MAP[model_identifier]
-        model_source_arn = (
-          f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{source_profile_id}"
-        )
+        model_source_arn = f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{source_profile_id}"
       else:
         model_source_arn = f"arn:aws:bedrock:{region}::foundation-model/{model_identifier}"
 
@@ -254,9 +250,7 @@ class BedrockClient(InfoContext, DebugContext):
       for message in messages:
         msg_dict = {
           "role": message.role.value,
-          "content": message.content.text
-          if hasattr(message.content, "text")
-          else str(message.content),
+          "content": message.content.text if hasattr(message.content, "text") else str(message.content),
         }
         converted_messages.append(msg_dict)
       messages = converted_messages
@@ -288,9 +282,7 @@ class BedrockClient(InfoContext, DebugContext):
 
     return cleaned_messages
 
-  def _prepare_bedrock_payload(
-    self, messages: List[dict], stream: bool = False, **kwargs
-  ) -> Dict[str, Any]:
+  def _prepare_bedrock_payload(self, messages: List[dict], stream: bool = False, **kwargs) -> Dict[str, Any]:
     """Prepare the payload for Bedrock API call."""
     # Separate system messages from conversation
     system_messages = [msg for msg in messages if msg["role"] == "system"]
@@ -397,9 +389,7 @@ class BedrockClient(InfoContext, DebugContext):
     **kwargs,
   ):
     """Complete chat using direct Bedrock API."""
-    self.logger.info(
-      f"Processing {len(messages)} messages with Bedrock model '{self.original_name}'"
-    )
+    self.logger.info(f"Processing {len(messages)} messages with Bedrock model '{self.original_name}'")
 
     normalized_messages = self._normalize_messages(messages, is_thinking)
     payload = self._prepare_bedrock_payload(normalized_messages, stream, **kwargs)
@@ -407,8 +397,10 @@ class BedrockClient(InfoContext, DebugContext):
     if stream:
       return self._complete_chat_stream(payload, is_thinking, **kwargs)
     else:
+
       async def _complete():
         return await self._complete_chat_non_stream(payload, **kwargs)
+
       return _complete()
 
   async def _complete_chat_non_stream(self, payload: Dict[str, Any], **kwargs):
@@ -431,9 +423,7 @@ class BedrockClient(InfoContext, DebugContext):
       # Create response object similar to OpenAI/LiteLLM format
       class Choice:
         def __init__(self, content: str):
-          self.message = type(
-            "Message", (), {"content": content, "role": "assistant", "reasoning_content": None}
-          )()
+          self.message = type("Message", (), {"content": content, "role": "assistant", "reasoning_content": None})()
           self.finish_reason = "stop"
 
       class Response:

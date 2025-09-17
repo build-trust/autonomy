@@ -5,6 +5,6 @@ END = "__**END**__"
 
 
 class FlowOperation(Enum):
-    ROUTE = "route"
-    EVALUATE = "evaluate"
-    TRY_AGAIN = "try_again"
+  ROUTE = "route"
+  EVALUATE = "evaluate"
+  TRY_AGAIN = "try_again"

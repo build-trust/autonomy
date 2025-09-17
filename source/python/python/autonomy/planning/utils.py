@@ -14,10 +14,7 @@ async def complete_think_chat(model: Model, step_messages: List, stream: bool):
     ):
       content = chunk.choices[0].delta.content
 
-      if (
-        hasattr(chunk.choices[0].delta, "reasoning_content")
-        and chunk.choices[0].delta.reasoning_content
-      ):
+      if hasattr(chunk.choices[0].delta, "reasoning_content") and chunk.choices[0].delta.reasoning_content:
         thinking = True
         content = chunk.choices[0].delta.reasoning_content
       else:

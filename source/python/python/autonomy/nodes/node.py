@@ -47,6 +47,7 @@ class Node:
 
         if http_server is None:
           from .. import agents
+
           asyncio.create_task(agents.HttpServer().start(node))
         else:
           asyncio.create_task(http_server.start(node))
@@ -234,6 +235,4 @@ def _pick_access_policy(allow, cluster) -> str:
 
 def _check_worker_name(name: str):
   if not fullmatch(r"[a-zA-Z0-9_-]+", name):
-    raise ValueError(
-      f"Invalid name '{name}'. Only alphanumeric characters, '-' and '_' are allowed"
-    )
+    raise ValueError(f"Invalid name '{name}'. Only alphanumeric characters, '-' and '_' are allowed")
