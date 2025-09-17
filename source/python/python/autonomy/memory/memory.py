@@ -22,10 +22,9 @@ class Memory:
     self.instructions = []
     self.conversations = defaultdict(lambda: defaultdict(list[dict]))
 
-    if "OCKAM_DATABASE_INSTANCE" in environ:
-      self.initialize_database()
-
-    self.load_conversations()
+    # if "OCKAM_DATABASE_INSTANCE" in environ:
+    #   self.initialize_database()
+    # self.load_conversations()
 
   def initialize_database(self):
     db_instance = environ.get("OCKAM_DATABASE_INSTANCE")
