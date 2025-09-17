@@ -82,6 +82,7 @@ class AgentStateMachine:
     self.iteration = 0
     self.tool_calls = []
     self.whole_response = ConversationSnippet(scope, conversation, [])
+    self.final_content_sent = False
 
   async def transition(self):
     """Execute the current state and determine the next state."""
@@ -175,6 +176,7 @@ class AgentStateMachine:
         if self.stream:
           if model_response.content or model_response.tool_calls:
             yield self.streaming_response.make_snippet(model_response)
+            self.final_content_sent = True
         else:
           self.whole_response.messages.append(model_response)
 
@@ -234,7 +236,9 @@ class AgentStateMachine:
     """Handle the FINISHED state: End the conversation and return the final response."""
 
     if self.stream:
-      yield self.streaming_response.make_finished_snippet()
+      # Only send finished snippet if we haven't already sent final content
+      if not self.final_content_sent:
+        yield self.streaming_response.make_finished_snippet()
     else:
       yield self.whole_response
 
@@ -473,16 +477,11 @@ class Agent(InfoContext, DebugContext):
                 yield None, finished, response
               elif finished and (content == "" or content is None):
                 # Empty content with finish_reason - this is a termination chunk
-                self.logger.debug("Received empty finish chunk - yielding final response")
-                # Must yield a final response to signal completion to state machine
-                if accumulated_content:
-                  # Send accumulated content as final response
-                  response = AssistantMessage(content=accumulated_content, phase=Phase.EXECUTING)
-                else:
-                  # Send empty response if no content was accumulated
-                  response = AssistantMessage(content="", phase=Phase.EXECUTING)
-                yield None, True, response
+                self.logger.debug("Received empty finish chunk - streaming already complete")
+                # Don't send accumulated content again - it was already sent incrementally
+                # Just break to signal completion
                 has_content = True
+                break
             # Handle tool call chunks
             elif hasattr(choice, "delta") and hasattr(choice.delta, "tool_calls") and choice.delta.tool_calls:
               tool_calls = []

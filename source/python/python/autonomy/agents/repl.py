@@ -176,7 +176,9 @@ class Repl:
                   await self.write(writer, buffer)
                   buffer = ""
               if response.finished:
-                await self.write(writer, buffer)
+                # Only write remaining buffer content if any
+                if buffer:
+                  await self.write(writer, buffer)
                 # indicate the end of the stream
                 writer.write(b"0\n")
                 await writer.drain()
