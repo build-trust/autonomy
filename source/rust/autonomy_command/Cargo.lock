@@ -256,20 +256,20 @@ dependencies = [
 
 [[package]]
 name = "async-io"
-version = "2.5.0"
+version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19634d6336019ef220f09fd31168ce5c184b295cbf80345437cc36094ef223ca"
+checksum = "456b8a8feb6f42d237746d4b3e9a178494627745c3c56c6ea55d92ba50d026fc"
 dependencies = [
- "async-lock",
+ "autocfg",
  "cfg-if",
  "concurrent-queue",
  "futures-io",
  "futures-lite",
  "parking",
  "polling",
- "rustix 1.0.8",
+ "rustix 1.1.2",
  "slab",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]
@@ -285,9 +285,9 @@ dependencies = [
 
 [[package]]
 name = "async-process"
-version = "2.4.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65daa13722ad51e6ab1a1b9c01299142bc75135b337923cfa10e79bbbd669f00"
+checksum = "fc50921ec0055cdd8a16de48773bfeec5c972598674347252c0399676be7da75"
 dependencies = [
  "async-channel 2.5.0",
  "async-io",
@@ -298,14 +298,14 @@ dependencies = [
  "cfg-if",
  "event-listener 5.4.1",
  "futures-lite",
- "rustix 1.0.8",
+ "rustix 1.1.2",
 ]
 
 [[package]]
 name = "async-signal"
-version = "0.2.12"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f567af260ef69e1d52c2b560ce0ea230763e6fbb9214a85d768760a920e3e3c1"
+checksum = "43c070bbf59cd3570b6b2dd54cd772527c7c3620fce8be898406dd3ed6adc64c"
 dependencies = [
  "async-io",
  "async-lock",
@@ -313,10 +313,10 @@ dependencies = [
  "cfg-if",
  "futures-core",
  "futures-io",
- "rustix 1.0.8",
+ "rustix 1.1.2",
  "signal-hook-registry",
  "slab",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]
@@ -408,14 +408,14 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "autonomy_command"
-version = "0.1.0"
+version = "0.158.0"
 dependencies = [
  "clap",
  "colorful",
  "miette",
  "mimalloc",
- "ockam 0.157.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_api 0.100.0 (git+https://github.com/build-trust/ockam?branch=develop)",
+ "ockam",
+ "ockam_api",
  "ockam_command",
  "once_cell",
  "serde",
@@ -999,9 +999,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.36"
+version = "1.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5252b3d2648e5eedbc1a6f501e3c795e07025c1e93bbf8bbdd6eef7f447a6d54"
+checksum = "65193589c6404eb80b450d618eaf9a2cafaaafd57ecce47370519ef674a7bd44"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1085,9 +1085,9 @@ dependencies = [
 
 [[package]]
 name = "clap_complete"
-version = "4.5.57"
+version = "4.5.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d9501bd3f5f09f7bbee01da9a511073ed30a80cd7a509f1214bb74eadea71ad"
+checksum = "75bf0b32ad2e152de789bb635ea4d3078f6b838ad7974143e99b99f45a04af4a"
 dependencies = [
  "clap",
 ]
@@ -1727,12 +1727,12 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "errno"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
+checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]
@@ -1812,7 +1812,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if",
- "rustix 1.0.8",
+ "rustix 1.1.2",
  "windows-sys 0.59.0",
 ]
 
@@ -2059,7 +2059,7 @@ version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc257fdb4038301ce4b9cd1b3b51704509692bb3ff716a410cbd07925d9dae55"
 dependencies = [
- "rustix 1.0.8",
+ "rustix 1.1.2",
  "windows-targets 0.52.6",
 ]
 
@@ -2086,7 +2086,7 @@ dependencies = [
  "js-sys",
  "libc",
  "r-efi",
- "wasi 0.14.4+wasi-0.2.4",
+ "wasi 0.14.7+wasi-0.2.4",
  "wasm-bindgen",
 ]
 
@@ -2147,7 +2147,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "http 0.2.12",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "slab",
  "tokio",
  "tokio-util",
@@ -2166,7 +2166,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "http 1.3.1",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "slab",
  "tokio",
  "tokio-util",
@@ -2437,7 +2437,7 @@ dependencies = [
  "rustls-native-certs 0.8.1",
  "rustls-pki-types",
  "tokio",
- "tokio-rustls 0.26.2",
+ "tokio-rustls 0.26.3",
  "tower-service",
 ]
 
@@ -2456,9 +2456,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.16"
+version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d9b05277c7e8da2c93a568989bb6207bef0112e8d17df7a6eda4a3cf143bc5e"
+checksum = "3c6995591a8f1380fcb4ba966a252a4b29188d51d2b89e3a252f5305be65aea8"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2480,9 +2480,9 @@ dependencies = [
 
 [[package]]
 name = "iana-time-zone"
-version = "0.1.63"
+version = "0.1.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0c919e5debc312ad217002b8048a17b7d83f80703865bbfcfebb0458b0b27d8"
+checksum = "33e57f83510bb73707521ebaffa789ec8caf86f9657cad665b092b581d40e9fb"
 dependencies = [
  "android_system_properties",
  "core-foundation-sys",
@@ -2490,7 +2490,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.62.0",
 ]
 
 [[package]]
@@ -2635,13 +2635,14 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.11.1"
+version = "2.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "206a8042aec68fa4a62e8d3f7aa4ceb508177d9324faf261e1959e495b7a1921"
+checksum = "92119844f513ffa41556430369ab02c295a3578af21cf945caa3e9e0c2481ac3"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.5",
  "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -2811,7 +2812,7 @@ dependencies = [
  "ahash",
  "dyn-clone",
  "hifijson",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "jaq-syn",
  "once_cell",
  "serde_json",
@@ -2857,9 +2858,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.78"
+version = "0.3.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c0b063578492ceec17683ef2f8c5e89121fbd0b172cbc280635ab7567db2738"
+checksum = "852f13bec5eba4ba9afbeb93fd7c13fe56147f055939ae21c43a29a0ecb2702e"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
@@ -2876,7 +2877,7 @@ dependencies = [
  "crc",
  "crc32c",
  "flate2",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "lz4",
  "paste",
  "snap",
@@ -2974,9 +2975,9 @@ dependencies = [
 
 [[package]]
 name = "libredox"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "391290121bad3d37fbddad76d8f5d1c1c314cfc646d143d7e07a3086ddff0ce3"
+checksum = "416f7e718bdb06000964960ffa43b4335ad4012ae8b99060261aa4a8088d5ccb"
 dependencies = [
  "bitflags 2.9.4",
  "libc",
@@ -3017,9 +3018,9 @@ checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.9.4"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
+checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
 
 [[package]]
 name = "litemap"
@@ -3558,45 +3559,25 @@ checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
 dependencies = [
  "crc32fast",
  "hashbrown 0.15.5",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "memchr",
 ]
 
 [[package]]
 name = "ockam"
 version = "0.157.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "hex",
- "ockam_abac 0.84.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_identity 0.138.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_tcp 0.140.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_udp 0.84.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "rand 0.8.5",
- "serde",
- "tracing",
-]
-
-[[package]]
-name = "ockam"
-version = "0.157.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "hex",
- "ockam_abac 0.84.0 (git+https://github.com/build-trust/ockam)",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_identity 0.138.0 (git+https://github.com/build-trust/ockam)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_tcp 0.140.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_udp 0.84.0 (git+https://github.com/build-trust/ockam)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_abac",
+ "ockam_core",
+ "ockam_identity",
+ "ockam_macros",
+ "ockam_node",
+ "ockam_transport_core",
+ "ockam_transport_tcp",
+ "ockam_transport_udp",
+ "ockam_vault",
  "rand 0.8.5",
  "serde",
  "tracing",
@@ -3605,38 +3586,14 @@ dependencies = [
 [[package]]
 name = "ockam_abac"
 version = "0.84.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "cfg-if",
  "either",
  "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_identity 0.138.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "once_cell",
- "regex",
- "serde",
- "sqlx",
- "sqlx-core",
- "str-buf",
- "strum",
- "tokio",
- "tracing",
- "wast",
- "winnow",
-]
-
-[[package]]
-name = "ockam_abac"
-version = "0.84.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "cfg-if",
- "either",
- "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_identity 0.138.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
+ "ockam_identity",
+ "ockam_node",
  "once_cell",
  "regex",
  "serde",
@@ -3653,7 +3610,7 @@ dependencies = [
 [[package]]
 name = "ockam_api"
 version = "0.100.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "base64-url",
  "bytes",
@@ -3686,102 +3643,15 @@ dependencies = [
  "minicbor",
  "nix 0.29.0",
  "nu-ansi-term",
- "ockam 0.157.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_abac 0.84.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_multiaddr 0.71.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_tcp 0.140.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_vault_aws 0.62.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "once_cell",
- "open",
- "opentelemetry",
- "opentelemetry-appender-tracing",
- "opentelemetry-otlp",
- "opentelemetry-proto",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
- "petname",
- "r3bl_rs_utils_core",
- "r3bl_tui",
- "r3bl_tuify",
- "rand 0.8.5",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "sqlx-core",
- "strip-ansi-escapes",
- "strum",
- "subtle",
- "syntect",
- "sysinfo 0.32.1",
- "termbg",
- "thiserror 2.0.16",
- "time",
- "tiny_http",
- "tokio",
- "tokio-retry",
- "tonic",
- "tracing",
- "tracing-appender",
- "tracing-core",
- "tracing-error",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "url",
- "utoipa",
-]
-
-[[package]]
-name = "ockam_api"
-version = "0.100.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "base64-url",
- "bytes",
- "cfg-if",
- "cfg_aliases",
- "chrono",
- "clap",
- "colorful",
- "colors-transform",
- "dialoguer",
- "either",
- "futures",
- "futures-core",
- "gethostname 0.5.0",
- "hex",
- "home",
- "http 1.3.1",
- "http-body-util",
- "httparse",
- "hyper 1.7.0",
- "hyper-util",
- "indicatif",
- "itertools 0.14.0",
- "jaq-core",
- "jaq-interpret",
- "jaq-parse",
- "jaq-std",
- "kafka-protocol",
- "miette",
- "minicbor",
- "nix 0.29.0",
- "nu-ansi-term",
- "ockam 0.157.0 (git+https://github.com/build-trust/ockam)",
- "ockam_abac 0.84.0 (git+https://github.com/build-trust/ockam)",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_multiaddr 0.71.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_tcp 0.140.0 (git+https://github.com/build-trust/ockam)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam)",
- "ockam_vault_aws 0.62.0 (git+https://github.com/build-trust/ockam)",
+ "ockam",
+ "ockam_abac",
+ "ockam_core",
+ "ockam_multiaddr",
+ "ockam_node",
+ "ockam_transport_core",
+ "ockam_transport_tcp",
+ "ockam_vault",
+ "ockam_vault_aws",
  "once_cell",
  "open",
  "opentelemetry",
@@ -3827,7 +3697,7 @@ dependencies = [
 [[package]]
 name = "ockam_command"
 version = "0.158.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "arboard",
  "async-trait",
@@ -3848,13 +3718,13 @@ dependencies = [
  "minicbor",
  "nix 0.29.0",
  "notify",
- "ockam 0.157.0 (git+https://github.com/build-trust/ockam)",
- "ockam_abac 0.84.0 (git+https://github.com/build-trust/ockam)",
- "ockam_api 0.100.0 (git+https://github.com/build-trust/ockam)",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_multiaddr 0.71.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam)",
+ "ockam",
+ "ockam_abac",
+ "ockam_api",
+ "ockam_core",
+ "ockam_multiaddr",
+ "ockam_node",
+ "ockam_vault",
  "once_cell",
  "open",
  "opentelemetry",
@@ -3889,7 +3759,7 @@ dependencies = [
 [[package]]
 name = "ockam_core"
 version = "0.126.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -3899,39 +3769,7 @@ dependencies = [
  "hex",
  "miette",
  "minicbor",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "once_cell",
- "opentelemetry",
- "rand 0.8.5",
- "rand_pcg",
- "regex",
- "serde",
- "serde_bare",
- "serde_json",
- "spin",
- "strum",
- "tinyvec",
- "tracing",
- "tracing-error",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "utcnow",
-]
-
-[[package]]
-name = "ockam_core"
-version = "0.126.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "async-trait",
- "cfg-if",
- "core2",
- "futures-util",
- "hashbrown 0.15.5",
- "hex",
- "miette",
- "minicbor",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_macros",
  "once_cell",
  "opentelemetry",
  "rand 0.8.5",
@@ -3963,25 +3801,12 @@ dependencies = [
 [[package]]
 name = "ockam_executor"
 version = "0.95.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "crossbeam-queue",
  "futures",
  "heapless",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "pin-project-lite",
- "tracing",
-]
-
-[[package]]
-name = "ockam_executor"
-version = "0.95.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "crossbeam-queue",
- "futures",
- "heapless",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
  "pin-project-lite",
  "tracing",
 ]
@@ -3989,7 +3814,7 @@ dependencies = [
 [[package]]
 name = "ockam_identity"
 version = "0.138.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -3997,39 +3822,11 @@ dependencies = [
  "delegate",
  "hex",
  "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "rand 0.8.5",
- "serde",
- "serde_bare",
- "sha2",
- "sqlx",
- "sqlx-core",
- "static_assertions",
- "tokio-retry",
- "tracing",
- "tracing-attributes",
-]
-
-[[package]]
-name = "ockam_identity"
-version = "0.138.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "async-trait",
- "cfg-if",
- "chrono",
- "delegate",
- "hex",
- "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
+ "ockam_macros",
+ "ockam_node",
+ "ockam_transport_core",
+ "ockam_vault",
  "rand 0.8.5",
  "serde",
  "serde_bare",
@@ -4045,17 +3842,7 @@ dependencies = [
 [[package]]
 name = "ockam_macros"
 version = "0.39.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.106",
-]
-
-[[package]]
-name = "ockam_macros"
-version = "0.39.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4065,25 +3852,11 @@ dependencies = [
 [[package]]
 name = "ockam_multiaddr"
 version = "0.71.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "miette",
  "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "once_cell",
- "serde",
- "tinyvec",
- "unsigned-varint",
-]
-
-[[package]]
-name = "ockam_multiaddr"
-version = "0.71.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "miette",
- "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
  "once_cell",
  "serde",
  "tinyvec",
@@ -4093,50 +3866,17 @@ dependencies = [
 [[package]]
 name = "ockam_node"
 version = "0.142.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "cfg-if",
  "fs2",
  "futures",
  "heapless",
  "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_executor 0.95.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "opentelemetry",
- "percent-encoding",
- "regex",
- "serde",
- "serde_json",
- "sqlx",
- "sqlx-core",
- "sqlx-postgres",
- "sqlx-sqlite",
- "tempfile",
- "time",
- "tokio",
- "tokio-retry",
- "tracing",
- "tracing-error",
- "tracing-opentelemetry",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "ockam_node"
-version = "0.142.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "cfg-if",
- "fs2",
- "futures",
- "heapless",
- "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_executor 0.95.0 (git+https://github.com/build-trust/ockam)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
+ "ockam_executor",
+ "ockam_macros",
+ "ockam_transport_core",
  "opentelemetry",
  "percent-encoding",
  "regex",
@@ -4159,21 +3899,10 @@ dependencies = [
 [[package]]
 name = "ockam_transport_core"
 version = "0.104.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "serde",
- "url",
-]
-
-[[package]]
-name = "ockam_transport_core"
-version = "0.104.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
  "serde",
  "url",
 ]
@@ -4181,39 +3910,7 @@ dependencies = [
 [[package]]
 name = "ockam_transport_tcp"
 version = "0.140.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "async-trait",
- "binary-layout",
- "cfg-if",
- "cfg_aliases",
- "lazy_static",
- "log",
- "minicbor",
- "nix 0.29.0",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "opentelemetry",
- "rand 0.8.5",
- "rustls 0.23.31",
- "rustls-native-certs 0.8.1",
- "rustls-pemfile 2.2.0",
- "semver",
- "serde",
- "socket2 0.5.10",
- "sysctl",
- "sysinfo 0.33.1",
- "tokio",
- "tokio-rustls 0.26.2",
- "tracing",
-]
-
-[[package]]
-name = "ockam_transport_tcp"
-version = "0.140.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "async-trait",
  "aya",
@@ -4226,11 +3923,11 @@ dependencies = [
  "log",
  "minicbor",
  "nix 0.29.0",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
  "ockam_ebpf",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_macros",
+ "ockam_node",
+ "ockam_transport_core",
  "opentelemetry",
  "rand 0.8.5",
  "rustls 0.23.31",
@@ -4242,35 +3939,20 @@ dependencies = [
  "sysctl",
  "sysinfo 0.33.1",
  "tokio",
- "tokio-rustls 0.26.2",
+ "tokio-rustls 0.26.3",
  "tracing",
 ]
 
 [[package]]
 name = "ockam_transport_udp"
 version = "0.84.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "cfg-if",
  "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "rand 0.8.5",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "ockam_transport_udp"
-version = "0.84.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "cfg-if",
- "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
- "ockam_transport_core 0.104.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
+ "ockam_node",
+ "ockam_transport_core",
  "rand 0.8.5",
  "tokio",
  "tracing",
@@ -4279,7 +3961,7 @@ dependencies = [
 [[package]]
 name = "ockam_vault"
 version = "0.136.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "aes-gcm",
  "arrayref",
@@ -4289,36 +3971,9 @@ dependencies = [
  "hex",
  "hkdf",
  "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "p256",
- "serde",
- "sha2",
- "sqlx",
- "sqlx-core",
- "static_assertions",
- "tracing",
- "x25519-dalek",
- "zeroize",
-]
-
-[[package]]
-name = "ockam_vault"
-version = "0.136.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "aes-gcm",
- "arrayref",
- "base64ct",
- "cfg-if",
- "ed25519-dalek",
- "hex",
- "hkdf",
- "minicbor",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
+ "ockam_macros",
+ "ockam_node",
  "p256",
  "serde",
  "sha2",
@@ -4333,31 +3988,14 @@ dependencies = [
 [[package]]
 name = "ockam_vault_aws"
 version = "0.62.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#3723b80a98bc904e13611934e5bee6c59be67547"
+source = "git+https://github.com/build-trust/ockam?branch=develop#4c0359426319f3973aca4a55fb5b69b540a7cc58"
 dependencies = [
  "aws-config",
  "aws-sdk-kms",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam?branch=develop)",
- "p256",
- "sha2",
- "thiserror 2.0.16",
- "tracing",
-]
-
-[[package]]
-name = "ockam_vault_aws"
-version = "0.62.0"
-source = "git+https://github.com/build-trust/ockam#3723b80a98bc904e13611934e5bee6c59be67547"
-dependencies = [
- "aws-config",
- "aws-sdk-kms",
- "ockam_core 0.126.0 (git+https://github.com/build-trust/ockam)",
- "ockam_macros 0.39.0 (git+https://github.com/build-trust/ockam)",
- "ockam_node 0.142.0 (git+https://github.com/build-trust/ockam)",
- "ockam_vault 0.136.0 (git+https://github.com/build-trust/ockam)",
+ "ockam_core",
+ "ockam_macros",
+ "ockam_node",
+ "ockam_vault",
  "p256",
  "sha2",
  "thiserror 2.0.16",
@@ -4740,12 +4378,12 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "plist"
-version = "1.7.4"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3af6b589e163c5a788fab00ce0c0366f6efbb9959c2f9874b224936af7fce7e1"
+checksum = "740ebea15c5d1428f910cd1a5f52cebf8d25006245ed8ade92702f4943d91e07"
 dependencies = [
  "base64 0.22.1",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "quick-xml",
  "serde",
  "time",
@@ -4766,16 +4404,16 @@ dependencies = [
 
 [[package]]
 name = "polling"
-version = "3.10.0"
+version = "3.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5bd19146350fe804f7cb2669c851c03d69da628803dab0d98018142aaa5d829"
+checksum = "5d0e4f59085d47d8241c88ead0f274e8a0cb551f3625263c05eb8dd897c34218"
 dependencies = [
  "cfg-if",
  "concurrent-queue",
  "hermit-abi",
  "pin-project-lite",
- "rustix 1.0.8",
- "windows-sys 0.60.2",
+ "rustix 1.1.2",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]
@@ -5254,7 +4892,7 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
- "tokio-rustls 0.26.2",
+ "tokio-rustls 0.26.3",
  "tower 0.5.2",
  "tower-http",
  "tower-service",
@@ -5350,15 +4988,15 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.0.8"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11181fbabf243db407ef8df94a6ce0b2f9a733bd8be4ad02b4eda9602296cac8"
+checksum = "cd15f8a2c5551a84d56efdc1cd049089e409ac19a3072d5037a17fd70719ff3e"
 dependencies = [
  "bitflags 2.9.4",
  "errno",
  "libc",
- "linux-raw-sys 0.9.4",
- "windows-sys 0.60.2",
+ "linux-raw-sys 0.11.0",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]
@@ -5383,7 +5021,7 @@ dependencies = [
  "once_cell",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.4",
+ "rustls-webpki 0.103.6",
  "subtle",
  "zeroize",
 ]
@@ -5452,9 +5090,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.4"
+version = "0.103.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a17884ae0c1b773f1ccd2bd4a8c72f16da897310a98b0e84bf349ad5ead92fc"
+checksum = "8572f3c2cb9934231157b45499fc41e1f58c589fdfb81a844ba873265e80f8eb"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -5518,11 +5156,11 @@ dependencies = [
 
 [[package]]
 name = "schannel"
-version = "0.1.27"
+version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f29ebaa345f945cec9fbbc532eb307f0fdad8161f281b6369539c8d84876b3d"
+checksum = "891d81b926048e76efe18581bf793546b4c0eaf8448d72be8de2bbee5fd166e1"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]
@@ -5599,16 +5237,17 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.26"
+version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56e6fa9c48d24d85fb3de5ad847117517440f6beceb7798af16b4a87d616b8d0"
+checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
 
 [[package]]
 name = "serde"
-version = "1.0.219"
+version = "1.0.225"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
+checksum = "fd6c24dee235d0da097043389623fb913daddf92c76e9f5a1db88607a0bcbd1d"
 dependencies = [
+ "serde_core",
  "serde_derive",
 ]
 
@@ -5622,10 +5261,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_derive"
-version = "1.0.219"
+name = "serde_core"
+version = "1.0.225"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
+checksum = "659356f9a0cb1e529b24c01e43ad2bdf520ec4ceaf83047b83ddcc2251f96383"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.225"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ea936adf78b1f766949a4977b91d2f5595825bd6ec079aa9543ad2685fc4516"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5634,14 +5282,15 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.143"
+version = "1.0.145"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d401abef1d108fbd9cbaebc3e46611f4b1021f714a0597a71f41ee463f5f4a5a"
+checksum = "402a6f66d8c709116cf22f558eab210f5a50187f702eb4d7e5ef38d9a7f1c79c"
 dependencies = [
  "itoa",
  "memchr",
  "ryu",
  "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -5650,7 +5299,7 @@ version = "0.9.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e408f29489b5fd500fab51ff1484fc859bb655f32c671f307dcd733b72e8168c"
 dependencies = [
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "itoa",
  "ryu",
  "serde",
@@ -5675,7 +5324,7 @@ version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
 dependencies = [
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "itoa",
  "ryu",
  "serde",
@@ -5923,7 +5572,7 @@ dependencies = [
  "futures-util",
  "hashbrown 0.15.5",
  "hashlink",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "log",
  "memchr",
  "once_cell",
@@ -6288,15 +5937,15 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.21.0"
+version = "3.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15b61f8f20e3a6f7e0649d825294eaf317edce30f82cf6026e7e4cb9222a7d1e"
+checksum = "84fa4d11fadde498443cca10fd3ac23c951f0dc59e080e9f4b93d4df4e4eea53"
 dependencies = [
  "fastrand",
  "getrandom 0.3.3",
  "once_cell",
- "rustix 1.0.8",
- "windows-sys 0.60.2",
+ "rustix 1.1.2",
+ "windows-sys 0.61.0",
 ]
 
 [[package]]
@@ -6326,7 +5975,7 @@ version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b8cb979cb11c32ce1603f8137b22262a9d131aaa5c37b5678025f22b8becd0"
 dependencies = [
- "rustix 1.0.8",
+ "rustix 1.1.2",
  "windows-sys 0.60.2",
 ]
 
@@ -6527,9 +6176,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-rustls"
-version = "0.26.2"
+version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e727b36a1a0e8b74c376ac2211e40c2c8af09fb4013c60d910495810f008e9b"
+checksum = "05f63835928ca123f1bef57abbcd23bb2ba0ac9ae1235f1e65bda0d06e7786bd"
 dependencies = [
  "rustls 0.23.31",
  "tokio",
@@ -6586,7 +6235,7 @@ dependencies = [
  "rustls-pemfile 2.2.0",
  "socket2 0.5.10",
  "tokio",
- "tokio-rustls 0.26.2",
+ "tokio-rustls 0.26.3",
  "tokio-stream",
  "tower 0.4.13",
  "tower-layer",
@@ -6794,9 +6443,9 @@ checksum = "5c1cb5db39152898a79168971543b1cb5020dff7fe43c8dc468b0885f5e29df5"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512"
+checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
 
 [[package]]
 name = "unicode-linebreak"
@@ -6924,7 +6573,7 @@ version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fcc29c80c21c31608227e0912b2d7fddba57ad76b606890627ba8ee7964e993"
 dependencies = [
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "serde",
  "serde_json",
  "serde_norway",
@@ -7018,9 +6667,18 @@ checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
 name = "wasi"
-version = "0.14.4+wasi-0.2.4"
+version = "0.14.7+wasi-0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88a5f4a424faf49c3c2c344f166f0662341d470ea185e939657aaff130f0ec4a"
+checksum = "883478de20367e224c0090af9cf5f9fa85bed63a95c1abf3afc5c083ebc06e8c"
+dependencies = [
+ "wasip2",
+]
+
+[[package]]
+name = "wasip2"
+version = "1.0.1+wasi-0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0562428422c63773dad2c345a1882263bbf4d65cf3f42e90921f787ef5ad58e7"
 dependencies = [
  "wit-bindgen",
 ]
@@ -7033,9 +6691,9 @@ checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.101"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e14915cadd45b529bb8d1f343c4ed0ac1de926144b746e2710f9cd05df6603b"
+checksum = "ab10a69fbd0a177f5f649ad4d8d3305499c42bab9aef2f7ff592d0ec8f833819"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -7046,9 +6704,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.101"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e28d1ba982ca7923fd01448d5c30c6864d0a14109560296a162f80f305fb93bb"
+checksum = "0bb702423545a6007bbc368fde243ba47ca275e549c8a28617f56f6ba53b1d1c"
 dependencies = [
  "bumpalo",
  "log",
@@ -7060,9 +6718,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.51"
+version = "0.4.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ca85039a9b469b38336411d6d6ced91f3fc87109a2a27b0c197663f5144dffe"
+checksum = "a0b221ff421256839509adbb55998214a70d829d3a28c69b4a6672e9d2a42f67"
 dependencies = [
  "cfg-if",
  "js-sys",
@@ -7073,9 +6731,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.101"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c3d463ae3eff775b0c45df9da45d68837702ac35af998361e2c84e7c5ec1b0d"
+checksum = "fc65f4f411d91494355917b605e1480033152658d71f722a90647f56a70c88a0"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -7083,9 +6741,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.101"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bb4ce89b08211f923caf51d527662b75bdc9c9c7aab40f86dcb9fb85ac552aa"
+checksum = "ffc003a991398a8ee604a401e194b6b3a39677b3173d6e74495eb51b82e99a32"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7096,9 +6754,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.101"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f143854a3b13752c6950862c906306adb27c7e839f7414cec8fea35beab624c1"
+checksum = "293c37f4efa430ca14db3721dfbe48d8c33308096bd44d80ebaa775ab71ba1cf"
 dependencies = [
  "unicode-ident",
 ]
@@ -7200,9 +6858,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.78"
+version = "0.3.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77e4b637749ff0d92b8fad63aa1f7cff3cbe125fd49c175cd6345e7272638b12"
+checksum = "fbe734895e869dc429d78c4b433f8d17d95f8d05317440b4fad5ab2d33e596dc"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -7244,7 +6902,7 @@ checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
 dependencies = [
  "either",
  "env_home",
- "rustix 1.0.8",
+ "rustix 1.1.2",
  "winsafe",
 ]
 
@@ -7322,14 +6980,14 @@ dependencies = [
 
 [[package]]
 name = "windows-core"
-version = "0.61.2"
+version = "0.62.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0fdd3ddb90610c7638aa2b3a3ab2904fb9e5cdbecc643ddb3647212781c4ae3"
+checksum = "57fe7168f7de578d2d8a05b07fd61870d2e73b4020e9f49aa00da8471723497c"
 dependencies = [
  "windows-implement 0.60.0",
  "windows-interface 0.59.1",
- "windows-link 0.1.3",
- "windows-result 0.3.4",
+ "windows-link 0.2.0",
+ "windows-result 0.4.0",
  "windows-strings",
 ]
 
@@ -7400,20 +7058,20 @@ dependencies = [
 
 [[package]]
 name = "windows-result"
-version = "0.3.4"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56f42bd332cc6c8eac5af113fc0c1fd6a8fd2aa08a0119358686e5160d0586c6"
+checksum = "7084dcc306f89883455a206237404d3eaf961e5bd7e0f312f7c91f57eb44167f"
 dependencies = [
- "windows-link 0.1.3",
+ "windows-link 0.2.0",
 ]
 
 [[package]]
 name = "windows-strings"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56e6c93f3a0c3b36176cb1327a4958a0353d5d166c2a35cb268ace15e91d3b57"
+checksum = "7218c655a553b0bed4426cf54b20d7ba363ef543b52d515b3e48d7fd55318dda"
 dependencies = [
- "windows-link 0.1.3",
+ "windows-link 0.2.0",
 ]
 
 [[package]]
@@ -7661,9 +7319,9 @@ checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"
-version = "0.45.1"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c573471f125075647d03df72e026074b7203790d41351cd6edc96f46bcccd36"
+checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "writeable"
@@ -7700,7 +7358,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9993aa5be5a26815fe2c3eacfc1fde061fc1a1f094bf1ad2a18bf9c495dd7414"
 dependencies = [
  "gethostname 1.0.2",
- "rustix 1.0.8",
+ "rustix 1.1.2",
  "x11rb-protocol 0.13.2",
 ]
 
@@ -7878,9 +7536,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "5.0.0"
+version = "5.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9fdfa5f34b5980f2c21b3a2c68c09ade4debddc7be52c51056695effc73a08c"
+checksum = "2f852905151ac8d4d06fdca66520a661c09730a74c6d4e2b0f27b436b382e532"
 dependencies = [
  "aes",
  "arbitrary",
@@ -7891,7 +7549,7 @@ dependencies = [
  "flate2",
  "getrandom 0.3.3",
  "hmac",
- "indexmap 2.11.1",
+ "indexmap 2.11.3",
  "lzma-rust2",
  "memchr",
  "pbkdf2",
