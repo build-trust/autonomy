@@ -10,9 +10,11 @@ from .logs import (
   DebugContext,
 )
 from .formatter import Formatter
+from logging import Logger
 
 __all__ = [
   "Formatter",
+  "Logger",
   "info",
   "debug",
   "warning",

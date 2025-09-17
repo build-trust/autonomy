@@ -24,7 +24,7 @@ LEVELS: dict[str, int] = {
 
 def get_logging_config() -> dict[str, int | bool | dict | str | None]:
   # Disable logging if explicitly set to 0; otherwise, assume it's enabled
-  if os.environ.get("OCKAM_LOGGING", "1") == "0":
+  if os.environ.get("AUTONOMY_LOGGING", "1") == "0":
     return {
       "version": 1,
     }
@@ -161,6 +161,16 @@ def create_logging_config(
       "node": {
         "handlers": ["ockam"],
         "level": levels.get("node") or levels.get("default"),
+        "propagate": False,
+      },
+      "node.local": {
+        "handlers": ["ockam"],
+        "level": levels.get("node.local") or levels.get("node") or levels.get("default"),
+        "propagate": False,
+      },
+      "node.remote": {
+        "handlers": ["ockam"],
+        "level": levels.get("node.remote") or levels.get("node") or levels.get("default"),
         "propagate": False,
       },
       "tool": {
