@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Protocol, Any, Callable, Dict, List, Optional, Union
+from typing import Protocol, Any, Callable, Dict, List, Union
 
 
 class Metric(Protocol):
