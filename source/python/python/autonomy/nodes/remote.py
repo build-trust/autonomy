@@ -1,52 +1,240 @@
-from typing import Optional
+import dill
+import base64
+import logging
+from dataclasses import dataclass, field
+from functools import cached_property
+from typing import Any, Optional, Dict, Tuple, TYPE_CHECKING
 
-from .protocol import NodeProtocol
-from .manager import RemoteManagerClient
-from .protocol import LocalNodeProtocol, WorkerProtocol
+if TYPE_CHECKING:
+  from .node import Node
+  from .protocol import Worker
 
 
-class RemoteNode(NodeProtocol):
-  node_that_this_object_is_on: LocalNodeProtocol
-  name_of_remote_node: str
+@dataclass
+class NodeRequest:
+  method: str
+  args: Tuple = ()
+  kwargs: Dict[str, Any] = field(default_factory=dict)
 
-  def __init__(self, node_that_this_object_is_on: LocalNodeProtocol, name_of_remote_node: str):
-    self.node_that_this_object_is_on = node_that_this_object_is_on
-    self.name_of_remote_node = name_of_remote_node
 
-  @property
-  def is_remote(self) -> bool:
-    return True
+@dataclass
+class NodeResponse:
+  success: bool
+  result: Any = None
+  error: Optional[str] = None
+
+
+NODE_CONTROLLER_ADDRESS = "node_controller"
+
+
+async def list_nodes(node, prefix, filter=None):
+  nodes = await node.list_nodes_priv()
+  # Strip the relay prefix from the node names
+  nodes = [n.removeprefix("forward_to_") for n in nodes]
+  # Filter the nodes to only include those in our cluster
+  if prefix is not None:
+    nodes = [n for n in nodes if n.startswith(prefix)]
+  else:
+    nodes = []  # Return empty list if no prefix specified
+  if filter is not None:
+    nodes = [n for n in nodes if filter in n]
+  return [RemoteNode(node, n) for n in nodes]
+
+
+class NodeController:
+  def __init__(self, node: "Node"):
+    self.node = node
+
+  async def start(self):
+    await self.node.start_internal_worker(NODE_CONTROLLER_ADDRESS, self)
+
+  async def handle_message(self, context, message):
+    try:
+      request = decode_message(message)
+
+      if isinstance(request, NodeRequest):
+        handler_name = f"_handle_{request.method}"
+        handler = getattr(self, handler_name, None)
+
+        if handler is not None:
+          result = await handler(*request.args, **request.kwargs)
+          response = NodeResponse(success=True, result=result)
+        else:
+          response = NodeResponse(success=False, error=f"Unknown method: {request.method}")
+      else:
+        response = NodeResponse(success=False, error=f"Unknown request type: {type(request)}")
+
+    except Exception as e:
+      response = NodeResponse(success=False, error=str(e))
+
+    response = encode_message(response)
+    await context.reply(response)
+
+  async def _handle_identifier(self) -> str:
+    return await self.node.identifier()
+
+  async def _handle_start_agent(
+    self,
+    instructions,
+    name,
+    model,
+    memory_model,
+    memory_embeddings_model,
+    tools,
+    planner,
+    exposed_as,
+    knowledge,
+    max_iterations,
+  ):
+    from ..agents import Agent
+
+    await Agent.start(
+      self.node,
+      instructions,
+      name,
+      model,
+      memory_model,
+      memory_embeddings_model,
+      tools,
+      planner,
+      exposed_as,
+      knowledge,
+      max_iterations,
+    )
+    return "ok"
+
+  async def _handle_start_agents(
+    self,
+    instructions,
+    number_of_agents,
+    model,
+    memory_model,
+    memory_embeddings_model,
+    tools,
+    planner,
+    knowledge,
+    max_iterations,
+  ):
+    from ..agents import Agent
+
+    agents = await Agent.start_many(
+      self.node,
+      instructions,
+      number_of_agents,
+      model,
+      memory_model,
+      memory_embeddings_model,
+      tools,
+      planner,
+      knowledge,
+      max_iterations,
+    )
+    return [agent.name for agent in agents]
+
+  async def _handle_start_worker(self, name, worker, policy=None, exposed_as=None):
+    worker.node = self.node
+    await self.node.start_worker(name, worker, policy, exposed_as)
+    return "ok"
+
+  async def _handle_stop_worker(self, name):
+    await self.node.stop_worker(name)
+    return "ok"
+
+  async def _handle_list_agents(self):
+    return await self.node.list_agents()
+
+  async def _handle_list_workers(self):
+    return await self.node.list_workers()
+
+  async def _handle_list_nodes_priv(self):
+    return await self.node.list_nodes_priv()
+
+
+def encode_message(message):
+  message = dill.dumps(message)
+  message = base64.b64encode(message).decode("utf-8")
+
+  return message
+
+
+def decode_message(message):
+  message = base64.b64decode(message)
+  message = dill.loads(message)
+
+  return message
+
+
+class RemoteNode:
+  def __init__(self, local_node, remote_name):
+    self.local_node = local_node
+    self.remote_name = remote_name
+
+  @cached_property
+  def logger(self) -> logging.Logger:
+    from ..logs.logs import get_logger
+
+    return get_logger("node.remote")
 
   @property
   def name(self) -> str:
-    return self.name_of_remote_node
+    return self.remote_name
 
-  # default timeout of 10 minutes
   async def send_and_receive(
-    self, destination: str, message: str, policy: Optional[str] = None, timeout=600
-  ):
-    return await self.node_that_this_object_is_on.send_and_receive_to_remote(
-      self.name_of_remote_node, destination, message, policy, timeout
+    self,
+    address: str,
+    message: str,
+    node: Optional[str] = None,
+    policy: Optional[str] = None,
+    timeout: Optional[int] = 600,
+  ) -> str:
+    # Ignore the 'node' parameter, a remote node (self) already represents a specific node
+    return await self.local_node.send_and_receive(
+      address,
+      message,
+      node=self.remote_name,
+      policy=policy,
+      timeout=timeout,
     )
 
+  async def send_request(self, request):
+    request = encode_message(request)
+
+    # TODO: Policies
+    response = await self.send_and_receive(NODE_CONTROLLER_ADDRESS, request)
+    response = decode_message(response)
+
+    if isinstance(response, NodeResponse):
+      if not response.success:
+        raise RuntimeError(f"Remote node error: {response.error}")
+      return response
+    else:
+      raise RuntimeError(f"Unexpected response type: {type(response)}")
+
+  async def send_generic_request(self, method: str, *args, **kwargs) -> NodeResponse:
+    request = NodeRequest(method, args, kwargs)
+    return await self.send_request(request)
+
   async def identifier(self) -> str:
-    client = RemoteManagerClient(self)
-    return await client.identifier()
+    response = await self.send_generic_request("identifier")
+    return response.result
 
   async def start_worker(
-    self, name: str, worker: WorkerProtocol, policy: Optional[str] = None, exposed_as=None
+    self,
+    name: str,
+    worker: "Worker",
+    policy: Optional[str] = None,
+    exposed_as: Optional[str] = None,
   ):
     from ..agents import validate_name
 
     validate_name(name)
-    client = RemoteManagerClient(self)
-    await client.start_worker(name, worker, policy, exposed_as)
+    await self.send_generic_request(
+      "start_worker", name, worker, policy=policy, exposed_as=exposed_as
+    )
 
   async def stop_worker(self, name: str):
-    client = RemoteManagerClient(self)
-    await client.stop_worker(name)
+    await self.send_generic_request("stop_worker", name)
 
-  # TODO: Maybe replace with start_spawner
   async def start_agent(
     self,
     instructions: str,
@@ -60,18 +248,18 @@ class RemoteNode(NodeProtocol):
     knowledge,
     max_iterations,
   ):
-    client = RemoteManagerClient(self)
-    await client.start_agent(
-      instructions,
-      name,
-      model,
-      memory_model,
-      memory_embeddings_model,
-      tools,
-      planner,
-      exposed_as,
-      knowledge,
-      max_iterations,
+    await self.send_generic_request(
+      "start_agent",
+      instructions=instructions,
+      name=name,
+      model=model,
+      memory_model=memory_model,
+      memory_embeddings_model=memory_embeddings_model,
+      tools=tools,
+      planner=planner,
+      exposed_as=exposed_as,
+      knowledge=knowledge,
+      max_iterations=max_iterations,
     )
 
   async def start_agents(
@@ -86,27 +274,28 @@ class RemoteNode(NodeProtocol):
     knowledge,
     max_iterations,
   ):
-    client = RemoteManagerClient(self)
-    return await client.start_agents(
-      instructions,
-      number_of_agents,
-      model,
-      memory_model,
-      memory_embeddings_model,
-      tools,
-      planner,
-      knowledge,
-      max_iterations,
+    response = await self.send_generic_request(
+      "start_agents",
+      instructions=instructions,
+      number_of_agents=number_of_agents,
+      model=model,
+      memory_model=memory_model,
+      memory_embeddings_model=memory_embeddings_model,
+      tools=tools,
+      planner=planner,
+      knowledge=knowledge,
+      max_iterations=max_iterations,
     )
+    return response.result
 
   async def list_agents(self):
-    client = RemoteManagerClient(self)
-    return await client.list_agents()
+    response = await self.send_generic_request("list_agents")
+    return response.result
 
   async def list_workers(self):
-    client = RemoteManagerClient(self)
-    return await client.list_workers()
+    response = await self.send_generic_request("list_workers")
+    return response.result
 
   async def list_nodes_priv(self):
-    client = RemoteManagerClient(self)
-    return await client.list_workers()
+    response = await self.send_generic_request("list_nodes_priv")
+    return response.result

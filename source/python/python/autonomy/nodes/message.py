@@ -8,10 +8,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Union, Any, Optional, List, AsyncGenerator
 
-from .local import LocalNodeProtocol
+from .node import Node
 from .remote import RemoteNode
 
-from ..autonomy_in_rust_for_python import Mailbox
+from ..autonomy_in_rust_for_python import Mailbox as RustMailbox
 from ..tools.protocol import InvokableTool
 
 
@@ -200,7 +200,7 @@ class ReferenceType(Enum):
 
 @dataclass
 class ReceiveReference:
-  mailbox: Mailbox
+  mailbox: RustMailbox
   converter: Any
 
   async def receive_message(self, timeout=None):
@@ -310,18 +310,16 @@ Message = Union[
 class Reference:
   # TODO: Policies
   name: str
-  node: LocalNodeProtocol
+  node: Node
   reference_type: ReferenceType
 
-  def __init__(
-    self, name: str, node: LocalNodeProtocol | RemoteNode, reference_type: ReferenceType
-  ):
+  def __init__(self, name: str, node: Node, reference_type: ReferenceType):
     self.name = name
     self.reference_type = reference_type
 
     if isinstance(node, RemoteNode):
-      self.node = node.node_that_this_object_is_on
-      self.name_of_remote_node = node.name_of_remote_node
+      self.node = node.local_node
+      self.name_of_remote_node = node.remote_name
     else:
       self.node = node
       self.name_of_remote_node = None
@@ -372,10 +370,7 @@ class Reference:
     address = secrets.token_hex(12)
     mailbox = await self.node.create_mailbox(address)
 
-    if self.name_of_remote_node:
-      await mailbox.send_to_remote(self.name_of_remote_node, self.name, message_json)
-    else:
-      await mailbox.send(self.name, message_json)
+    await mailbox.send(self.name, message_json, self.name_of_remote_node)
 
     return ReceiveReference(mailbox, converter)
 
@@ -386,8 +381,8 @@ class Reference:
     message_json = converter.message_to_json(message)
 
     if self.name_of_remote_node:
-      response_json = await self.node.send_and_receive_to_remote(
-        self.name_of_remote_node, self.name, message_json, timeout=timeout
+      response_json = await self.node.send_and_receive(
+        self.name, message_json, timeout=timeout, node=self.name_of_remote_node
       )
     else:
       response_json = await self.node.send_and_receive(self.name, message_json, timeout=timeout)
@@ -405,10 +400,7 @@ class Reference:
     random_address = f"message_{secrets.token_hex(16)}"
     mailbox = await self.node.create_mailbox(random_address)
 
-    if self.name_of_remote_node:
-      await mailbox.send_to_remote(self.name_of_remote_node, self.name, message_json)
-    else:
-      await mailbox.send(self.name, message_json)
+    await mailbox.send(self.name, message_json, self.name_of_remote_node)
 
     expected_part_nb = 1
     out_of_order_messages = []
@@ -449,9 +441,7 @@ class Reference:
 
 
 class AgentReference(Reference, InvokableTool):
-  def __init__(
-    self, name: str, node: LocalNodeProtocol | RemoteNode, exposed_as: Optional[str] = None
-  ):
+  def __init__(self, name: str, node: Node, exposed_as: Optional[str] = None):
     super().__init__(name, node, ReferenceType.AGENT)
     self.exposed_as = exposed_as
 
@@ -511,7 +501,7 @@ class FlowReference(Reference):
   def __init__(
     self,
     name: str,
-    node: LocalNodeProtocol | RemoteNode,
+    node: Node,
   ):
     super().__init__(name, node, ReferenceType.FLOW)
 
@@ -521,7 +511,7 @@ class SquadReference(Reference):
   def __init__(
     self,
     name: str,
-    node: LocalNodeProtocol | RemoteNode,
+    node: Node,
   ):
     super().__init__(name, node, ReferenceType.SQUAD)
 
@@ -531,7 +521,7 @@ CACHE = None
 
 class MessageConverter:
   @staticmethod
-  def create(node: LocalNodeProtocol):
+  def create(node: Node):
     global CACHE
     if CACHE:
       return CACHE

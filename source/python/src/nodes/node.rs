@@ -80,8 +80,8 @@ impl PyNode {
     /// - the workers started by the node itself via some user code
     /// - the workers started by the agents
     ///
-    /// The workers that are started to support the node functionality, like the RemoteManager worker
-    /// are not included in this list.
+    /// The workers that are started to support the node functionality,
+    /// like the NodeController worker are not included in this list.
     pub async fn list_workers_as_json(&self) -> Value {
         let mut result = vec![];
         let agent_workers = self.started_agents.list_agents().await;
@@ -315,29 +315,17 @@ impl PyNode {
         })
     }
 
-    #[pyo3(signature = (destination, message, policy=None, timeout=None))]
+    #[pyo3(signature = (address, message, node=None, policy=None, timeout=None))]
     fn send_and_receive<'a>(
         &self,
         py: Python<'a>,
-        destination: String,
+        address: String,
         message: String,
+        node: Option<String>,
         #[allow(unused_variables)] policy: Option<String>,
         timeout: Option<u64>,
     ) -> PyResult<Bound<'a, PyAny>> {
-        self.send_and_receive_impl(py, None, destination, message, policy, timeout)
-    }
-
-    #[pyo3(signature = (node, destination, message, policy=None, timeout=None))]
-    fn send_and_receive_to_remote<'a>(
-        &self,
-        py: Python<'a>,
-        node: String,
-        destination: String,
-        message: String,
-        #[allow(unused_variables)] policy: Option<String>,
-        timeout: Option<u64>,
-    ) -> PyResult<Bound<'a, PyAny>> {
-        self.send_and_receive_impl(py, Some(node), destination, message, policy, timeout)
+        self.send_and_receive_impl(py, node, address, message, policy, timeout)
     }
 
     #[pyo3(signature=(address, policy=None))]
@@ -837,7 +825,7 @@ impl PyNode {
     pub(crate) async fn with_route<R, Fut, F>(
         &self,
         node_name: Option<String>,
-        destination: String,
+        address: String,
         fut: F,
     ) -> Result<R>
     where
@@ -850,7 +838,7 @@ impl PyNode {
                 let route = self
                     .get_remote_route_to_node(cache, project.name().to_string(), node_name.clone())
                     .await?;
-                let r = fut(route.modify().append(destination).build()).await;
+                let r = fut(route.modify().append(address).build()).await;
                 if r.is_err() {
                     // Maybe the error is because underling connection is not working.  Try to recover from that case
                     self.remove_cached_connection(cache, project.name().to_string(), node_name)
@@ -865,7 +853,7 @@ impl PyNode {
                             "/project/{}/service/forward_to_{}/secure/api/service/{}",
                             project.name(),
                             node_name,
-                            destination
+                            address
                         ))?,
                         self.node_manager.identifier(),
                         None,
@@ -882,7 +870,7 @@ impl PyNode {
                 fut(route).await
             }
         } else {
-            fut(destination.into()).await
+            fut(address.into()).await
         }
     }
 
@@ -941,7 +929,7 @@ impl PyNode {
         &self,
         py: Python<'a>,
         node: Option<String>,
-        destination: String,
+        address: String,
         message: String,
         #[allow(unused_variables)] policy: Option<String>,
         timeout: Option<u64>,
@@ -951,7 +939,7 @@ impl PyNode {
 
         future_into_py(py, async move {
             self_clone
-                .with_route(node, destination, move |route| async move {
+                .with_route(node, address, move |route| async move {
                     let (incoming_ac, outgoing_ac) = (Arc::new(AllowAll), Arc::new(AllowAll));
 
                     let options = MessageSendReceiveOptions::new()
