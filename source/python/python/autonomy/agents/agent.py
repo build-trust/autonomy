@@ -51,40 +51,6 @@ class AgentState(Enum):
   - MODEL_CALLING: Call the model to generate a response
   - TOOL_CALLING: Execute tool calls from the model response
   - FINISHED: End of the conversation
-
-  ┌─────────┐
-  │         │
-  │  INIT   │
-  │         │
-  └────┬────┘
-       │
-       ├─────────────────────────┐
-       │                         │
-       │ [planner available]     │ [planner not available]
-       ▼                         ▼
-  ┌─────────┐               ┌──────────┐
-  │         │               │          │
-  │PLANNING │◀──[next step]─┤ MODEL    │◀─────┐
-  │         ├──[execute]───▶│ CALLING  │      │
-  └────┬────┘               └┬────┬────┘      │
-       │                     │    │           │
-       │                     │    │           │
-       │                     │    │           │
-       │                     │    │           │
-       │                     │    │           │
-       │                     │    ▼           │
-       │                     │┌────────┐      │
-       │                     ││        │      │
-       │                     ││  TOOL  │──────┘
-       │ [plan completed]    ││CALLING │
-       │                     │└────────┘
-       │                     │
-       ▼                     │
-  ┌─────────┐                │
-  │         │                │
-  │FINISHED │◀───────────────┘
-  │         │
-  └─────────┘
   """
 
   INIT = "init"
@@ -201,7 +167,9 @@ class AgentStateMachine:
         self.tool_calls.extend(model_response.tool_calls)
         self.state = AgentState.TOOL_CALLING
       elif finished:
-        self.agent.logger.debug(f"Processing finished response: stream={self.stream}, has_content={bool(model_response.content)}, has_tool_calls={bool(model_response.tool_calls)}")
+        self.agent.logger.debug(
+          f"Processing finished response: stream={self.stream}, has_content={bool(model_response.content)}, has_tool_calls={bool(model_response.tool_calls)}"
+        )
 
         # either we are streaming and we finished, or we are expecting a single response
         if self.stream:
@@ -239,7 +207,9 @@ class AgentStateMachine:
 
     # If we reach here and state hasn't changed, force transition to avoid infinite loop
     if self.state == AgentState.MODEL_CALLING:
-      self.agent.logger.warning(f"Agent stuck in MODEL_CALLING state after {self.iteration} iterations, forcing FINISHED. Response received: {response_received}")
+      self.agent.logger.warning(
+        f"Agent stuck in MODEL_CALLING state after {self.iteration} iterations, forcing FINISHED. Response received: {response_received}"
+      )
       self.state = AgentState.FINISHED
 
   async def _handle_tool_calling_state(self):
@@ -398,7 +368,7 @@ class Agent(InfoContext, DebugContext):
 
     if self.memory_knowledge is not None and len(messages) > 0:
       user_message = messages[-1]
-      if user_message.role == ConversationRole.USER and hasattr(user_message.content, 'text'):
+      if user_message.role == ConversationRole.USER and hasattr(user_message.content, "text"):
         contextual_knowledge = await self.memory_knowledge.search(scope, conversation, user_message.content.text)
 
     # create the state machine to handle the conversation
@@ -442,19 +412,22 @@ class Agent(InfoContext, DebugContext):
           last_user_message = msg
           break
 
-      if last_user_message and hasattr(last_user_message.content, 'text'):
+      if last_user_message and hasattr(last_user_message.content, "text"):
         contextual_knowledge = await self.knowledge.search_knowledge(
           scope, conversation, last_user_message.content.text
         )
         if contextual_knowledge:
           # Add contextual knowledge as a system message
           from ..nodes.message import SystemMessage
+
           context_message = SystemMessage(f"Relevant context: {contextual_knowledge}")
           messages.append(context_message)
 
     return messages
 
-  async def complete_chat(self, scope: str, conversation: str, contextual_knowledge: Optional[str] = None, stream: bool = False):
+  async def complete_chat(
+    self, scope: str, conversation: str, contextual_knowledge: Optional[str] = None, stream: bool = False
+  ):
     """Complete a chat conversation using the agent's model."""
 
     try:
@@ -463,10 +436,9 @@ class Agent(InfoContext, DebugContext):
       # Add contextual knowledge if provided
       if contextual_knowledge:
         from ..nodes.message import SystemMessage
+
         context_message = SystemMessage(f"Relevant context: {contextual_knowledge}")
         messages.insert(-1, context_message)  # Insert before the last message (usually user input)
-
-
 
       # Call the model to generate a response
       if stream:
@@ -483,13 +455,13 @@ class Agent(InfoContext, DebugContext):
           self.logger.debug(f"Processing streaming chunk {chunk_count}")
 
           # Process streaming response chunks
-          if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+          if hasattr(chunk, "choices") and len(chunk.choices) > 0:
             choice = chunk.choices[0]
-            finished = choice.finish_reason is not None if hasattr(choice, 'finish_reason') else False
+            finished = choice.finish_reason is not None if hasattr(choice, "finish_reason") else False
             last_finished = finished
 
             # Handle content chunks
-            if hasattr(choice, 'delta') and hasattr(choice.delta, 'content'):
+            if hasattr(choice, "delta") and hasattr(choice.delta, "content"):
               content = choice.delta.content
               self.logger.debug(f"Delta content: {repr(content)}, finished: {finished}")
 
@@ -512,19 +484,19 @@ class Agent(InfoContext, DebugContext):
                 yield None, True, response
                 has_content = True
             # Handle tool call chunks
-            elif hasattr(choice, 'delta') and hasattr(choice.delta, 'tool_calls') and choice.delta.tool_calls:
+            elif hasattr(choice, "delta") and hasattr(choice.delta, "tool_calls") and choice.delta.tool_calls:
               tool_calls = []
               for tc in choice.delta.tool_calls:
                 tool_call = ToolCall(
-                  id=tc.id if hasattr(tc, 'id') else f"call_{secrets.token_hex(8)}",
-                  function=tc.function if hasattr(tc, 'function') else None,
-                  type="function"
+                  id=tc.id if hasattr(tc, "id") else f"call_{secrets.token_hex(8)}",
+                  function=tc.function if hasattr(tc, "function") else None,
+                  type="function",
                 )
                 tool_calls.append(tool_call)
               response = AssistantMessage(tool_calls=tool_calls, phase=Phase.EXECUTING)
               yield None, finished, response
             # Handle legacy format - message instead of delta (for fallback clients)
-            elif finished and hasattr(choice, 'message') and choice.message.content:
+            elif finished and hasattr(choice, "message") and choice.message.content:
               response = AssistantMessage(content=choice.message.content, phase=Phase.EXECUTING)
               yield None, True, response
               has_content = True
@@ -535,42 +507,43 @@ class Agent(InfoContext, DebugContext):
               break
 
         # Safety check - ensure we have some response
-        self.logger.debug(f"Streaming complete: chunks={chunk_count}, has_content={has_content}, last_finished={last_finished}")
+        self.logger.debug(
+          f"Streaming complete: chunks={chunk_count}, has_content={has_content}, last_finished={last_finished}"
+        )
 
         if chunk_count == 0:
           # No chunks received at all
           self.logger.warning("No streaming chunks received")
-          response = AssistantMessage(content="I apologize, but I encountered an issue generating a response.", phase=Phase.EXECUTING)
+          response = AssistantMessage(
+            content="I apologize, but I encountered an issue generating a response.", phase=Phase.EXECUTING
+          )
           yield None, True, response
         elif not has_content and not last_finished:
           # We got chunks but no actual content and no finish signal
           self.logger.warning(f"Streaming incomplete: {chunk_count} chunks but no content or finish signal")
-          response = AssistantMessage(content="I apologize, but I encountered an issue generating a response.", phase=Phase.EXECUTING)
+          response = AssistantMessage(
+            content="I apologize, but I encountered an issue generating a response.", phase=Phase.EXECUTING
+          )
           yield None, True, response
       else:
         # Non-streaming response
         response = await self.model.complete_chat(messages, stream=False, tools=self.tool_specs)
-        if hasattr(response, 'choices') and len(response.choices) > 0:
+        if hasattr(response, "choices") and len(response.choices) > 0:
           message = response.choices[0].message
-          if hasattr(message, 'tool_calls') and message.tool_calls:
+          if hasattr(message, "tool_calls") and message.tool_calls:
             tool_calls = []
             for tc in message.tool_calls:
               tool_call = ToolCall(
-                id=tc.id if hasattr(tc, 'id') else f"call_{secrets.token_hex(8)}",
-                function=tc.function if hasattr(tc, 'function') else None,
-                type="function"
+                id=tc.id if hasattr(tc, "id") else f"call_{secrets.token_hex(8)}",
+                function=tc.function if hasattr(tc, "function") else None,
+                type="function",
               )
               tool_calls.append(tool_call)
             assistant_message = AssistantMessage(
-              content=message.content or "",
-              tool_calls=tool_calls,
-              phase=Phase.EXECUTING
+              content=message.content or "", tool_calls=tool_calls, phase=Phase.EXECUTING
             )
           else:
-            assistant_message = AssistantMessage(
-              content=message.content or "",
-              phase=Phase.EXECUTING
-            )
+            assistant_message = AssistantMessage(content=message.content or "", phase=Phase.EXECUTING)
           yield None, True, assistant_message
 
     except Exception as e:
@@ -587,7 +560,7 @@ class Agent(InfoContext, DebugContext):
         snippet = StreamedConversationSnippet(
           ConversationSnippet(scope, conversation, [message]),
           1,  # part number
-          True  # finished
+          True,  # finished
         )
         yield snippet
     else:
@@ -606,29 +579,20 @@ class Agent(InfoContext, DebugContext):
         result = await tool.invoke(tool_args)
 
         response = ToolCallResponseMessage(
-          tool_call_id=tool_call.id,
-          name=tool_name,
-          content=str(result),
-          phase=Phase.EXECUTING
+          tool_call_id=tool_call.id, name=tool_name, content=str(result), phase=Phase.EXECUTING
         )
         return None, response
       else:
         error_msg = f"Tool '{tool_name}' not found"
         response = ToolCallResponseMessage(
-          tool_call_id=tool_call.id,
-          name=tool_name,
-          content=error_msg,
-          phase=Phase.EXECUTING
+          tool_call_id=tool_call.id, name=tool_name, content=error_msg, phase=Phase.EXECUTING
         )
         return error_msg, response
 
     except Exception as e:
       error_msg = f"Tool execution failed: {str(e)}"
       response = ToolCallResponseMessage(
-        tool_call_id=tool_call.id,
-        name=tool_name,
-        content=error_msg,
-        phase=Phase.EXECUTING
+        tool_call_id=tool_call.id, name=tool_name, content=error_msg, phase=Phase.EXECUTING
       )
       return error_msg, response
 
@@ -754,6 +718,7 @@ class Agent(InfoContext, DebugContext):
 
     # Create shared memory for the agent
     from ..memory.memory import Memory
+
     memory = Memory()
 
     # Create the agent
@@ -802,7 +767,7 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
 
   for tool in tools:
     # Set the node reference for tools that need it
-    if hasattr(tool, 'node'):
+    if hasattr(tool, "node"):
       tool.node = node
 
     # Get the tool specification
@@ -810,7 +775,7 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
     tool_specs.append(spec)
 
     # Add to the tools dictionary using tool name
-    tool_name = tool.name if hasattr(tool, 'name') else str(tool)
+    tool_name = tool.name if hasattr(tool, "name") else str(tool)
     tools_dict[tool_name] = tool
 
   return tool_specs, tools_dict
@@ -818,8 +783,4 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
 
 def system_message(message: str) -> dict:
   """Create a system message dictionary."""
-  return {
-    "role": "system",
-    "content": {"text": message, "type": "text"},
-    "phase": "system"
-  }
+  return {"role": "system", "content": {"text": message, "type": "text"}, "phase": "system"}

@@ -101,14 +101,18 @@ class DefaultModelClient(InfoContext, DebugContext):
       # For streaming, return an async generator
       async def mock_stream():
         # First chunk with content
-        yield MockResponse(content="This is a default response from the DefaultModelClient. Please configure a proper model client for actual functionality.")
+        yield MockResponse(
+          content="This is a default response from the DefaultModelClient. Please configure a proper model client for actual functionality."
+        )
         # Final chunk with finish_reason
         yield MockResponse(finish_reason="stop")
 
       return mock_stream()
     else:
+
       async def _complete():
         return MockResponse()
+
       return _complete()
 
   async def embeddings(self, text: List[str], **kwargs) -> List[List[float]]:
@@ -125,9 +129,7 @@ class DefaultModelClient(InfoContext, DebugContext):
     # Return zero vectors of dimension 1024 (common embedding size)
     return [[0.0] * 1024 for _ in text]
 
-  def prepare_llm_call(
-    self, messages: List[dict] | List[ConversationMessage], is_thinking: bool, **kwargs
-  ):
+  def prepare_llm_call(self, messages: List[dict] | List[ConversationMessage], is_thinking: bool, **kwargs):
     """
     Prepare messages for LLM call.
 

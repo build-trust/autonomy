@@ -11,7 +11,14 @@ from fastapi import Security
 from typing import Annotated
 
 from .socket_address import parse_host_and_port
-from ..nodes.message import AgentReference, GetConversationsRequest, StreamedConversationSnippet, Phase, Reference, FlowReference
+from ..nodes.message import (
+  AgentReference,
+  GetConversationsRequest,
+  StreamedConversationSnippet,
+  Phase,
+  Reference,
+  FlowReference,
+)
 from ..nodes.node import Node
 from ..logs.logs import InfoContext, get_logging_config
 
@@ -69,9 +76,7 @@ class HttpServer(InfoContext):
 
     @self.app.get("/agents/{name}/conversations")
     async def get_conversations_by_agent_name(name: str, node=Depends(self.get_node)):
-      with self.info(
-        f"Retrieving conversations for agent '{name}'", f"Retrieved conversations for agent '{name}'"
-      ):
+      with self.info(f"Retrieving conversations for agent '{name}'", f"Retrieved conversations for agent '{name}'"):
         return await get_agent_by_name_and_scope_and_conversation_impl(name, None, None, node)
 
     @self.app.get("/agents/{name}/scopes/{scope}/conversations")
@@ -118,9 +123,7 @@ class HttpServer(InfoContext):
     ):
       with self.info(f"Sending a message to agent '{name}'", f"Sent a message to agent '{name}'"):
         await find_agent(node, name)
-        return await send_message_to_reference(
-          AgentReference(name, node), message, stream, content_size, timeout
-        )
+        return await send_message_to_reference(AgentReference(name, node), message, stream, content_size, timeout)
 
     @self.app.post("/flows/{name}")
     async def send_message_to_flow(
@@ -133,9 +136,7 @@ class HttpServer(InfoContext):
     ):
       with self.info(f"Sending a message to flow '{name}'", f"Sent a message to flow '{name}'"):
         await find_worker(node, name)
-        return await send_message_to_reference(
-          FlowReference(name, node), message, stream, content_size, timeout
-        )
+        return await send_message_to_reference(FlowReference(name, node), message, stream, content_size, timeout)
 
     async def find_agent(node, name):
       agents = await node.list_agents()
@@ -216,9 +217,7 @@ class HttpServer(InfoContext):
 
   async def serve(self):
     self.logger.info(f"Starting http server at {self.host}:{self.port}")
-    config = uvicorn.Config(
-      self.app, host=self.host, port=self.port, log_config=get_logging_config(), access_log=True
-    )
+    config = uvicorn.Config(self.app, host=self.host, port=self.port, log_config=get_logging_config(), access_log=True)
     server = uvicorn.Server(config)
     self.logger.info(f"Started http server at {self.host}:{self.port}")
     await server.serve()

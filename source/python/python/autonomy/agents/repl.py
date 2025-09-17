@@ -167,7 +167,7 @@ class Repl:
               if len(response.snippet.messages) > 0:
                 received = response.snippet.messages[0].content
                 # Handle both TextContent and string content
-                if hasattr(received, 'text'):
+                if hasattr(received, "text"):
                   content = received.text
                 else:
                   content = str(received)
@@ -184,7 +184,7 @@ class Repl:
             else:
               received = response.messages[0].content
               # Handle both TextContent and string content
-              if hasattr(received, 'text'):
+              if hasattr(received, "text"):
                 content = received.text
               else:
                 content = str(received)
@@ -199,7 +199,7 @@ class Repl:
           )
           # Handle both TextContent and string content
           first_message = reply[0]
-          if hasattr(first_message.content, 'text'):
+          if hasattr(first_message.content, "text"):
             content = first_message.content.text
           else:
             content = str(first_message.content)

@@ -16,6 +16,4 @@ def validate_name(name: str) -> None:
 
   # Allow alphanumeric characters, hyphens, and underscores
   if not re.match(r"^[a-zA-Z0-9_-]+$", name):
-    raise ValueError(
-      f"Invalid name '{name}'. Name must contain only alphanumeric characters, hyphens, and underscores"
-    )
+    raise ValueError(f"Invalid name '{name}'. Name must contain only alphanumeric characters, hyphens, and underscores")

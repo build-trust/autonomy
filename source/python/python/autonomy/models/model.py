@@ -137,6 +137,7 @@ class Model(InfoContext, DebugContext):
       # For non-streaming, return an awaitable coroutine
       async def _await_result():
         return await result
+
       return _await_result()
 
   async def embeddings(self, text: List[str], **kwargs) -> List[List[float]]:

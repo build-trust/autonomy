@@ -3,9 +3,7 @@ from .search import SearchHit, TextPiece
 
 
 class KnowledgeProvider(Protocol):
-  async def search_knowledge(
-    self, scope: Optional[str], conversation: Optional[str], query: str
-  ) -> Optional[str]: ...
+  async def search_knowledge(self, scope: Optional[str], conversation: Optional[str], query: str) -> Optional[str]: ...
 
 
 class Storage(Protocol):
