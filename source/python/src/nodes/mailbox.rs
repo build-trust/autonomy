@@ -28,27 +28,16 @@ impl PyMailbox {
 
 #[pymethods]
 impl PyMailbox {
-    #[pyo3(signature = (node, destination, message, policy=None))]
-    fn send_to_remote<'a>(
-        &self,
-        py: Python<'a>,
-        node: String,
-        destination: String,
-        message: String,
-        policy: Option<String>,
-    ) -> PyResult<Bound<'a, PyAny>> {
-        self.send_to_remote_impl(py, Some(node), destination, message, policy)
-    }
-
-    #[pyo3(signature = (destination, message, policy=None))]
+    #[pyo3(signature = (address, message, node=None, policy=None))]
     fn send<'a>(
         &self,
         py: Python<'a>,
-        destination: String,
+        address: String,
         message: String,
+        node: Option<String>,
         policy: Option<String>,
     ) -> PyResult<Bound<'a, PyAny>> {
-        self.send_to_remote_impl(py, None, destination, message, policy)
+        self.send_to_remote_impl(py, node, address, message, policy)
     }
 
     #[pyo3(signature = (policy=None, timeout=None))]
@@ -99,7 +88,7 @@ impl PyMailbox {
         &self,
         py: Python<'a>,
         node: Option<String>,
-        destination: String,
+        address: String,
         message: String,
         policy: Option<String>,
     ) -> PyResult<Bound<'a, PyAny>> {
@@ -110,7 +99,7 @@ impl PyMailbox {
 
         future_into_py(py, async move {
             node_clone
-                .with_route(node, destination, move |route| async move {
+                .with_route(node, address, move |route| async move {
                     let (_, outgoing_ac) = node_manager
                         .create_abac(node_manager.project_authority(), policy)
                         .await?;

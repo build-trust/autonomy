@@ -1,32 +1,22 @@
 import asyncio
-import os
-import secrets
+from os import getenv, environ
+from re import fullmatch
+from secrets import token_hex
+from typing import Awaitable, Callable, Optional, List
 
-# import litellm
-from typing import Awaitable, Callable, Optional
+from .protocol import Mailbox, Worker
+from .remote import NodeController
 
-from .local import LocalNode
-from .manager import RemoteManager
+from ..autonomy_in_rust_for_python import Node as RustNode, Mailbox as RustMailbox
+from ..logs import get_logger
 
-from ..autonomy_in_rust_for_python import Node as RustNode
+logger = get_logger("node.local")
 
 
 class Node:
-  _logger = None
-
-  @classmethod
-  def logger(cls):
-    if cls._logger:
-      return cls._logger
-    else:
-      from ..logs.logs import get_logger
-
-      cls._logger = get_logger("node")
-      return cls._logger
-
   @staticmethod
   def start(
-    main: Optional[Callable[[LocalNode], Awaitable[None]]] = None,
+    main: Optional[Callable[["Node"], Awaitable[None]]] = None,
     name: Optional[str] = None,
     ticket: Optional[str] = None,
     allow: Optional[str] = None,
@@ -34,92 +24,216 @@ class Node:
     wait_until_interrupted: bool = True,
     cache_secure_channels: bool = False,
     use_local_db: bool = False,
-    llm_debug: bool = False,
     **kwargs,
   ):
-    # This will make the node use a local SQLite database instead of the Postgres database
-    if use_local_db:
-      os.environ.pop("OCKAM_DATABASE_INSTANCE", None)
-      os.environ.pop("OCKAM_DATABASE_INSTANCE", None)
-      os.environ.pop("OCKAM_DATABASE_INSTANCE", None)
-      os.environ["OCKAM_TELEMETRY_EXPORT"] = "false"
-      os.environ["OCKAM_SQLITE_IN_MEMORY"] = "true"
-
-    # if llm_debug:
-    #   litellm._turn_on_debug()
-
-    name = pick_name(name)
-    ticket = pick_ticket(ticket)
-    cluster = pick_cluster()
-
-    if allow is None and cluster:
-      allow = f"message.is_local or cluster={cluster}"
-
-    if wait_until_interrupted or main is None:
-      main = wait_until_interrupted_decorator(main)
-
-    async def start_node(node):
-      node = LocalNode(node)
-      await RemoteManager(node).start()
-
-      # if http_server is None:
-      #   from .. import agents
-
-      #   asyncio.create_task(agents.HttpServer().start(node))
-      # else:
-      #   asyncio.create_task(http_server.start(node))
-
-      Node.logger().info(f"Started node '{name}'")
-      await main(node)
-
     try:
-      Node.logger().info(f"Starting node '{name}'")
-      RustNode.start(
-        start_node,
-        name=name,
-        ticket=ticket,
-        allow=allow,
-        cache_secure_channels=cache_secure_channels,
-        **kwargs,
-      )
-    except KeyboardInterrupt:
-      Node.logger().debug("Shutting down node due to KeyboardInterrupt")
-      Node.logger().debug(f"\nNode {name} shutting down")
+      cluster_name = _pick_cluster_name()
+      zone_name = _pick_zone_name()
+      node_name = _pick_node_name(cluster_name, zone_name)
+      ticket = _pick_ticket(ticket)
+      allow = _pick_access_policy(allow, cluster_name)
+
+      if use_local_db:
+        environ.pop("OCKAM_DATABASE_INSTANCE", None)
+        environ["OCKAM_SQLITE_IN_MEMORY"] = "true"
+        environ["OCKAM_TELEMETRY_EXPORT"] = "false"
+
+      if wait_until_interrupted or main is None:
+        main = _wait_until_interrupted_decorator(main)
+
+      async def start_node(rust_node):
+        node = Node(rust_node)
+        await NodeController(node).start()
+
+        if http_server is None:
+          from .. import agents
+          asyncio.create_task(agents.HttpServer().start(node))
+        else:
+          asyncio.create_task(http_server.start(node))
+
+        logger.info(f"Started node '{node_name}'")
+        await main(node)
+
+      try:
+        logger.info(f"Starting node '{node_name}'")
+        RustNode.start(
+          start_node,
+          name=node_name,
+          ticket=ticket,
+          allow=allow,
+          cache_secure_channels=cache_secure_channels,
+          **kwargs,
+        )
+      except KeyboardInterrupt:
+        logger.debug("Detected a KeyboardInterrupt")
+        logger.debug(f"Stopping node '{node_name}'")
+
+    except Exception as e:
+      logger.error(f"Exception: {e}")
+      raise e
+    finally:
+      logger.debug(f"Stopped node '{node_name}'")
+
+  def __init__(self, rust_node):
+    self.rust = rust_node
+
+  @property
+  def name(self) -> str:
+    return self.rust.name
+
+  async def identifier(self) -> str:
+    return await self.rust.identifier()
+
+  async def create_mailbox(self, address: str, policy: Optional[str] = None) -> RustMailbox:
+    return await self.rust.create_mailbox(address, policy)
+
+  async def send(
+    self,
+    address: str,
+    message: str,
+    node: Optional[str] = None,
+    policy: Optional[str] = None,
+  ) -> Mailbox:
+    mailbox = await self.create_mailbox(token_hex(12), policy)
+    await mailbox.send(address, message, node, policy)
+    return mailbox
+
+  async def send_and_receive(
+    self,
+    address: str,
+    message: str,
+    node: Optional[str] = None,
+    policy: Optional[str] = None,
+    timeout: Optional[int] = None,
+  ) -> str:
+    return await self.rust.send_and_receive(address, message, node, policy, timeout)
+
+  async def start_worker(
+    self,
+    name: str,
+    worker: Worker,
+    policy: Optional[str] = None,
+    exposed_as: Optional[str] = None,
+  ):
+    _check_worker_name(name)
+    return await self.rust.start_worker(name, worker, policy, exposed_as)
+
+  async def start_internal_worker(
+    self,
+    name: str,
+    worker: Worker,
+    policy: Optional[str] = None,
+    exposed_as: Optional[str] = None,
+  ):
+    return await self.rust.start_internal_worker(name, worker, policy, exposed_as)
+
+  async def stop_worker(self, name: str):
+    return await self.rust.stop_worker(name)
+
+  async def list_workers(self):
+    return await self.rust.list_workers()
+
+  async def list_agents(self):
+    return await self.rust.list_agents()
+
+  async def list_nodes_priv(self):
+    return await self.rust.list_nodes_priv()
+
+  async def call_mcp_tool(
+    self,
+    server_name: str,
+    tool_name: str,
+    tool_args_as_json: Optional[str],
+  ) -> str:
+    return await self.rust.call_mcp_tool(server_name, tool_name, tool_args_as_json)
+
+  async def list_tools(self) -> List[dict]:
+    return await self.rust.list_tools()
+
+  async def mcp_tool_spec(self, server_name: str, tool_name: str) -> str:
+    return await self.rust.mcp_tool_spec(server_name, tool_name)
+
+  async def mcp_tools(self) -> str:
+    return await self.rust.mcp_tools()
+
+  async def start_spawner(
+    self,
+    name: str,
+    agent_factory: Callable[[], Worker],
+    key_extractor: Callable[[str], str],
+    policy: Optional[str] = None,
+    exposed_as: Optional[str] = None,
+  ):
+    return await self.rust.start_spawner(name, agent_factory, key_extractor, policy, exposed_as)
+
+  async def stop(self) -> None:
+    return await self.rust.stop()
+
+  async def interrupted(self) -> None:
+    return await self.rust.interrupted()
 
 
-def wait_until_interrupted_decorator(func=None):
+def _wait_until_interrupted_decorator(func=None):
   async def wrapper(*args, **kwargs):
     node = args[0]
     if func is not None:
       await func(*args, **kwargs)
+
+    logger.debug(f"Waiting until interrupted")
     await node.interrupted()
 
   return wrapper
 
 
-def pick_cluster():
-  return os.getenv("CLUSTER")
+def _pick_cluster_name() -> str:
+  cluster = getenv("CLUSTER")
+  logger.debug(f"Got CLUSTER={cluster} from the environment")
+  return cluster
 
 
-def pick_name(name):
-  cluster = pick_cluster()
-  zone = os.getenv("ZONE")
-  node = os.getenv("NODE")
+def _pick_zone_name() -> str:
+  zone = getenv("ZONE")
+  logger.debug(f"Got ZONE={zone} from the environment")
+  return zone
 
-  if name is not None:
-    return name
-  elif cluster is not None and zone is not None and node is not None:
-    return f"{cluster}-{zone}-{node}"
+
+def _pick_node_name(cluster_name: str, zone_name: str) -> str:
+  node_name = getenv("NODE")
+  logger.debug(f"Got NODE={node_name} from the environment")
+
+  if node_name:
+    name = node_name
+  elif cluster_name and zone_name and node_name:
+    name = f"{cluster_name}-{zone_name}-{node_name}"
   else:
-    return secrets.token_hex(12)
+    name = token_hex(12)
+
+  logger.debug(f"Picked node_name={name}")
+  return name
 
 
-def pick_ticket(ticket):
-  env_ticket = os.getenv("ENROLLMENT_TICKET")
+def _pick_ticket(ticket: str | None) -> str:
+  env_ticket = getenv("ENROLLMENT_TICKET")
+  logger.debug(f"Got ENROLLMENT_TICKET={env_ticket} from the environment")
 
-  if ticket is not None:
-    return ticket
-  elif env_ticket is not None:
-    return env_ticket
+  if ticket is not None and ticket.strip():
+    t = ticket
+  elif env_ticket is not None and env_ticket.strip():
+    t = env_ticket
   else:
-    return None
+    t = None
+
+  logger.debug(f"Picked ticket={t}")
+  return t
+
+
+def _pick_access_policy(allow, cluster) -> str:
+  if allow is None and cluster:
+    return f"message.is_local or cluster={cluster}"
+
+
+def _check_worker_name(name: str):
+  if not fullmatch(r"[a-zA-Z0-9_-]+", name):
+    raise ValueError(
+      f"Invalid name '{name}'. Only alphanumeric characters, '-' and '_' are allowed"
+    )
