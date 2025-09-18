@@ -39,7 +39,21 @@ When teams try to scale agents with today’s mainstream infrastructure, they of
 
 In short, containers are too heavy and serverless is too ephemeral.
 
----
+### **Actors vs Containers vs Lambdas**
+
+A relative comparison of overhead, startup latency, and statefulness.
+
+- Actors: minimal overhead, near-instant startup, inherently stateful.
+- Containers: heavy overhead, slow startup, moderate statefulness.
+- Lambdas: lightweight, faster startup, but fundamentally stateless.
+
+**Scaling Capacity**
+
+ How many instances can realistically run per (generic) server:
+
+- **Actors**: ~1,000,000 per server.
+- **Lambdas**: ~100,000 per server.
+- **Containers**: ~10,000 per server.
 
 ### Why Autonomy is Different
 
