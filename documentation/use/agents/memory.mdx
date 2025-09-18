@@ -4,25 +4,31 @@ description: "Persistent memory for coherent, multi-turn interactions."
 icon: "memory"
 ---
 
-Your Autonomy agents have built-in memory that allows them to maintain state across prompts:
+Memory in the Autonomy Agents framework refers to the agent’s ability to persist conversational/contextual state across multiple turns. Rather than treating each prompt in isolation, memory lets the agent “remember” what’s been said or done previously: user preferences, earlier questions, the flow of dialogue, and anything else relevant to maintaining a coherent, multi-turn interaction. This makes conversation more natural, consistent, and contextually aware.
+
+## How the Example Works
+
+In the demo below, the agent is able to respond to a follow-up prompt ("What have I asked you before?") by recalling earlier user messages in the same conversation (“What is your name?”, “Where do you live?”).
+
+The example shows that you can manage multiple concurrent conversations by passing a conversation identifier: each distinct conversation ID has its own memory thread.
+
+Further, you can introduce a scope (e.g. per-user or per-customer) so that memory is isolated not just by conversation but also across user boundaries. This is useful in multi-user or shared-agent environments where you want to ensure one user's context doesn't leak into another’s.
 
 ```
 > What is your name?
 
 (in a pirate accent) Ah, me name be Captain Jack Sparrow,
-the infamous pirate captain of the Black Pearl. Savvy?
+the infamous pirate captain of the Black Pearl. 
 
 > Where do you live?
 
 (laughs) Ah, me home be the sea, matey. Me ship, the Black Pearl,
 be me abode. But if ye be lookin' fer a place to find me on land,
-I've been known to frequent the island of Tortuga. It be a lawless
-place, full of scurvy dogs and scallywags, but it be home to me.
+I've been known to frequent the island of Tortuga.
 
 > What have I asked you before?
 
-(chuckles) Ah, ye be askin' about yer previous questions, eh?
-Alright then, matey... Ye asked me what me name be, and then ye
+(chuckles) Ye asked me what me name be, and then ye
 asked me where I live. That be the extent o' our conversation
 so far, savvy?
 
@@ -34,9 +40,11 @@ so far, savvy?
 You can have multiple separate conversations with an agent at the same time by using a different `conversation` identifier for each one:
 
 <CodeGroup>
+
 ```python
 await agent.send("What have I asked you before?", conversation="1")
 ```
+
 
 ```bash httpie
 http POST \
@@ -51,6 +59,7 @@ curl --request POST \
   --data '{"message":"What have I asked you before?", "conversation": "1"}' \
   "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679"
 ```
+
 </CodeGroup>
 
 ## Isolating conversations per user
@@ -62,6 +71,7 @@ You can add an extra layer of isolation by using a unique `scope` identifier (li
 ```python Autonomy SDK
 await agent.send("What is 56 divided by 27?", scope="user-1", conversation="1")
 ```
+
 
 ```bash httpie
 http POST \
@@ -76,4 +86,5 @@ curl --request POST \
   --data '{"message":"What have I asked you before?", "scope": "user-1", "conversation": "1"}' \
   "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679"
 ```
+
 </CodeGroup>
