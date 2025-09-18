@@ -56,12 +56,16 @@
         "href": "https://autonomy.computer"
       },
         {
-        "label": "Open Source Code",
+        "label": "OSS Code",
         "href": "https://github.com/build-trust/autonomy"
       },
         {
         "label": "Support",
         "href": "https://autonomy.computer/contact/form"
+      },
+        {
+        "label": "Discord Community",
+        "href": "https://autonomy.computer/discord"
       }
     ],
     "primary": {
@@ -74,7 +78,8 @@
     "socials": {
       "linkedin": "https://www.linkedin.com/company/autonomy-computer",
       "github": "https://github.com/build-trust/autonomy",
-      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng"
+      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng", 
+      "discord": "https://autonomy.computer/discord"
     }
   },
   "seo": {
