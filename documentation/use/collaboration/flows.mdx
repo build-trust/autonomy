@@ -2,8 +2,26 @@
 title: "Flows"
 icon: "arrow-progress"
 mode: "wide"
+description: "Create complex workflows across clusters of agents with flows."
 ---
 
+A `flow` is a structured sequence of agent-behaviors, tool calls, decision points and interactions designed to achieve a specific goal or complete a multi-step process. Rather than treating each user input or tool invocation as isolated, flows allow the agent (or a team of agents) to follow a predefined or dynamically adapted path, moving through different stages (e.g. information gathering → reasoning or planning → tool use → response) with branching logic and conditional execution as needed. Flows encode higher-level control of behavior: how the agent should proceed, when to invoke memory or knowledge, how to decide among tools, when to ask clarifying questions, and how to wrap up or hand off control.
+
+## Why Flows are Important
+
+Flows are foundational because they let you move beyond reactive agents and create more reliable, coherent, and maintainable **autonomous** systems. Some key reasons:
+
+- **Predictability and consistency:** With flows, you can ensure that complex tasks are handled in similar ways every time, reducing surprises and unintended behavior.
+- **Modularity & reuse:** Components of a flow—like gathering context, making decisions, using tools, or summarizing results—can be reused across different flows, making development faster and behavior more consistent.
+- **Handling complexity:** When tasks are multi-step, involve multiple tools or sources, or need error handling, branching, or feedback loops, flows provide a framework for managing that complexity.
+- **Adaptability:** Flows can adapt based on what’s observed during execution (e.g. missing information, tool failures). Thus, they allow agents to change course or insert remedial steps without breaking the overall structure.
+- **Transparency & debugging:** Because flows lay out the intended path of execution, they make it easier for developers to inspect what the agent should do at each stage, diagnose where things might have gone wrong, and improve or test behavior.
+
+## How the example works: 
+
+The `flow defines` a **multi-agent pipeline** for triaging, evaluating, and fixing security questions. 
+
+First, a `triage` agent classifies an incoming question into one of three categories: “network,” “code,” or “other.” Depending on the category, the `flow` routes execution to different downstream agents: for “network,” it goes to a _network expert_ that ends the flow; for “code,” it goes to a _code evaluator_ which may either label the code snippet “safe” and terminate, or forward it to a _code security fixer_ for remediation. Between steps, there are **conditions** (e.g. only send to fixer if vulnerability found) and **operations,** like `EVALUATE,` that govern how agents interact and how the `flow` proceeds.
 
 ```python
 from autonomy import Agent, END, Flow, FlowOperation, Model, Node, Repl, START
