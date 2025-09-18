@@ -15,8 +15,6 @@ Instead of threads, processes, or containers, computation is broken down into mi
 
 Frameworks like **Apache Spark** and **Databricks** rely on the actor model to orchestrate large, parallel workloads across clusters. Autonomy applies the same principle to agents.
 
----
-
 ### Why the Actor Model Fits Agents
 
 Agents are a perfect match for actors:
@@ -27,8 +25,6 @@ Agents are a perfect match for actors:
 - **Embarrassingly parallel**: Many agentic workloads (e.g. a million customer service reps, or a billion concurrent simulations) are naturally parallel. The actor model excels here, because every agent/actor is independent and can run concurrently without coordination overhead.
 
 This combination makes the actor model the most efficient way to deploy agent systems at scale.
-
----
 
 ### The Wrong Approaches: Containers and Lambdas
 
