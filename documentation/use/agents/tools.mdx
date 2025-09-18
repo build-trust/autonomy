@@ -5,9 +5,19 @@ description: "Agents can invoke tools in Python or via MCP"
 mode: "wide"
 ---
 
-### Python Functions as Tools
+In Autonomy Agents, `tools` are externally defined functions or services that an agent can call to extend its capabilities beyond pure language-model reasoning. `Tools` allow the agent to perform actions like looking things up on the web, getting the current time, querying APIs, or any arbitrary logic you build. They bridge the gap between what the model “knows” inherently and what it can do: you provide defined interfaces as either Python functions or MCP servers that the agent can use when needed, enabling more accurate, up-to-date, and actionable responses.
 
-You can build your own tools in Python for your agents to call when needed. This feature allows unlimited tool possibilities because you can build a tool to do whatever you'd like.
+## Python Functions as Tools
+
+You can build your own custom tools in Python for your agents to call when needed. This feature allows unlimited tool possibilities because you can build a tool to do whatever you'd like.
+
+## How the Example Works
+
+The example defines a simple Python function `current_iso8601_utc_time()` that returns the current UTC time in ISO-8601 format. That function is wrapped as a Tool, then given to the agent (“Henry”) as part of its configuration. Because the tool is included, the agent can invoke it when asked for the current time.
+
+The setup shows two modes: purely local tools (Python functions) and tools via MCP (Model Context Protocol) servers. For example, “Henry” can use both the `current_iso8601_utc_time` Python tool and a web-search tool plugged in via MCP (e.g. `McpTool("brave_search", "brave_web_search")`).
+
+The example also shows how to configure the infrastructure: specifying the agent, model, tools list; how to start the node; how to wire up MCP clients so that external tool servers can be used.
 
 <Tip>
   You can find all the code for this example [on Github](https://github.com/build-trust/autonomy/tree/main/examples/003).
@@ -54,7 +64,6 @@ pods:
         image: main
 ```
 
-
 <CodeGroup>
 
 ```bash httpie
@@ -74,7 +83,6 @@ curl --request POST \
 </CodeGroup>
 
 ### Tools provided by MCP Servers
-
 
 ```yaml autonomy.yaml
 name: example006
