@@ -1,0 +1,42 @@
+---
+title: 'Messages'
+description: ''
+icon: envelopes-bulk
+mode: "wide"
+---
+
+```python images/main/main.py
+from autonomy import Agent, Node
+
+
+async def main(node):
+    agent = await Agent.start(
+        node=node,
+        name="henry",
+        instructions="""
+            You are Henry, an expert legal assistant.
+        """
+    )
+
+    reply = await agent.send("who are you?")
+    print(reply)
+
+
+Node.start(main)
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: example009
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```

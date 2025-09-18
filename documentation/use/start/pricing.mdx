@@ -1,0 +1,53 @@
+---
+title: "Pricing"
+icon: "tag"
+---
+
+## It's free to get started.
+
+We will give you \$50 of credit to use over your first 14 days. This should be more than enough for you to kick the tires, build some basic agents, and experience the magic of Autonomy.
+
+## **Consumption Based Pricing**
+
+We will only charge you for your consumption of the underlying infrastructure cost that you incur. These charges include the compute, network, storage, and LLM inference services that your product or application utilizes. 
+
+### Compute:
+
+`Regular`: \$25/mo - Capacity for _thousands_ of concurrent agents and MCP servers\
+`Big`: \$250/mo - Capacity for _millions_ of concurrent agents and MCP servers
+
+### Network:
+
+Egress: \$0.10 / GB
+
+### Storage:
+
+\$1 / GB / month
+
+### LLM Models:
+
+Refer to the [AWS Bedrock pricing page.](https://aws.amazon.com/bedrock/pricing/) This link not only has the raw price per 1,000 input tokens, but also several examples that help you understand how many tokens it might take to get a job done.
+
+## Oversharing?
+
+Autonomy, simply, passes along our AWS infrastructure costs to you. Yes, that's right...we said the quiet part outloud: there is (currently) zero gross margin in our pricing model. It’s impossible for you to ‘run it yourself’ and save on cloud infrastructure costs.
+
+How can this be?! Aren’t we a business that needs to make money? Yes we need to make money eventually, but not right now. We have a product roadmap full of features that will be packaged and priced in a way that keeps the business running, and growing.
+
+## Use Autonomy with care. It’s powerful!
+
+\
+**Your account has no upper bound usage limit**. You have been granted the unlimited ability to scale the number of agents you deploy, the amount of data they transfer, and the amount of memory / knowledge they store. You can connect to a vast array of LLM inference models. Some of these inference models cost 1000x more than others. You could spend \$5 or \$5000 in a very short period of time - just by changing the inference models you use.
+
+If you want to control your costs, here are some parameters to start with:
+
+- Use `Regular` size containers, which is the default value.
+- Use inexpensive LLMs like llama3.2 (the default model), amazon nova-micro-v1, nova-lite-v1 etc.
+- During development and experimentation, create zones using `autonomy --rm`. This command will automatically delete the zone as soon as you **Ctrl+C** out of your session.
+- Use `autonomy zone list` to see all running zones and `autonomy zone delete` to delete a zone that you are not using anymore.
+
+## We are here to help!
+
+If you have any questions, concerns, or comments please contact us so that we can help you out!\
+\
+[Click here to get support directly from Autonomy's founder](https://autonomy.computer/contact/form)

@@ -1,0 +1,67 @@
+---
+title: "Private Link"
+icon: "rectangle-history"
+mode: "wide"
+---
+
+
+```yaml autonomy.yaml
+name: example009
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+    portals:
+      inlets:
+        - from: 5555
+          name: files
+```
+
+```python images/main/main.py
+from autonomy import Agent, Knowledge, Model, Node
+
+
+async def main(node):
+    pioneer_docs = Knowledge("pioneer_ai_documents")
+    await pioneer_docs.add_document(
+        "Ownership in Pioneer.ai",
+        "http://localhost:5555/ownership.md",
+        content_type="text/markdown",
+    )
+
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant",
+        model=Model("nova-micro-v1"),
+        knowledge=pioneer_docs,
+    )
+
+
+Node.start(main)
+```
+
+```bash
+autonomy cluster ticket
+```
+
+```data/ownership.md
+1. Apex Ventures - 9.25%
+2. Horizon Capital Partners - 3%
+3. Catalyst Growth Fund - 4.75%
+4. Summit Equity Group - 12%
+5. Innovatech Ventures - 12%
+6. Blue Sky Capital - 20%
+7. Quantum Leap Investments - 32.75%
+8. Elevate Ventures - 6.25%
+```
+
+```bash
+python3 -m http.server --bind 127.0.0.1 5555
+```
+
+```bash
+autonomy zone outlet --zone-name example005 --relay files --to 127.0.0.1:5555
+```

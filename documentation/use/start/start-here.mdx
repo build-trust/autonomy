@@ -1,0 +1,162 @@
+---
+title: "Start Here"
+mode: "wide"
+icon: "rabbit"
+description: "Deploy your first agent"
+---
+
+<Steps>
+  <Step title="Create an account">
+    [Sign up](https://my.autonomy.computer) for an account with Autonomy to create your new Cluster.
+  </Step>
+  <Step title="Install">
+    Install `autonomy` command by running the following in your terminal.
+
+    ```bash
+    curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
+    ```
+  </Step>
+  <Step title="Deploy your first agent">
+    <Note>
+      Ensure you have [Docker](https://www.docker.com/get-started/) installed and running on your workstation before running the `autonomy` command.
+    </Note>
+    After that, create an empty directory and run `autonomy` command to enroll your workstation as an administrator of your newly created Cluster in Autonomy.
+
+    ```bash
+    mkdir hello && cd hello && autonomy
+    ```
+
+    This will generate a unique cryptographic identity for your workstation and store its secret keys in a vault. It will then ask you to authenticate with Autonomy to make your workstation’s new identity an administrator of your Cluster.
+
+    Finally, the above command will download the code for a template `hello` app and create a production-ready deployment Zone in your Cluster on our serverless Runtime. Withing seconds, it will put your first AI Agent into production and you can immediately start interacting with it.
+  </Step>
+  <Step title="Chat with your agent">
+    The `hello` app includes an interactive [REPL](https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop) for interacting with your agent:
+
+    ```
+    Welcome to Autonomy 👋
+    
+    You are connected to your agent - 25df35de/66a48b60
+    Ask it a question or give it a task.
+    
+    Type ':help' or ':h' to see this message again.
+    Type ':quit' or ':q' to disconnect.
+    
+    >
+    ```
+
+    This agent is running on Autonomy's serverless runtime.
+
+    The REPL you access on your local machine runs in the cloud, and you connect to it over a secure & private link.
+  </Step>
+  <Step title="Ask the agent something">
+    Type your instructions and press `[ENTER]` to interact with the agent:
+
+    ```
+    > Who are you?
+    ```
+  </Step>
+</Steps>
+
+### The generated code
+
+Within the `hello` directory, `Autonomy` has created the following three files:
+
+```bash Generated Files
+» tree
+
+├── autonomy.yaml
+└── images
+    └── main
+        ├── Dockerfile
+        └── main.py
+```
+
+- The `autonomy.yaml` configuration file defines how to deploy a Zone in your Cluster in Autonomy.
+- The `images` directory contains the source code of docker images that will be used to run containers in your Zone.
+  - Inside `images`, there is a directory for the `main` image.
+    - `Dockerfile` describe how the main image will be compiled.
+    - `main.py` is the Python program that is run by the main image.
+
+Let's examine each file:
+
+```yaml autonomy.yaml
+name: example001
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+    portals:
+      outlets:
+        - to: localhost:7000
+```
+
+The `autonomy.yaml` configuration file defines how to deploy your Zone:
+
+- Create a Zone named `01` .
+- Create a Pod named `main-pod`inside the `01` Zone.
+- Make the HTTP server, in the `main` container in this pod, public.
+- Run a `main` container using the `main` image.
+- Set up a portal outlet that will allow you to reach `localhost:9000` in this pod.
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+The `Dockerfile` bases the `main` image on the `autonomy-python` image which already contains the `autonomy` python package. The `Dockerfile` then copies the contents of the `images/main` directory into the image and sets `main.py` as the program to run when the container is started.
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node, Repl
+
+
+async def main(node):
+  agent = await Agent.start(
+    node=node,
+    name="jack",
+    instructions="You are Jack Sparrow",
+    model=Model("claude-sonnet-4-v1")
+  )
+  await Repl.start(agent)
+
+
+Node.start(main)
+```
+
+The `main.py` file:
+
+1. Turns your Python app into an Autonomy Node. An Autonomy Node in your Cluster can connect with and deliver messages to any other Autonomy Node in your Cluster that is running in Autonomy.
+2. After the Node is initialized, it invokes the `main` function defined in your `main.py` file. The `main` function starts an agent with specific instructions (_“You are Jack Sparrow”_).
+3. It then starts a REPL (interactive shell) server for that agent.
+
+```Output Output
+.   Deploying zone hello in cluster 25df35de87aa441b88f22a6c2a830a17...
+
+  ✔ Created a repository for the image main
+  ✔ Built image main
+  ✔ Pushed image main
+
+  ✔ Deployed zone hello in cluster 25df35de87aa441b88f22a6c2a830a17
+
+  ✔ Opened a portal to the outlet http on main-pod from tcp://localhost:32100
+  ✔ Opened a portal to the outlet logs on logs-pod from tcp://localhost:32101
+  ✔ Opened a portal to the outlet main-pod on main-pod from tcp://localhost:7000
+
+    ────────────────────────────────────────────────
+    The http server on the main-pod is available at:
+    https://a9eb812238f753132652ae09963a05e9-example001.cluster.autonomy.computer
+    http://localhost:32100
+
+    Logs for this zone are available at:
+    http://localhost:32101
+
+```
+
+When you run `autonomy`:
+
+1. It builds the code in `images/main` into a container image and pushes that image to a container registry available to your Zone. It then deploys the Zone into your Cluster, in Autonomy, based on configuration that is specified above in `autonomy.yaml`.
+2. Next, it opens a portal inlet on your workstation that connects to the outlet in the `main-pod` . This creates a private link to the REPL server in your `main` container and makes that server available on a local port on your workstation.
+3. Finally, it connects a REPL client to the REPL server through this private link.

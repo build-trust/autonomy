@@ -1,0 +1,209 @@
+---
+title: "Agents"
+icon: "star-shooting"
+description: "Autonomous actors powered by large language models."
+---
+
+Autonomy Agents are intelligent autonomous actors that accomplish complex open ended tasks. Python apps, running in Autonomy AI, can create millions of parallel collaborating agents in seconds.
+
+Each agent:
+
+- Has a unique identity.
+- Uses a large language [model](/agents/models) to understand natual language.
+- Has [memory](/agents/memory) of conversations.
+- Makes [plans](/agents/planning) that break down complex tasks into small iterative steps.
+- Can retrieve [knowledge](/agents/knowledge) beyond the training data of its language model.
+- Invokes [tools](/agents/tools) to gather new information and take actions.
+- Collaborates with and can delegate work to other agents.
+
+<RequestExample>
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+
+
+Node.start(main)
+```
+
+</RequestExample>
+
+### Build
+
+<Tip>
+  You can find all the code for the following example [on Github](https://github.com/build-trust/autonomy/tree/develop/examples/002).
+</Tip>
+
+Let’s build a new app, that provides a Legal AI Agent. Within the app directory, create the following three files:
+
+```bash app
+» tree
+
+├── autonomy.yaml
+└── images
+    └── main
+        ├── Dockerfile
+        ├── index.html
+        └── main.py
+```
+
+- The `autonomy.yaml` configuration file defines how to deploy a Zone in your Cluster in Autonomy.
+- The `images` directory contains the source code of docker images that will be used to run containers in your Zone.
+  - Inside `images`, there is a directory for the `main` image.
+    - `Dockerfile` describe how the main image will be compiled.
+    - `main.py` is the Python program that is run by the main image.
+    - `index.html` is a very simple web ui for your agent.
+
+```yaml autonomy.yaml
+name: example002
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+The `autonomy.yaml` configuration file defines how to deploy your Zone:
+
+- Create a Zone named `example002` .
+- Create a Pod named `main-pod`inside the `example002` Zone.
+- Make the HTTP server, in the `main` container in this pod, public.
+- Run a `main` container using the `main` image.
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+The `Dockerfile` bases the `main` image on the `autonomy-python` image which already contains the `autonomy` python package. The `Dockerfile` then copies the contents of the `images/main` directory into the image and sets `main.py` as the program to run when the container is started.
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+
+
+Node.start(main)
+```
+
+The `main.py` file:
+
+1. Turns your Python app into an Autonomy Node. An Autonomy Node in your Cluster can connect with and deliver messages to any other Autonomy Node in your Cluster that is running in Autonomy AI.
+2. After the Node is initialized, it invokes the `main` function defined in your `main.py` file. The `main` function starts an agent name `henry` with specific instructions. It then sends a message to this agent and prints the agent’s reply.
+3. `Node.start` also starts an HTTP server within this Python app.
+
+### Run
+
+<Note>
+  Check that you have [Docker](https://www.docker.com/get-started/) installed and it is running on your workstation before running the `autonomy` command.
+</Note>
+
+Run the `autonomy` command in the directory that has the `autonomy.yaml`, it will:
+
+1. Build each image in `images/` and push them to a container registry that is available to your Zone.
+2. Deploy the Zone into your Cluster, in Autonomy, based on the configuration that you specified above in `autonomy.yaml`.
+
+```
+. Deploying zone example002 in cluster 25df35de87aa441b88f22a6c2a830a17...
+
+✔ Created a repository for the image main
+✔ Built image main
+✔ Pushed image main
+
+✔ Deployed zone 01 in cluster 25df35de87aa441b88f22a6c2a830a17
+
+  The http server on the main-pod is available at:
+  https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer
+
+✔ Opened a portal to the outlet http on main-pod from tcp://localhost:32100
+✔ Opened a portal to the outlet logs on logs-pod from tcp://localhost:32101
+```
+
+### Logs
+
+You can see the logs for all containers in your deployed zone at `http://localhost:32101`.
+
+### HTTP
+
+By default the pod will expose a HTTP interface with a few endpoints interact with the deployed agents.
+
+The public URL for the HTTP server on your pod (each pod will have its own unique URL) is displayed in the example output above:
+
+> The http server on the main-pod is available at:
+> https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer
+
+The web UI in `index.html` will be served on this addess. Try opening it in your web browser.
+
+To return a list of all agents send a `GET` request to the `/agents` endpoint:
+
+<CodeGroup>
+
+```bash httpie
+http GET \
+"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents"
+```
+
+
+```bash curl
+curl --request GET \
+"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents"
+```
+
+</CodeGroup>
+
+To interact with a specific agent, send a `POST` request to the `/agents/<name>` endpoint:
+
+<CodeGroup>
+
+```bash httpie
+http POST \
+"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry" \
+message="who are you?"
+```
+
+
+```bash curl
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"who are you?"}' \
+"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry"
+```
+
+</CodeGroup>
+
+For some use cases, especially user-facing ones with potentially long responses, it may be preferable to stream the response. Passing a `stream=true` parameter to the `/agents/<name>` endpoint will stream chunked responses from the agent in real-time:
+
+<CodeGroup>
+
+```bash httpie
+http POST \
+"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry?stream=true" \
+message="what is a patent"
+```
+
+
+```bash curl
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{"message": "what is a patent"}' \
+"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry?stream=true"
+```
+
+</CodeGroup>

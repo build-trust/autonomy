@@ -1,0 +1,39 @@
+---
+title: 'Planning'
+description: ''
+icon: list-tree
+mode: "wide"
+---
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node, ReActPlanner
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant.",
+        model=Model("llama3.2"),
+        planner=ReActPlanner(Model("deepseek-r1")),
+    )
+
+
+Node.start(main)
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: example007
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```

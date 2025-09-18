@@ -1,0 +1,47 @@
+---
+title: "Models"
+description: "Language engines for reasoning, planning, and generation."
+icon: "brain-circuit"
+---
+
+The core of any agent is its model. Models are AI systems that transform input data into useful language outputs. They can understand natural language, reason about context, and generate text, powering the capabilities of [Agents](/agents/agents).
+
+You can specify any model you prefer by passing the `model` argument to `Agent.start()`:
+
+<RequestExample>
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+
+
+Node.start(main)
+```
+
+</RequestExample>
+
+The code above changes the agent to use the `claude-sonnet-4-v1` model. To use `llama4-maverick` change the model to:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("llama4-maverick")
+  )
+
+
+Node.start(main)
+```

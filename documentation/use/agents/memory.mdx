@@ -1,0 +1,79 @@
+---
+title: "Memory"
+description: "Persistent memory for coherent, multi-turn interactions."
+icon: "memory"
+---
+
+Your Autonomy agents have built-in memory that allows them to maintain state across prompts:
+
+```
+> What is your name?
+
+(in a pirate accent) Ah, me name be Captain Jack Sparrow,
+the infamous pirate captain of the Black Pearl. Savvy?
+
+> Where do you live?
+
+(laughs) Ah, me home be the sea, matey. Me ship, the Black Pearl,
+be me abode. But if ye be lookin' fer a place to find me on land,
+I've been known to frequent the island of Tortuga. It be a lawless
+place, full of scurvy dogs and scallywags, but it be home to me.
+
+> What have I asked you before?
+
+(chuckles) Ah, ye be askin' about yer previous questions, eh?
+Alright then, matey... Ye asked me what me name be, and then ye
+asked me where I live. That be the extent o' our conversation
+so far, savvy?
+
+>
+```
+
+## Isolating conversations
+
+You can have multiple separate conversations with an agent at the same time by using a different `conversation` identifier for each one:
+
+<CodeGroup>
+```python
+await agent.send("What have I asked you before?", conversation="1")
+```
+
+```bash httpie
+http POST \
+  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679" \
+  message="What have I asked you before" conversation=1
+```
+
+
+```bash curl
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"What have I asked you before?", "conversation": "1"}' \
+  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679"
+```
+</CodeGroup>
+
+## Isolating conversations per user
+
+You can add an extra layer of isolation by using a unique `scope` identifier (like a customer ID) when conversation-level isolation alone doesn't meet your needs in multi-user environments:
+
+<CodeGroup>
+
+```python Autonomy SDK
+await agent.send("What is 56 divided by 27?", scope="user-1", conversation="1")
+```
+
+```bash httpie
+http POST \
+  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679" \
+  message="What have I asked you before" scope="user-1" conversation=1
+```
+
+
+```bash curl
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"What have I asked you before?", "scope": "user-1", "conversation": "1"}' \
+  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679"
+```
+</CodeGroup>

@@ -1,0 +1,161 @@
+---
+title: "Tools"
+icon: "screwdriver-wrench"
+description: "Agents can invoke tools in Python or via MCP"
+mode: "wide"
+---
+
+### Python Functions as Tools
+
+You can build your own tools in Python for your agents to call when needed. This feature allows unlimited tool possibilities because you can build a tool to do whatever you'd like.
+
+<Tip>
+  You can find all the code for this example [on Github](https://github.com/build-trust/autonomy/tree/main/examples/003).
+</Tip>
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node, Tool
+from datetime import datetime, UTC
+
+
+def current_iso8601_utc_time():
+  """
+  Returns the current UTC time in ISO 8601 format.
+  """
+  return datetime.now(UTC).isoformat() + "Z"
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("claude-sonnet-4-v1"),
+    tools=[Tool(current_iso8601_utc_time)],
+  )
+
+
+Node.start(main)
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: example003
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+
+<CodeGroup>
+
+```bash httpie
+http POST \
+"https://25df35de87aa441b88f22a6c2a830a17-example003.cluster.autonomy.computer/agents/henry" \
+message="what is the current time"
+```
+
+
+```bash curl
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{ "message": "What is the current time?" }' \
+"https://25df35de87aa441b88f22a6c2a830a17-example003.cluster.autonomy.computer/agents/henry"
+```
+
+</CodeGroup>
+
+### Tools provided by MCP Servers
+
+
+```yaml autonomy.yaml
+name: example006
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+
+      - name: mcp
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+        args:
+          ["--sse-port", "8001", "--pass-environment", "--",
+           "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+```yaml secrets.yaml
+BRAVE_API_KEY: "YOUR KEY HERE"
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python:latest
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```python images/main/main.py
+from datetime import datetime
+from autonomy import Agent, Model, Node, McpTool, McpClient, Tool
+
+
+def current_iso8601_utc_time():
+  """
+  Returns the current UTC time in ISO 8601 format.
+  """
+  return datetime.utcnow().isoformat() + "Z"
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="""
+      You are Henry, an expert legal assistant.
+
+      When you are given a question, decide if your response can be better
+      with a web search. If so, use the web search tool to improve your response.
+    """,
+    model=Model("claude-3-7-sonnet-v1"),
+    tools=[
+      McpTool("brave_search", "brave_web_search"),
+      Tool(current_iso8601_utc_time),
+    ],
+  )
+
+
+Node.start(
+  main,
+  mcp_clients=[
+    McpClient(name="brave_search", address="http://localhost:8001/sse"),
+  ],
+)
+```
+
+<CodeGroup>
+
+```bash httpie
+http POST \
+"https://25df35de87aa441b88f22a6c2a830a17-example006.cluster.autonomy.computer/agents/henry" \
+message="Find links to cases currently in the US Supreme Court"
+```
+
+
+```bash curl
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{ "message": "Find links to cases currently in the US Supreme Court" }' \
+"https://25df35de87aa441b88f22a6c2a830a17-example006.cluster.autonomy.computer/agents/henry"
+```
+
+</CodeGroup>

@@ -7,15 +7,77 @@
     "light": "#52C7EA",
     "dark": "#52C7EA"
   },
+  "favicon": "/logo/favicon.png",
   "navigation": {
     "groups": [
       {
         "group": "GET STARTED",
-        "pages": ["index"]
+        "pages": [
+          "start/start-here", 
+          "start/ide-setup",
+          "start/pricing"
+        ]
+      },
+      {
+        "group": "AGENTS",
+        "pages": [
+          "agents/agents",
+          "agents/models",
+          "agents/memory",
+          "agents/knowledge",
+          "agents/tools",
+          "agents/planning"
+        ]
+      },
+      {
+        "group": "COLLABORATION",
+        "pages": [
+          "collaboration/messages",
+          "collaboration/flows"
+        ]
+      },
+      {
+        "group": "ENTERPRISE CONNECTIONS",
+        "pages": [
+          "integration/private_link",
+          "integration/mcp"
+        ]
       }
     ]
   },
-  "logo": {},
-  "navbar": {},
-  "footer": {}
+  "logo": {
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Autonomy Website",
+        "href": "https://autonomy.computer"
+      },
+        {
+        "label": "Open Source Code",
+        "href": "https://github.com/build-trust/autonomy"
+      },
+        {
+        "label": "Support",
+        "href": "https://autonomy.computer/contact/form"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Sign up",
+      "href": "https://my.autonomy.computer"
+    }
+  },
+  "footer": {
+    "socials": {
+      "linkedin": "https://www.linkedin.com/company/autonomy-computer",
+      "github": "https://github.com/build-trust/autonomy",
+      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng"
+    }
+  },
+  "seo": {
+    "indexing": "all"
+  }
 }

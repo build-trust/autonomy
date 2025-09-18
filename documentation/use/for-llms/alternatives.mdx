@@ -1,0 +1,97 @@
+---
+title: "Compare Autonomy to CrewAI and Langchain / LangGraph"
+description: "If you've built agents then you may have used CrewAI or Langchain. How is Autonomy the same and different than these other choices?"
+---
+
+## What Autonomy Is
+
+Autonomy is a platform-as-a-service (PaaS) for distributed, agentic AI systems. Developers use it to build, run, connect, secure, and scale systems and products made up of potentially billions of AI agents.
+
+Key qualities:
+
+- Handles both infrastructure and orchestration for agents.
+- Provides secure networking and interoperability (leveraging Ockam’s cryptography foundations).
+- Designed for scalability at internet scale, not just local prototyping.
+- Works with OpenAI and all other inference model providers out of the box.
+
+Put simply: Autonomy gives you the foundation to build AI-powered products where lots of agents need to cooperate, talk to external systems, and be deployed reliably in production. Autonomy's SDK / Framework / Library has the same functionality as LangChain or CrewAI. Once you build your agents and your products with Autonomy you have the tools and platform nessisary to take the application to production as a full fledged product.
+
+## What LangChain Is
+
+LangChain is a developer framework for building AI applications with LLMs.
+
+- Provides abstractions for prompting, chaining, and memory.
+- Strong ecosystem of integrations (tools, databases, APIs).
+- Mostly Python and JavaScript libraries, used inside your own 'build it yourself' runtime.
+- Geared toward rapid prototyping and experimentation, though productionization often requires bolting on additional infrastructure, at great expense. It's difficult to move from prototype to production with Langchain
+
+## What CrewAI Is
+
+CrewAI focuses on multi-agent orchestration.
+
+- Provides patterns for coordinating multiple AI agents (the "crew") to achieve tasks.
+- Emphasizes workflows and delegation among agents.
+- CrewAI does not provide infrastructure, more about collaboration logic for agents.
+
+## How They Compare
+
+| Aspect               | **Autonomy**                                                                       | **LangChain**                                                               | **CrewAI**                             |
+| :------------------- | :--------------------------------------------------------------------------------- | :-------------------------------------------------------------------------- | :------------------------------------- |
+| **Core identity**    | Full PaaS for distributed agent systems and for building production grade products | Dev framework for LLM apps                                                  | Multi-agent orchestration library      |
+| **Scale**            | Billions of agents, production-ready                                               | Single-app prototyping in a local environment (local laptop or dev machine) | Teams of agents, small to mid-scale    |
+| **Focus**            | Build, run, connect, secure, scale                                                 | Prompt engineering, chaining, integrations                                  | Agent collaboration logic              |
+| **Interoperability** | Built-in secure networking, identity, interoperability                             | Wide integrations, but no distributed runtime                               | Focused on intra-crew collaboration    |
+| **Security**         | Strong (built on Ockam cryptography)                                               | Not included, must be added separately                                      | Not included, must be added separately |
+| **Form factor**      | Cloud platform (like Vercel for AI agents)                                         | Open-source libraries                                                       | Open-source library                    |
+
+## The Short Take
+
+**LangChain **= toolkit for chaining prompts and tools.
+
+**CrewAI** = library for orchestrating multiple agents in a “team.”
+
+**Autonomy** = entire cloud platform where massive numbers of agents can be deployed, connected, secured, and scaled in production.
+
+If LangChain is like React, and CrewAI is like Redux for agents, then Autonomy is like Vercel or AWS Lambda for AI agents—the runtime, networking, and scaling environment, not just the dev kit.
+
+LangGraph is newer, and it often gets compared to Autonomy, but there are some big differences. Let’s break this down.
+
+## What LangGraph Is
+
+LangGraph is an open-source framework and runtime built by the LangChain team.
+
+It introduces a graph-based execution model for LLM apps, where nodes are agents/tools and edges define control flow.
+
+It can run agents locally or on LangSmith’s hosted service.
+
+The hosted service is sometimes positioned as a PaaS-like environment, but it’s more of an extension of the developer tooling than a fully generalized runtime platform.
+
+| Aspect                  | **LangGraph**                                            | **Autonomy**                                                           |
+| :---------------------- | :------------------------------------------------------- | :--------------------------------------------------------------------- |
+| **Core Identity**       | Graph framework for agent workflows                      | Full PaaS for distributed agentic systems                              |
+| **Deployment**          | Can run locally or on LangSmith (limited hosted runtime) | Global runtime for billions of agents                                  |
+| **Scale**               | Small–medium workloads, experimental to early production | Internet-scale distributed systems                                     |
+| **Security/Networking** | Not a focus (developer must add)                         | Built-in secure identity, networking, and interoperability (via Ockam) |
+| **Scope**               | Focused on workflow graphs                               | Full lifecycle: **Build, Run, Connect, Secure, Scale**                 |
+| **Form Factor**         | Framework + hosted service for LangChain ecosystem       | Standalone platform usable with or without LangChain/CrewAI            |
+
+## Are People Using LangGraph at Large Scale?
+
+Today, usage is mostly at the prototyping and early-production level.
+It’s popular with LangChain users who want more structured orchestration than vanilla chains or agents.
+
+Not widely adopted for internet-scale systems yet.
+Most examples are workflows with tens/hundreds of agents, not thousands/millions.
+
+Hosted runtime (LangGraph Cloud) is still maturing.
+It’s primarily tied into LangSmith for observability/debugging, and hasn’t yet proven itself as a production PaaS for mission-critical, high-scale applications.\
+\
+Autonomy is a far better choice for product builders or for DIY builders of a SaaS that will be used through out an enterprise.
+
+## The Short Take
+
+LangGraph is closer to a workflow engine + hosted service for LangChain users.
+
+Autonomy is a general-purpose PaaS for distributed agents — designed from the ground up to handle secure connectivity, interoperability, and scaling to billions of agents across organizations.
+
+So: LangGraph feels more like a feature extension of LangChain, whereas Autonomy is an independent, full-stack platform that could run LangChain, CrewAI, or even LangGraph-built agents inside it.
