@@ -1,0 +1,53 @@
+---
+title: "The Actor Model in Autonomy"
+description: "Why Autonomy runs agents at embarrassingly parallel scale."
+---
+
+### What is the Actor Model?
+
+The **actor model** is a programming and runtime architecture designed around the concept of independent, lightweight entities called _actors_. Each actor has three simple properties:
+
+1. **State** – private data it maintains across its lifetime.
+2. **Behavior** – logic for handling incoming messages.
+3. **Mailbox** – a queue of messages it can process asynchronously.
+
+Instead of threads, processes, or containers, computation is broken down into millions of actors that each handle their own work in isolation. They don’t share memory directly; instead, they communicate by passing messages. This design makes systems naturally concurrent, highly scalable, and resilient to failure.
+
+Frameworks like **Apache Spark** and **Databricks** rely on the actor model to orchestrate large, parallel workloads across clusters. Autonomy applies the same principle to agents.
+
+---
+
+### Why the Actor Model Fits Agents
+
+Agents are a perfect match for actors:
+
+- **Stateful**: Each agent needs to remember identity, context, memory, and goals across interactions. The actor model ensures that this state lives with the agent, instead of being discarded after every request.
+- **Long-lived**: Agents often sit idle, waiting for work. Because actors are extremely lightweight (far cheaper than processes or containers), millions can be kept alive at once without exhausting resources.
+- **Asynchronous**: Agents spend much of their time waiting—for LLMs to return completions or tools to respond. Actors handle this gracefully by suspending work until the next message arrives, without blocking CPU or wasting resources.
+- **Embarrassingly parallel**: Many agentic workloads (e.g. a million customer service reps, or a billion concurrent simulations) are naturally parallel. The actor model excels here, because every agent/actor is independent and can run concurrently without coordination overhead.
+
+This combination makes the actor model the most efficient way to deploy agent systems at scale.
+
+---
+
+### The Wrong Approaches: Containers and Lambdas
+
+When teams try to scale agents with today’s mainstream infrastructure, they often reach for the wrong tools:
+
+- **Containers**: Containers are fantastic for packaging services, but they are far too heavy to represent individual agents. Running millions of containers is both financially prohibitive and operationally impossible for a small team. Containers are slow to start, require orchestration platforms like Kubernetes, and create “day 2” operational burdens (networking, upgrades, observability, crash loops).
+- **Serverless / Lambdas**: Serverless functions are designed for tiny, stateless operations like responding to an HTTP request. They spin up, handle a quick job, then shut down. This makes them inherently incapable of running agents, which need to be **long-lived and stateful**. The constant spin-up/shut-down cycle of Lambdas is also wasteful for workloads where the agent is mostly idle but must maintain identity and memory.
+
+In short, containers are too heavy and serverless is too ephemeral.
+
+---
+
+### Why Autonomy is Different
+
+Autonomy’s runtime is built natively on the **actor model**. Every agent maps 1:1 with an actor. This means:
+
+- You can run **millions of agents on commodity hardware** without drowning in overhead.
+- Agents can **retain state across long lifetimes** without hacks or glue systems.
+- The platform naturally handles **scale, concurrency, and communication** between agents, because those are fundamental properties of the actor model.
+- Developers focus on _what the agent should do_, not how to manage the complexity of containers, schedulers, or serverless architectures.
+
+Just as Spark unlocked massive parallelism for data processing, Autonomy unlocks massive parallelism for intelligent agents. By using the actor model at its core, Autonomy makes it possible to build, connect, and scale agentic systems to billions of instances—all in a way that is efficient, reliable, and operationally simple.
