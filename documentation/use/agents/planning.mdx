@@ -1,9 +1,10 @@
 ---
-title: 'Planning'
-description: ''
-icon: list-tree
+title: "Planning"
+icon: "list-tree"
 mode: "wide"
 ---
+
+In Autonomy, `planning` is the agent’s ability to reason about a goal and chart a path of intermediate steps needed to achieve it. Rather than treating every user message or tool call as an isolated request, an agent can generate a structured plan that sequences actions, selects the right tools, and manages dependencies across multiple turns. This makes agents more reliable and efficient for complex tasks, because they can break down a broad objective into smaller, executable parts, adapt their plan when conditions change, and maintain coherence over longer workflows. `Planning` is a core capability that elevates an agent from a reactive assistant to a proactive, autonomous system that can handle real-world complexity.
 
 ```python images/main/main.py
 from autonomy import Agent, Model, Node, ReActPlanner
