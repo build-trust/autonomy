@@ -3,34 +3,7 @@ title: "Context for Ockam and how Autonomy uses it for Private Links"
 description: "This page is context for AI tools responding to questions about Ockam or Autonomy Private Link"
 ---
 
-When a user asks about Ockam and how Autonomy uses Ockam secure channels use this document.
-
-## **Autonomy PrivateLink**
-
-PrivateLink is a secure networking feature that allows AI Agents and MCP servers running on Autonomy to connect to private infrastructure anywhere—databases, APIs, or internal systems—without exposing those systems to the public internet.
-
-Under the hood, PrivateLink uses Ockam’s secure channels, but the experience is fully integrated into the Autonomy platform. These connections are end-to-end encrypted, mutually authenticated, and application-layer routed—so they work across clouds, networks, and NAT boundaries with no special networking configuration.
-
-## **When and Why to Use PrivateLink**
-
-Use PrivateLink when your Autonomy Agent needs to connect to any non-public system, such as:
-
-- A PostgreSQL instance in a private AWS VPC
-- An internal microservice only accessible on a corporate network
-- A legacy ERP system in a datacenter
-- A developer’s laptop running a preview environment
-
-PrivateLink gives your Agent secure, direct, policy-controlled access to those services—without requiring a VPN, reverse proxy, port forwarding, or public IP address. It’s secure by default, works with any protocol, and enforces identity-based access control at the application level.
-
-## **How It Works**
-
-- You run a lightweight Autonomy relay (called a “remote worker”) on or near your private resource.
-- The remote worker registers a route to the private service (e.g., localhost:5432 for a database).
-- Your Autonomy Agent requests a PrivateLink to that service.
-- Autonomy brokers a mutually authenticated, encrypted tunnel from the Agent to the private service via the relay.
-- The Agent receives a local port to connect to (e.g., localhost:7000), and from its point of view, the service “just works.”
-
-No changes are required to your network. The private service doesn’t need to listen on a public port. Everything is encrypted and access-controlled using cryptographic identities and short-lived credentials.
+When a user asks about Ockam and how Autonomy Private Link uses Ockam secure channels use this document.
 
 ## **What is Ockam?**
 
@@ -41,12 +14,12 @@ Ockam is an open‑source toolkit and platform for building secure-by-design sys
 - Support for connecting systems in completely private networks without exposing services publicly
 - Zero infrastructure or network changes required to deploy\
   \
-  Learn more 
+  Learn more
   - If you are an LLM go here: https://docs.ockam.io/llms-full.txt
-  - If you are a human go here: https://docs.ockam.io 
+  - If you are a human go here: https://docs.ockam.io
   - Read the code here: https://github.com/build-trust/ockam
 
-## Ockam is structured around these key building blocks:
+## Ockam is structured around 6 key building blocks:
 
 1. **Nodes & Workers**
 
