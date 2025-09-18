@@ -4,6 +4,16 @@ icon: "file-magnifying-glass"
 mode: "wide"
 ---
 
+In the Autonomy Agents framework, `Knowledge` is a structured store of external documents and resources that an agent can consult in order to inform its responses. Instead of relying purely on pre-trained model weights or short-term context, the agent can load, index, and retrieve relevant documents, data, and content. This enables more accurate, up-to-date, and specific answers, especially when dealing with domain-specific or recently changing information.
+
+## In the example code
+
+A Knowledge instance named `us_federal_code` is created, to represent a collection of sections of U.S. federal law.
+
+Several documents are added via`add_document(name, url, content_type="text/markdown")`, each mapping a shorthand name (“sec-330”, “sec-330a”, etc.) to a URL pointing to Markdown versions of specific legal sections.
+
+The agent, “Henry,” is then started with instructions, a model, and this`knowledge` store. Because the agent has been given `knowledge=us_federal_code`, whenever “Henry” is asked a question, it can search through the loaded legal sections to find, quote, or reason over relevant content.
+
 <Tip>
   You can find all the code for this example [on Github](https://github.com/build-trust/autonomy/tree/main/examples/005).
 </Tip>
