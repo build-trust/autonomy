@@ -2,7 +2,32 @@
 title: "MCP"
 icon: "link-horizontal"
 mode: "wide"
+description: "Host MCP servers on Autonomy, or connect to any external MCP server"
 ---
+
+An MCP server (Model Context Protocol server) is a service that exposes external tools, APIs, or searchable knowledge via a standard interface allowing agents to query them at runtime. Essentially, the agent doesn’t need to embed all functionality; instead, when it needs to do something like search the web or fetch information outside what it already knows, it uses one or more MCP servers as external helpers. These servers can stream responses, support event-driven queries, and allow tools to be plugged in more modularly.
+
+## Why MCP Servers Are Important
+
+**Modularity & extensibility:** MCP servers let you add new capabilities (search, custom APIs, specialized tools) without changing the core agent code. You just plug in a server.
+
+**Separation of concerns:** The agent focuses on reasoning, planning, memory, etc., while the MCP server handles external lookups or heavy computation. This can simplify both development and scaling.
+
+**Up-to-date & external scope:** Many external sources change frequently (news, web search, data APIs). By calling out to an MCP server, the agent can retrieve fresh information rather than being limited to what’s embedded in its model or static knowledge.
+
+**Flexibility & sharing:** The same MCP server can serve multiple agents; or you can switch which MCP server you use (local vs remote) without rewriting your agent’s logic.
+
+## Local vs Remote MCP Servers in Autonomy
+
+In Autonomy, you have the option to either access remote MCP servers (hosted externally by others) or host your own MCP servers close to your agents on Autonomy. Hosting your own MCP servers gives you more control (latency, access, privacy), while remote servers can simplify setup and let you reuse existing, maintained tools.
+
+## What the MCP Example Shows
+
+A pod is defined in autonomy.yaml with two containers: one for the agent’s main code, and another running an MCP proxy server (mcp-proxy) connected to a web-search tool (Brave Search).
+
+The agent (“Henry”) is configured with two tools: one is a `McpTool named "brave_search"` which uses the brave_web_search endpoint via MCP, and the other is a local tool function to return the current UTC time. autonomy.computer
+
+The agent is started with McpClient configured to connect to the MCP server at http://localhost:8001/sse for "brave_search". This shows the wiring: when Henry decides a web search would improve its answer, it routes that request through the MCP server rather than utilizing the LLM model.
 
 ```yaml autonomy.yaml
 name: example006
