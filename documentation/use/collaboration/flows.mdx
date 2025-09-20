@@ -19,7 +19,7 @@ Flows are foundational because they let you move beyond reactive agents and crea
 
 ## How the example works: 
 
-The `flow defines` a **multi-agent pipeline** for triaging, evaluating, and fixing security questions. 
+The `flow` defines a **multi-agent pipeline** for triaging, evaluating, and fixing security questions. 
 
 First, a `triage` agent classifies an incoming question into one of three categories: “network,” “code,” or “other.” Depending on the category, the `flow` routes execution to different downstream agents: for “network,” it goes to a _network expert_ that ends the flow; for “code,” it goes to a _code evaluator_ which may either label the code snippet “safe” and terminate, or forward it to a _code security fixer_ for remediation. Between steps, there are **conditions** (e.g. only send to fixer if vulnerability found) and **operations,** like `EVALUATE,` that govern how agents interact and how the `flow` proceeds.
 
