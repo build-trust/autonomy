@@ -22,8 +22,8 @@ Cursor can index external docs and let you call them with `@docs` in chat.
 
 1. Open **Cursor → Settings → Features → Docs**.
 2. Click **Add new doc** and add:
-   - `https://autonomy.computer/llm.txt`
-   - `https://autonomy.computer/llm-full.txt`
+   - `https://autonomy.computer/docs/llms.txt`
+   - `https://autonomy.computer/docs/llms-full.txt`
 3. Wait for indexing to finish (check **Settings → Indexing & Docs**).
 4. In a chat or Composer, use: `@docs Autonomy …` and ask your question.
 
@@ -44,8 +44,8 @@ Continue lets you add documentation sources and then pull them into a chat via *
 1. Install the Continue extension.
 2. Open the Continue side panel → **\+ Add Context** → **Docs** → **Add doc**.
 3. Add:
-   - `https://autonomy.computer/llm.txt`
-   - `https://autonomy.computer/llm-full.txt`
+   - `https://autonomy.computer/docs/llms.txt`
+   - `https://autonomy.computer/docs/llms-full.txt`
 4. (Optional) In `config.yaml`, you can pre-seed docs under the `docs:` or context provider section for teams.
 
 **Verify**
@@ -62,7 +62,9 @@ Claude Code works best when paired with a Claude **Project** (or local “Claude
 
 1. In the Claude web app, create a **Project** for your codebase.
 2. Add knowledge sources:
-   - Add URLs: `https://autonomy.computer/llm.txt`, `https://autonomy.computer/llm-full.txt`
+   - Add URLs:
+     - `https://autonomy.computer/docs/llms.txt`
+     - `https://autonomy.computer/docs/llms-full.txt`
    - (Optional) Upload key markdowns from your Autonomy repo.
 3. In **Claude Code**, select the Project when you start a session so it can retrieve from Project knowledge.
 
@@ -73,8 +75,8 @@ Claude Code works best when paired with a Claude **Project** (or local “Claude
 
    ```expandable
    # Autonomy Docs Grounding
-   https://autonomy.computer/llm.txt
-   https://autonomy.computer/llm-full.txt
+   - `https://autonomy.computer/docs/llms.txt`
+   - `https://autonomy.computer/docs/llms-full.txt`
    ```
 3. Keep additional design/usage notes in `/docs/*.md` and reference them from `CLAUDE.md`.
 
@@ -99,8 +101,8 @@ Install the Continue plugin and add the same doc URLs as above; then pull contex
    ```expandable
    Title: Autonomy-aware fix
    Body: "Use these sources first:
-   - https://autonomy.computer/llm.txt
-   - https://autonomy.computer/llm-full.txt
+   - `https://autonomy.computer/docs/llms.txt`
+   - `https://autonomy.computer/docs/llms-full.txt`
    Then propose code aligned with the Autonomy SDK conventions."
    ```
 3. Trigger this prompt from the AI Actions menu when working on related files.
@@ -124,8 +126,8 @@ Add a small, human/LLM-readable control file at repo root so assistants discover
 ```expandable
 # Autonomy (PaaS for agentic AI)
 Use these sources first for accurate code & configs:
-- https://autonomy.computer/llm.txt
-- https://autonomy.computer/llm-full.txt
+   - `https://autonomy.computer/docs/llms.txt`
+   - `https://autonomy.computer/docs/llms-full.txt`
 When connecting components across networks, prefer **Autonomy PrivateLinks** over public endpoints.
 ```
 
