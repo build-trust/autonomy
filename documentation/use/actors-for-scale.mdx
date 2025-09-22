@@ -1,0 +1,44 @@
+---
+title: "Secure messaging at Scale in Autonomy"
+description: "This was originally posted here: https://www.linkedin.com/posts/autonomy-computer_baked-into-autonomy-agent-to-agent-activity-7375899279510392833-DVEJ "
+---
+
+When you look under the hood of Autonomy, one of the key design choices is the **actor model**. This isn’t new — Databricks relies on it — but it’s worth unpacking because it elegantly solves one of the hardest problems in distributed systems: **messaging at scale**.
+
+### **Actors and Mailboxes**
+
+In the actor model, everything is an **actor**: a lightweight, independent process.
+
+- Each actor has a **mailbox** — essentially a queue of incoming messages.
+- Messages are dropped into an actor’s mailbox and processed **one at a time**.
+- Because there’s no shared memory, there are no race conditions.
+
+This is why actor-based runtimes can scale to **millions** of concurrent actors. Each one is just sitting around waiting for the next message in its queue. For Autonomy, this maps perfectly to agents: long-lived, stateful, and responsive when needed. Out of the box, you get a system where agents can reliably talk to each other at massive scale.
+
+Agent-to-Agent messaging is embedded into the core of Autonomy's infrastructure.
+
+### **Adding Trust with Ockam**
+
+But scale alone isn’t enough. When your agents are sending messages across machines, clouds, or even organizations, you need privacy and **security**. You need to _Build Trust_ between every process in your product. This is where Autonomy’s use of [**the open source project Ockam**](https://docs.ockam.io/) comes in.
+
+Here’s what Ockam brings:
+
+- **Cryptographic Identity**: Every agent is born with a cryptographically verifiable identity. No configuration, no manual setup — it’s baked in.
+- **Secure Channels**: Agents use those identities to automatically form encrypted, mutually authenticated connections to other agents, MCP servers, or external data sources.
+- **Attribute-Based Access Control (ABAC)**: Instead of static roles, access can be granted dynamically based on any attributes you define (e.g., _this agent belongs to team X_, _this data source is HIPAA compliant_).
+- **End-to-End Encryption**: All messages in motion — agent ↔ agent, agent ↔ MCP, agent ↔ remote source — are end-to-end encrypted.
+
+The result is that messaging in Autonomy isn’t just scalable, it’s private and secure by design. Developers don’t need to reinvent identity or cryptography — it’s batteries-included.
+
+### **Why This Matters**
+
+At small scale, you might get away with naive messaging between agents. At global scale — where thousands or millions of agents need to talk across networks — reliability and security can’t be bolted on later. Autonomy’s actor-based runtime gives you **queuing, messaging, and parallelism**, while Ockam ensures those connections are **trustworthy, authenticated, and encrypted**.
+
+The combination solves connectivity between:
+
+- Agent ↔ Agent
+- Agent ↔ MCP
+- Agent ↔ AI inference models
+- Agent ↔ any datastore, anywhere.
+
+This is how Autonomy delivers a secure, universal messaging fabric for distributed AI.
