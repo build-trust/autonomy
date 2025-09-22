@@ -15,6 +15,7 @@
         "pages": [
           "start/start-here", 
           "start/ide-setup",
+          "start/discord",
           "start/pricing"
         ]
       },
