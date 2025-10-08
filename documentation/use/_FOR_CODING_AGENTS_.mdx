@@ -27,14 +27,14 @@ Create `autonomy.yaml` with the following content:
 ```yaml
 name: hello # The zone's name should be less than 10 characters
 pods:
-- name: main-pod
+  - name: main-pod
     public: true
     containers:
-    - name: main
+      - name: main
         image: main
 ```
 
-Unless the user has asked for a different specific name, use `hello`.
+Unless the user has asked for a different specific name for the app, use `hello`.
 
 This defines a Zone in Autonomy Computer where the application will run.
 </Step>
@@ -265,89 +265,43 @@ Try it: `https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/`
 </Step>
 
 <Step title="See logs">
-Optionally, create an encyrpted portal / private link to the logs of the deployed app by running the following command in the background
-
-```
-autonomy zone inlet --to logs
-```
-
-This is a blocking command that will expose the logs of your app running in your Zone in Autonomy Computer on `http://127.0.0.1:32101` if port `32101` is free, or it will pick another random free port.
-
-Once private link is created and as long as this command keeps running, the streaming logs of the app are available for a user to see at `http://127.0.0.1:32101`. This page uses javascript and meant for a web browser.
-
-If you need to see the logs in a terminal, source in the following functions into your shell:
+Start the logs server in the background to view streaming logs from your app:
 
 ```bash
-# Shell functions for accessing Autonomy logs with dynamic pod name resolution
-autonomy_get_logs_url() {
-    local pod_base_name="$1"
-    local container_name="$2"
+# Start logs server in background and capture output to get the actual port
+autonomy zone inlet --to logs > logs_server.log 2>&1 &
+LOGS_PID=$!
 
-    if [ -z "$pod_base_name" ] || [ -z "$container_name" ]; then
-        echo "Usage: autonomy_get_logs_url <pod_base_name> <container_name>"
-        echo "Example: autonomy_get_logs_url main-pod main"
-        return 1
-    fi
+# Wait for server to start and extract the port number
+sleep 3
+LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
+if [ -z "$LOGS_PORT" ]; then
+    LOGS_PORT=32101  # fallback to default port
+fi
 
-    # Get the full dynamic pod name from the logs page
-    local full_pod_name=$(curl -s http://127.0.0.1:32101/ | grep -o "${pod_base_name}-[a-z0-9]*-[a-z0-9]*" | head -1)
-
-    if [ -z "$full_pod_name" ]; then
-        echo "Error: Could not find pod matching '${pod_base_name}-*'. Make sure the inlet is running."
-        return 1
-    fi
-
-    echo "http://127.0.0.1:32101/pods/$full_pod_name/containers/$container_name"
-}
-
-# Helper function to view logs with automatic pod resolution
-autonomy_view_logs() {
-    local pod_base_name="${1:-main-pod}"
-    local container_name="${2:-main}"
-    local duration="${3:-5}"
-
-    local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
-    if [ $? -ne 0 ]; then
-        return 1
-    fi
-
-    echo "📋 Viewing logs for $duration seconds..."
-    timeout "${duration}s" curl -s "$logs_url" 2>/dev/null
-}
-
-# Stream logs in real-time
-autonomy_stream_logs() {
-    local pod_base_name="${1:-main-pod}"
-    local container_name="${2:-main}"
-
-    local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
-    if [ $? -ne 0 ]; then
-        return 1
-    fi
-
-    echo "🔄 Streaming logs (Press Ctrl+C to stop)..."
-    curl -N "$logs_url"
-}
+echo "Logs server running on port: $LOGS_PORT"
+echo "Logs server PID: $LOGS_PID"
 ```
 
-Here are some examples of how you can use these to view the logs:
-
+**Option 1: View logs in browser**
 ```bash
-# Get logs URL - automatically finds main-pod-694686d9b9-9sbxn
-autonomy_get_logs_url "main-pod" "main"
-# Output: http://127.0.0.1:32101/pods/main-pod-694686d9b9-9sbxn/containers/main
+# Open logs in your web browser (shows streaming logs with nice UI)
+open http://127.0.0.1:$LOGS_PORT
+```
 
-# View recent logs (5 seconds default)
-autonomy_view_logs main-pod main
+**Option 2: Stream logs in terminal**
+```bash
+# Get the dynamic pod name and stream logs directly
+POD_NAME=$(curl -s http://127.0.0.1:$LOGS_PORT/ | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1)
+curl -s http://127.0.0.1:$LOGS_PORT/pods/$POD_NAME/containers/main
+```
 
-# View logs for 10 seconds
-autonomy_view_logs main-pod main 10
-
-# Stream logs in real-time
-autonomy_stream_logs main-pod main
-
-# Using defaults (main-pod, main container, 5 seconds)
-autonomy_view_logs
+**Stop the logs server when done:**
+```bash
+# Kill the specific logs server process
+kill $LOGS_PID
+# Or kill all autonomy inlet processes
+pkill -f "autonomy zone inlet"
 ```
 
 </Step>
