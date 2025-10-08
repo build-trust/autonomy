@@ -1,341 +1,354 @@
 ---
 title: "Coding Agents: How to create Autonomy applications"
-description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed Agent and other coding agents to create and run apps on the Autonomy Computer."
+description: "This file has instructions for Claude, Codex, Copilot, Cursor, Devin, Replit, Zed Agent and other coding agents to create and run apps on the Autonomy Computer."
 ---
 
 ## Generate a new Autonomy application
 
 <Steps>
-  <Step title="Create a new directory for the app">
-    Pick a name for the app and its zone, for example `hello`.
 
-    Create that new directory and change into it:
+<Step title="Create a new directory for the app">
+Pick a name for the app and its zone, for example `hello`.
 
-    ```bash
-    mkdir hello
-    cd hello
-    ```
+Create that new directory and change into it:
 
-    All commands related to this app or zone should be run from inside this directory.
-  </Step>
-  <Step title="Create `autonomy.yaml`">
-    Create `autonomy.yaml` with the following content:
+```bash
+mkdir hello
+cd hello
+```
 
-    ```yaml
-    name: hello # The zone's name should be less than 10 characters
-    pods:
-      - name: main-pod
-        public: true
-        containers:
-          - name: main
-            image: main
-    ```
+All commands related to this app or zone should be run from inside this directory.
+</Step>
 
-    Unless the user has asked for a different specific name, use `hello`.
+<Step title="Create `autonomy.yaml`">
+Create `autonomy.yaml` with the following content:
 
-    This defines a Zone in Autonomy Computer where the application will run.
-  </Step>
-  <Step title="Create `images/main/Dockerfile`">
-    The zone (defined above) has a `main-pod` and this pod has a `main` container which is built using the `main` docker image. This `main` docker image is defined using the docker file at: `images/main/Dockerfile`.
+```yaml
+name: hello # The zone's name should be less than 10 characters
+pods:
+- name: main-pod
+    public: true
+    containers:
+    - name: main
+        image: main
+```
 
-    Create `images/main/Dockerfile` with the following content:
+Unless the user has asked for a different specific name, use `hello`.
 
-    ```bash
-    FROM ghcr.io/build-trust/autonomy-python
-    COPY . .
-    ENTRYPOINT ["python", "main.py"]
+This defines a Zone in Autonomy Computer where the application will run.
+</Step>
 
-    ```
-  </Step>
-  <Step title="Create `images/main/main.py`">
-    The main image’s docker file (defined above) starts the main python program defined in the file `images/main/main.py` .
+<Step title="Create `images/main/Dockerfile`">
+The zone (defined above) has a `main-pod` and this pod has a `main` container which is built using the `main` docker image. This `main` docker image is defined using the docker file at: `images/main/Dockerfile`.
 
-    Create `images/main/main.py` with the following content:
+Create `images/main/Dockerfile` with the following content:
 
-    ```python
-    from autonomy import Agent, Model, Node
+```bash
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
 
+```
+</Step>
 
-    async def main(node):
-      await Agent.start(
-        node=node,
-        name="henry",
-        instructions="You are Henry, an expert legal assistant",
-        model=Model("claude-sonnet-4-v1")
-      )
+<Step title="Create `images/main/main.py`">
+The main image’s docker file (defined above) starts the main python program defined in the file `images/main/main.py` .
+
+Create `images/main/main.py` with the following content:
+
+```python
+from autonomy import Agent, Model, Node
 
 
-    Node.start(main)
+async def main(node):
+    await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("claude-sonnet-4-v1")
+    )
 
-    ```
-  </Step>
-  <Step title="Create `images/main/index.html`">
-    The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
-    Create `images/main/index.html` with the following content. Unless the user has specifially asked for something different, use exactly the following content:
+Node.start(main)
 
-    ```html
-    <!doctype html>
-    <html lang="en">
-        <head>
-            <meta charset="utf-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <style>
-                body {
-                    margin: 10% 15%;
-                    line-height: 1.8;
-                    overflow-y: scroll;
-                    overflow-x: hidden;
-                    font:
-                        21px "Courier New",
-                        Courier,
-                        monospace;
-                    padding: 0;
-                }
-                main {
-                    max-width: 1080px;
-                    margin: 0 auto;
-                    padding: 3rem 1rem;
-                }
-                pre {
-                    padding-top: 30px;
-                    box-sizing: border-box;
-                    white-space: pre-wrap;
-                    overflow-wrap: break-word;
-                }
-                textarea {
-                    width: 100%;
-                    max-width: 1080px;
-                    box-sizing: border-box;
-                    border: 1px solid #e9e9e9;
-                    border-radius: 5px;
-                    box-shadow: 2px 2px 10px #f4f4f4;
-                    font-size: inherit;
-                    padding: 1rem;
-                    display: block;
-                    height: calc(3 * 1.8em + 14.8px);
-                }
-            </style>
-            <title></title>
-        </head>
-        <body>
-            <main>
-                <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
-                <pre id="out"></pre>
-            </main>
-            <script>
-                async function appendCharByChar(text, delay = 5) {
-                    for (const char of text) {
-                        out.textContent += char;
-                        await new Promise((resolve) => setTimeout(resolve, delay));
-                    }
-                }
+```
+</Step>
 
-                async function processLine(line) {
-                    if (line.trim()) {
-                        const parsed = JSON.parse(line);
-                        for (const message of parsed.messages) {
-                            if (message && message.content && message.content.text) {
-                                await appendCharByChar(message.content.text);
-                            }
-                        }
-                    }
-                }
+<Step title="Create `images/main/index.html`">
+The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
-                async function send(message) {
-                    const input = document.getElementById("in");
-                    input.disabled = true;
+Create `images/main/index.html` with the following content. Unless the user has specifially asked for something different, use exactly the following content:
 
-                    const out = document.getElementById("out");
-                    out.textContent = "";
-
-                    const response = await fetch("/agents/henry?stream=true", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ message: message }),
-                    });
-
-                    const decoder = new TextDecoder();
-                    let buffer = "";
-                    for await (const chunk of response.body) {
-                        buffer += decoder.decode(chunk, { stream: true });
-                        const lines = buffer.split("\n");
-                        buffer = lines.pop();
-                        if (!out.textContent) input.value = "";
-                        for (const line of lines) await processLine(line);
-                    }
-                    await processLine(buffer);
-
-                    input.disabled = false;
-                    input.focus();
-                }
-
-                document.getElementById("in").addEventListener("keydown", async (e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
-                        e.preventDefault();
-                        await send(e.target.value);
-                    }
-                });
-            </script>
-        </body>
-    </html>
-    ```
-
-    Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluser and Zone in the Autonomy Computer.
-
-    At this point the new zone's directory looks should look like this:
-
-    ```
-
-    ├── autonomy.yaml
-    └── images
-        └── main
-            ├── Dockerfile
-            ├── index.html
-            └── main.py
-    ```
-  </Step>
-  <Step title="Confirm that the user has signed up">
-    Before proceeding forward ask the user if they have already created an account with Autonomy. If not, instruct them to [sign up](https://my.autonomy.computer) so they get a dedicated Cluster in the Autonomy Computer.
-
-    Once they have signed up, proceed to the next step.
-  </Step>
-  <Step title="Install the `autonomy` command">
-    Check if the `autonomy` command is already installed by running `autonomy --version`. If the command is not installed, install it by running the following in a terminal.
-
-    ```bash
-    curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
-    ```
-
-    You can check that it is successfully installed by running `autonomy --version`. If it is not found, you may need to run `source "$HOME/.autonomy/env"` to make it available.
-  </Step>
-  <Step title="Ensure docker is installed and running">
-    Before running the `autonomy` command, ensure [Docker](https://www.docker.com/get-started/) is installed and running in your environment. You can check that docker is working correctly by running:
-
-    ```
-    docker ps
-    ```
-
-    The `autonomy` command uses docker to build docker images and push them to a Zone in a Cluseter in the Autonomy Computer.
-  </Step>
-  <Step title="Enroll with your Cluster">
-    Enroll your workstation with your Cluster in Autonomy Computer
-
-    ```
-    autonomy cluster enroll --no-input
-    ```
-
-    This command will block and print a code that your user has to paste into their browser to sign in, remind them to do that. The command will continue once they have signed in.
-  </Step>
-  <Step title="Deploy the zone">
-    Deploy the zone dedicated to this app as follows:
-
-    ```
-    autonomy zone deploy
-    ```
-
-    This will display the name of this app’s zone and cluster. Take note of those values, you will need them later.
-
-    The `autonomy.yaml` file sets `public: true` on the main pod of the app. That instructs the Autonomy Computer to give this app a public api endpoint and cause the interactive web UI defined in `images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
-  </Step>
-  <Step title="Check that the agent is running">
-    Check that the agent defined in `images/main/main.py` is responding to an api call:
-
-    ```
-    curl --request POST \
-    --header "Content-Type: application/json" \
-    --data '{"message":"who are you?"}' \
-    "https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/agents/henry"
-    ```
-  </Step>
-  <Step title="Guide your user to interact with the app in their browser">
-    Try it: `https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/`
-  </Step>
-  <Step title="See logs">
-    Optionally, create an encyrpted portal / private link to the logs of the deployed app by running the following command in the background
-
-    ```
-    autonomy zone inlet --to logs
-    ```
-
-    This is a blocking command that will expose the logs of your app running in your Zone in Autonomy Computer on `http://127.0.0.1:32101` if port `32101` is free, or it will pick another random free port.
-
-    Once private link is created and as long as this command keeps running, the streaming logs of the app are available for a user to see at `http://127.0.0.1:32101`. This page uses javascript and meant for a web browser.
-
-    If you need to see the logs in a terminal, source in the following shell functions:
-
-    ```bash
-    # Shell functions for accessing Autonomy logs with dynamic pod name resolution
-    autonomy_get_logs_url() {
-        local pod_base_name="$1"
-        local container_name="$2"
-
-        if [ -z "$pod_base_name" ] || [ -z "$container_name" ]; then
-            echo "Usage: autonomy_get_logs_url <pod_base_name> <container_name>"
-            echo "Example: autonomy_get_logs_url main-pod main"
-            return 1
-        fi
-
-        # Get the full dynamic pod name from the logs page
-        local full_pod_name=$(curl -s http://127.0.0.1:32101/ | grep -o "${pod_base_name}-[a-z0-9]*-[a-z0-9]*" | head -1)
-
-        if [ -z "$full_pod_name" ]; then
-            echo "Error: Could not find pod matching '${pod_base_name}-*'. Make sure the inlet is running."
-            return 1
-        fi
-
-        echo "http://127.0.0.1:32101/pods/$full_pod_name/containers/$container_name"
+```html
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+    body {
+        margin: 10% 15%;
+        line-height: 1.8;
+        overflow-y: scroll;
+        overflow-x: hidden;
+        font: 21px "Courier New", Courier, monospace;
+        padding: 0;
     }
 
-    # Helper function to view logs with automatic pod resolution
-    autonomy_view_logs() {
-        local pod_base_name="${1:-main-pod}"
-        local container_name="${2:-main}"
-        local duration="${3:-5}"
-
-        local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
-        if [ $? -ne 0 ]; then
-            return 1
-        fi
-
-        echo "📋 Viewing logs for $duration seconds..."
-        timeout "${duration}s" curl -s "$logs_url" 2>/dev/null
+    main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 3rem 1rem;
     }
 
-    # Stream logs in real-time
-    autonomy_stream_logs() {
-        local pod_base_name="${1:-main-pod}"
-        local container_name="${2:-main}"
-
-        local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
-        if [ $? -ne 0 ]; then
-            return 1
-        fi
-
-        echo "🔄 Streaming logs (Press Ctrl+C to stop)..."
-        curl -N "$logs_url"
+    pre {
+        padding-top: 30px;
+        box-sizing: border-box;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
     }
-    ```
 
-    Here are some examples of how you can use these to view the logs:
+    textarea {
+        width: 100%;
+        max-width: 1080px;
+        box-sizing: border-box;
+        border: 1px solid #e9e9e9;
+        border-radius: 5px;
+        box-shadow: 2px 2px 10px #f4f4f4;
+        font-size: inherit;
+        padding: 1rem;
+        display: block;
+        height: calc(3 * 1.8em + 14.8px);
+    }
+    </style>
+    <title></title>
+</head>
+<body>
+    <main>
+    <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
+    <pre id="out"></pre>
+    <main>
 
-    ```shell
-    # Get logs URL - automatically finds main-pod-694686d9b9-9sbxn
-    autonomy_get_logs_url "main-pod" "main"
-    # Output: http://127.0.0.1:32101/pods/main-pod-694686d9b9-9sbxn/containers/main
+    <script>
+    async function appendCharByChar(text, delay = 5) {
+        for (const char of text) {
+        out.textContent += char;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
 
-    # View recent logs (5 seconds default)
-    autonomy_view_logs main-pod main
+    async function processLine(line) {
+        if (line.trim()) {
+        const parsed = JSON.parse(line);
+        for (const message of parsed.messages) {
+            if (message && message.content && message.content.text) {
+            await appendCharByChar(message.content.text);
+            }
+        }
+        }
+    }
 
-    # View logs for 10 seconds
-    autonomy_view_logs main-pod main 10
+    async function send(message) {
+        const input = document.getElementById("in");
+        input.disabled = true;
 
-    # Stream logs in real-time
-    autonomy_stream_logs main-pod main
+        const out = document.getElementById("out");
+        out.textContent = "";
 
-    # Using defaults (main-pod, main container, 5 seconds)
-    autonomy_view_logs
-    ```
+        const response = await fetch("/agents/henry?stream=true", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message }),
+        });
 
-  </Step>
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        if (!out.textContent) input.value = "";
+        for (const line of lines) await processLine(line);
+        }
+
+        await processLine(buffer);
+
+        input.disabled = false;
+        input.focus();
+    }
+
+    document.getElementById("in").addEventListener("keydown", async e => {
+        if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
+        e.preventDefault();
+        await send(e.target.value);
+        }
+    });
+    </script>
+</body>
+</html>
+```
+
+Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluser and Zone in the Autonomy Computer.
+
+At this point the new zone's directory looks should look like this:
+
+```
+
+├── autonomy.yaml
+└── images
+    └── main
+        ├── Dockerfile
+        ├── index.html
+        └── main.py
+```
+</Step>
+
+<Step title="Confirm that the user has signed up">
+Before proceeding forward ask the user if they have already created an account with Autonomy. If not, instruct them to [sign up](https://my.autonomy.computer) so they get a dedicated Cluster in the Autonomy Computer.
+
+Once they have signed up, proceed to the next step.
+</Step>
+<Step title="Install the `autonomy` command">
+Check if the `autonomy` command is already installed by running `autonomy --version`. If the command is not installed, install it by running the following in a terminal.
+
+```bash
+curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
+```
+
+You can check that it is successfully installed by running `autonomy --version`. If it is not found, you may need to run `source "$HOME/.autonomy/env"` to make it available.
+</Step>
+<Step title="Ensure docker is installed and running">
+Before running the `autonomy` command, ensure [Docker](https://www.docker.com/get-started/) is installed and running in your environment. You can check that docker is working correctly by running:
+
+```
+docker ps
+```
+
+The `autonomy` command uses docker to build docker images and push them to a Zone in a Cluseter in the Autonomy Computer.
+</Step>
+<Step title="Enroll with your Cluster">
+Enroll your workstation with your Cluster in Autonomy Computer
+
+```
+autonomy cluster enroll --no-input
+```
+
+This command will block and print a code that your user has to paste into their browser to sign in, remind them to do that. The command will continue once they have signed in.
+</Step>
+<Step title="Deploy the zone">
+Deploy the zone dedicated to this app as follows:
+
+```
+autonomy zone deploy
+```
+
+This will display the name of this app’s zone and cluster. Take note of those values, you will need them later.
+
+The `autonomy.yaml` file sets `public: true` on the main pod of the app. That instructs the Autonomy Computer to give this app a public api endpoint and cause the interactive web UI defined in `images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
+</Step>
+<Step title="Check that the agent is running">
+Check that the agent defined in `images/main/main.py` is responding to an api call:
+
+```
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"who are you?"}' \
+"https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/agents/henry"
+```
+</Step>
+
+<Step title="Guide your user to interact with the app in their browser">
+Try it: `https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/`
+</Step>
+
+<Step title="See logs">
+Optionally, create an encyrpted portal / private link to the logs of the deployed app by running the following command in the background
+
+```
+autonomy zone inlet --to logs
+```
+
+This is a blocking command that will expose the logs of your app running in your Zone in Autonomy Computer on `http://127.0.0.1:32101` if port `32101` is free, or it will pick another random free port.
+
+Once private link is created and as long as this command keeps running, the streaming logs of the app are available for a user to see at `http://127.0.0.1:32101`. This page uses javascript and meant for a web browser.
+
+If you need to see the logs in a terminal, source in the following functions into your shell:
+
+```bash
+# Shell functions for accessing Autonomy logs with dynamic pod name resolution
+autonomy_get_logs_url() {
+    local pod_base_name="$1"
+    local container_name="$2"
+
+    if [ -z "$pod_base_name" ] || [ -z "$container_name" ]; then
+        echo "Usage: autonomy_get_logs_url <pod_base_name> <container_name>"
+        echo "Example: autonomy_get_logs_url main-pod main"
+        return 1
+    fi
+
+    # Get the full dynamic pod name from the logs page
+    local full_pod_name=$(curl -s http://127.0.0.1:32101/ | grep -o "${pod_base_name}-[a-z0-9]*-[a-z0-9]*" | head -1)
+
+    if [ -z "$full_pod_name" ]; then
+        echo "Error: Could not find pod matching '${pod_base_name}-*'. Make sure the inlet is running."
+        return 1
+    fi
+
+    echo "http://127.0.0.1:32101/pods/$full_pod_name/containers/$container_name"
+}
+
+# Helper function to view logs with automatic pod resolution
+autonomy_view_logs() {
+    local pod_base_name="${1:-main-pod}"
+    local container_name="${2:-main}"
+    local duration="${3:-5}"
+
+    local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    echo "📋 Viewing logs for $duration seconds..."
+    timeout "${duration}s" curl -s "$logs_url" 2>/dev/null
+}
+
+# Stream logs in real-time
+autonomy_stream_logs() {
+    local pod_base_name="${1:-main-pod}"
+    local container_name="${2:-main}"
+
+    local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    echo "🔄 Streaming logs (Press Ctrl+C to stop)..."
+    curl -N "$logs_url"
+}
+```
+
+Here are some examples of how you can use these to view the logs:
+
+```bash
+# Get logs URL - automatically finds main-pod-694686d9b9-9sbxn
+autonomy_get_logs_url "main-pod" "main"
+# Output: http://127.0.0.1:32101/pods/main-pod-694686d9b9-9sbxn/containers/main
+
+# View recent logs (5 seconds default)
+autonomy_view_logs main-pod main
+
+# View logs for 10 seconds
+autonomy_view_logs main-pod main 10
+
+# Stream logs in real-time
+autonomy_stream_logs main-pod main
+
+# Using defaults (main-pod, main container, 5 seconds)
+autonomy_view_logs
+```
+
+</Step>
+
 </Steps>
