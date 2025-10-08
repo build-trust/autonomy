@@ -78,6 +78,8 @@ Node.start(main)
 <Step title="Create `images/main/index.html`">
 The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
+**Important:** For interactive UIs, use the streaming API endpoint (`/agents/agent-name?stream=true`) instead of the regular endpoint for real-time responses.
+
 Create `images/main/index.html` with the following content:
 
 ```html
@@ -193,10 +195,27 @@ Create `images/main/index.html` with the following content:
 
 Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluser and Zone in the Autonomy Computer.
 
-Unless the user has specifially asked for something different, use exactly the above content for `images/main/index.html`
+Unless the user has specifically asked for something different, use exactly the above content for `images/main/index.html`
 
-If you do need to generate a new UI, prefer generating streaming output. Refer the following
-two examples for the structure of the output of interacting with the agent via the API
+If you do need to generate a new UI, prefer generating streaming output for better user experience with real-time responses.
+
+## Streaming Implementation
+
+When creating interactive web applications, implement streaming for better UX:
+
+```javascript
+// Use ?stream=true and process with response.body.getReader()
+const response = await fetch('/agents/your-agent?stream=true', {
+    method: 'POST',
+    body: JSON.stringify({ message: userMessage })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+// Parse JSON chunks line by line and display incrementally
+```
+
+Consider adding character-by-character display using a text queue and setTimeout for smooth typewriter effects.
 
 Here is an example of streaming output from the API:
 
@@ -235,7 +254,7 @@ curl --silent --request POST \
 ]
 ```
 
-At this point the new zone's directory looks should look like this:
+At this point the new zone's directory should look like this:
 
 ```
 
@@ -271,7 +290,7 @@ Before running the `autonomy` command, ensure [Docker](https://www.docker.com/ge
 docker ps
 ```
 
-The `autonomy` command uses docker to build docker images and push them to a Zone in a Cluseter in the Autonomy Computer.
+The `autonomy` command uses docker to build docker images and push them to a Zone in a Cluster in the Autonomy Computer.
 </Step>
 <Step title="Enroll with your Cluster">
 Enroll your workstation with your Cluster in Autonomy Computer
@@ -291,24 +310,31 @@ autonomy zone deploy
 
 This will display the name of this app’s zone and cluster. Take note of those values, you will need them later.
 
-The `autonomy.yaml` file sets `public: true` on the main pod of the app. That instructs the Autonomy Computer to give this app a public api endpoint and cause the interactive web UI defined in `images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
+The `autonomy.yaml` file sets `public: true` on the main pod of the app. That instructs the Autonomy Computer to give this app a public API endpoint and cause the interactive web UI defined in `images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
 
 The zone can take up to a minute to be ready to use.
 </Step>
 
 <Step title="Check that the agent is running">
-Check that the agent defined in `images/main/main.py` is responding to an api call:
+Check that the agent defined in `images/main/main.py` is responding to api calls:
 
-```
+```bash
+# Regular API
 curl --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"who are you?"}' \
-"https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/agents/henry"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
+
+# Streaming API (preferred for UIs)
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"who are you?"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry?stream=true"
 ```
 </Step>
 
 <Step title="Guide your user to interact with the app in their browser">
-Try it: `https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/`
+Try it: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
 </Step>
 
 <Step title="See logs">
@@ -344,8 +370,10 @@ open "http://127.0.0.1:$LOGS_PORT"
 POD_NAME=main-pod && \
 CONTAINER_NAME=main && \
 FULL_POD_NAME=$(curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1) && \
-curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
+curl -s -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
 ```
+
+Note: curl's `-N` flag is necessary to disable buffering and enable real-time streaming of logs.
 
 **Stop the logs server when done:**
 ```bash
@@ -356,6 +384,18 @@ kill $LOGS_PID
 pkill -f "autonomy zone inlet"
 ```
 
+Remember to remove the `logs_server.log` file as well.
+
+</Step>
+
+<Step title="Delete the zone (optional)">
+If you need to delete the zone and clean up all resources:
+
+```bash
+autonomy zone delete --yes
+```
+
+This will completely remove the zone, including all pods, containers, and associated resources from the Autonomy Computer.
 </Step>
 
 </Steps>
