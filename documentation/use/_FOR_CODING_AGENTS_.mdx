@@ -7,7 +7,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
 
 <Steps>
   <Step title="Create a new directory for the app">
-    Pick a name for the app and its zone, for example `hello`. 
+    Pick a name for the app and its zone, for example `hello`.
 
     Create that new directory and change into it:
 
@@ -250,7 +250,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
     Try it: `https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/`
   </Step>
   <Step title="See logs">
-    Optionally, start a portal / create a private link to the logs of the deployed app by running
+    Optionally, create an encyrpted portal / private link to the logs of the deployed app by running the following command in the background
 
     ```
     autonomy zone inlet --to logs
@@ -258,6 +258,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
 
     This is a blocking command that will expose the logs of your app running in your Zone in Autonomy Computer on `http://127.0.0.1:32101` if port `32101` is free, or it will pick another random free port.
 
-    Once private link is created, you can locally see streaming logs of your app by visitng `http://127.0.0.1:32101`
+    Once private link is created and as long as this command keeps running, you can locally see streaming logs of the app by visitng `http://127.0.0.1:32101` 
   </Step>
 </Steps>
