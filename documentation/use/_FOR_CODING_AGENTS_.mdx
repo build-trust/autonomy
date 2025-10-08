@@ -78,7 +78,7 @@ Node.start(main)
 <Step title="Create `images/main/index.html`">
 The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
-Create `images/main/index.html` with the following content. Unless the user has specifially asked for something different, use exactly the following content:
+Create `images/main/index.html` with the following content:
 
 ```html
 <!doctype html>
@@ -157,9 +157,9 @@ Create `images/main/index.html` with the following content. Unless the user has 
         out.textContent = "";
 
         const response = await fetch("/agents/henry?stream=true", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: message }),
         });
 
         const decoder = new TextDecoder();
@@ -193,6 +193,48 @@ Create `images/main/index.html` with the following content. Unless the user has 
 
 Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluser and Zone in the Autonomy Computer.
 
+Unless the user has specifially asked for something different, use exactly the above content for `images/main/index.html`
+
+If you do need to generate a new UI, prefer generating streaming output. Refer the following
+two examples for the structure of the output of interacting with the agent via the API
+
+Here is an example of streaming output from the API:
+
+```
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"What are the key elements of a contract?"}' \
+"https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry?stream=true"
+{"scope": "None", "conversation": "None", "messages": [{"content": {"text": "I", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
+{"scope": "None", "conversation": "None", "messages": [{"content": {"text": "'ve already", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
+{"scope": "None", "conversation": "None", "messages": [{"content": {"text": " provided a detailed answer", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
+
+...
+
+```
+
+Here's example output of calling the API without streaming:
+
+```
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"What are the key elements of a contract?"}' \
+"https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry"
+
+[
+  {
+    "content": {
+      "text": "Great question! The key elements that make a contract legally ...",
+      "type": "text"
+    },
+    "phase": "executing",
+    "thinking": false,
+    "tool_calls": [],
+    "role": "assistant"
+  }
+]
+```
+
 At this point the new zone's directory looks should look like this:
 
 ```
@@ -211,6 +253,7 @@ Before proceeding forward ask the user if they have already created an account w
 
 Once they have signed up, proceed to the next step.
 </Step>
+
 <Step title="Install the `autonomy` command">
 Check if the `autonomy` command is already installed by running `autonomy --version`. If the command is not installed, install it by running the following in a terminal.
 
@@ -220,6 +263,7 @@ curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
 
 You can check that it is successfully installed by running `autonomy --version`. If it is not found, you may need to run `source "$HOME/.autonomy/env"` to make it available.
 </Step>
+
 <Step title="Ensure docker is installed and running">
 Before running the `autonomy` command, ensure [Docker](https://www.docker.com/get-started/) is installed and running in your environment. You can check that docker is working correctly by running:
 
@@ -248,7 +292,10 @@ autonomy zone deploy
 This will display the name of this app’s zone and cluster. Take note of those values, you will need them later.
 
 The `autonomy.yaml` file sets `public: true` on the main pod of the app. That instructs the Autonomy Computer to give this app a public api endpoint and cause the interactive web UI defined in `images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
+
+The zone can take up to a minute to be ready to use.
 </Step>
+
 <Step title="Check that the agent is running">
 Check that the agent defined in `images/main/main.py` is responding to an api call:
 
@@ -283,23 +330,28 @@ echo "Logs server running on port: $LOGS_PORT"
 echo "Logs server PID: $LOGS_PID"
 ```
 
-**Option 1: View logs in browser**
+**Option 1: View logs in a browser**
+
 ```bash
-# Open logs in your web browser (shows streaming logs with nice UI)
-open http://127.0.0.1:$LOGS_PORT
+# Open logs in a web browser (shows streaming logs with a nice UI)
+open "http://127.0.0.1:$LOGS_PORT"
 ```
 
 **Option 2: Stream logs in terminal**
+
 ```bash
-# Get the dynamic pod name and stream logs directly
-POD_NAME=$(curl -s http://127.0.0.1:$LOGS_PORT/ | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1)
-curl -s http://127.0.0.1:$LOGS_PORT/pods/$POD_NAME/containers/main
+# Get the dynamic full pod name and stream logs directly on the terminal
+POD_NAME=main-pod && \
+CONTAINER_NAME=main && \
+FULL_POD_NAME=$(curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1) && \
+curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
 ```
 
 **Stop the logs server when done:**
 ```bash
 # Kill the specific logs server process
 kill $LOGS_PID
+
 # Or kill all autonomy inlet processes
 pkill -f "autonomy zone inlet"
 ```
