@@ -31,6 +31,8 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
             image: main
     ```
 
+    Unless the user has asked for a different specific name, use `hello`.
+
     This defines a Zone in Autonomy Computer where the application will run.
   </Step>
   <Step title="Create `images/main/Dockerfile`">
@@ -42,7 +44,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
     FROM ghcr.io/build-trust/autonomy-python
     COPY . .
     ENTRYPOINT ["python", "main.py"]
-    
+
     ```
   </Step>
   <Step title="Create `images/main/main.py`">
@@ -52,8 +54,8 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
 
     ```python
     from autonomy import Agent, Model, Node
-    
-    
+
+
     async def main(node):
       await Agent.start(
         node=node,
@@ -61,16 +63,16 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
         instructions="You are Henry, an expert legal assistant",
         model=Model("claude-sonnet-4-v1")
       )
-    
-    
+
+
     Node.start(main)
-    
+
     ```
   </Step>
   <Step title="Create `images/main/index.html`">
     The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
-    Create `images/main/index.html` with the following content:
+    Create `images/main/index.html` with the following content. Unless the user has specifially asked for something different, use exactly the following content:
 
     ```html
     <!doctype html>
@@ -128,7 +130,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
                         await new Promise((resolve) => setTimeout(resolve, delay));
                     }
                 }
-    
+
                 async function processLine(line) {
                     if (line.trim()) {
                         const parsed = JSON.parse(line);
@@ -139,20 +141,20 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
                         }
                     }
                 }
-    
+
                 async function send(message) {
                     const input = document.getElementById("in");
                     input.disabled = true;
-    
+
                     const out = document.getElementById("out");
                     out.textContent = "";
-    
+
                     const response = await fetch("/agents/henry?stream=true", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ message: message }),
                     });
-    
+
                     const decoder = new TextDecoder();
                     let buffer = "";
                     for await (const chunk of response.body) {
@@ -163,11 +165,11 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
                         for (const line of lines) await processLine(line);
                     }
                     await processLine(buffer);
-    
+
                     input.disabled = false;
                     input.focus();
                 }
-    
+
                 document.getElementById("in").addEventListener("keydown", async (e) => {
                     if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
                         e.preventDefault();
@@ -184,7 +186,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
     At this point the new zone's directory looks should look like this:
 
     ```
-    
+
     ├── autonomy.yaml
     └── images
         └── main
@@ -258,6 +260,82 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Zed
 
     This is a blocking command that will expose the logs of your app running in your Zone in Autonomy Computer on `http://127.0.0.1:32101` if port `32101` is free, or it will pick another random free port.
 
-    Once private link is created and as long as this command keeps running, you can locally see streaming logs of the app by visitng `http://127.0.0.1:32101` 
+    Once private link is created and as long as this command keeps running, the streaming logs of the app are available for a user to see at `http://127.0.0.1:32101`. This page uses javascript and meant for a web browser.
+
+    If you need to see the logs in a terminal, source in the following shell functions:
+
+    ```bash
+    # Shell functions for accessing Autonomy logs with dynamic pod name resolution
+    autonomy_get_logs_url() {
+        local pod_base_name="$1"
+        local container_name="$2"
+
+        if [ -z "$pod_base_name" ] || [ -z "$container_name" ]; then
+            echo "Usage: autonomy_get_logs_url <pod_base_name> <container_name>"
+            echo "Example: autonomy_get_logs_url main-pod main"
+            return 1
+        fi
+
+        # Get the full dynamic pod name from the logs page
+        local full_pod_name=$(curl -s http://127.0.0.1:32101/ | grep -o "${pod_base_name}-[a-z0-9]*-[a-z0-9]*" | head -1)
+
+        if [ -z "$full_pod_name" ]; then
+            echo "Error: Could not find pod matching '${pod_base_name}-*'. Make sure the inlet is running."
+            return 1
+        fi
+
+        echo "http://127.0.0.1:32101/pods/$full_pod_name/containers/$container_name"
+    }
+
+    # Helper function to view logs with automatic pod resolution
+    autonomy_view_logs() {
+        local pod_base_name="${1:-main-pod}"
+        local container_name="${2:-main}"
+        local duration="${3:-5}"
+
+        local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
+        if [ $? -ne 0 ]; then
+            return 1
+        fi
+
+        echo "📋 Viewing logs for $duration seconds..."
+        timeout "${duration}s" curl -s "$logs_url" 2>/dev/null
+    }
+
+    # Stream logs in real-time
+    autonomy_stream_logs() {
+        local pod_base_name="${1:-main-pod}"
+        local container_name="${2:-main}"
+
+        local logs_url=$(autonomy_get_logs_url "$pod_base_name" "$container_name")
+        if [ $? -ne 0 ]; then
+            return 1
+        fi
+
+        echo "🔄 Streaming logs (Press Ctrl+C to stop)..."
+        curl -N "$logs_url"
+    }
+    ```
+
+    Here are some examples of how you can use these to view the logs:
+
+    ```shell
+    # Get logs URL - automatically finds main-pod-694686d9b9-9sbxn
+    autonomy_get_logs_url "main-pod" "main"
+    # Output: http://127.0.0.1:32101/pods/main-pod-694686d9b9-9sbxn/containers/main
+
+    # View recent logs (5 seconds default)
+    autonomy_view_logs main-pod main
+
+    # View logs for 10 seconds
+    autonomy_view_logs main-pod main 10
+
+    # Stream logs in real-time
+    autonomy_stream_logs main-pod main
+
+    # Using defaults (main-pod, main container, 5 seconds)
+    autonomy_view_logs
+    ```
+
   </Step>
 </Steps>
