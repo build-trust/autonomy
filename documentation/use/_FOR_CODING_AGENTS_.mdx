@@ -1,0 +1,104 @@
+---
+title: 'Coding Agents: How should a coding agent create and run autonomy applications'
+description: 'This file has instructions for Claude, Codex, Copilot, Cursor and other coding agents to create and run apps on the Autonomy Computer.'
+---
+
+
+# New Autonomy application or project
+
+To run this Autonomy app:
+
+### Step 1
+
+[Sign up](https://my.autonomy.computer) for an account with Autonomy to create your new Cluster.
+
+### Step 2
+
+Install `autonomy` command by running the following in your terminal.
+```bash
+curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
+```
+
+### Step 3
+
+Ensure you have [Docker](https://www.docker.com/get-started/) installed and running on your workstation before running the `autonomy` command.
+
+You can check that docker is working correctly by running:
+
+```
+docker ps
+```
+
+### Step 4
+
+Enroll your workstation with Autonomy
+
+```
+autonomy cluster enroll --no-input
+```
+
+### Step 5
+
+If you haven't already, get the code for this app by running:
+
+```
+autonomy zone init build-trust/autonomy-zone-hello
+```
+
+This will generate the following files:
+
+```
+
+├── autonomy.yaml
+└── images
+    └── main
+        ├── Dockerfile
+        ├── index.html
+        └── main.py
+```
+
+
+### Step 6
+
+Deploy the zone defined in this app as follows:
+
+```
+autonomy zone deploy
+```
+
+This will display the name of your zone and your cluster.
+Take note of those values, you will need them later.
+
+The `autonomy.yaml` file sets `public: true` on the main pod of your app. That
+will give your app a public api endpoint and cause the interactive web UI defined in
+`images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
+
+Try it: https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/
+
+### Step 7
+
+Check that the agent defined in `images/main/main.py` is responding to an api call:
+
+```
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"who are you?"}' \
+"https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/agents/henry"
+```
+
+### Step 8
+
+You can optionally start a portal / create a private link to the logs of
+the deployed app by running
+
+```
+autonomy zone inlet --to logs
+```
+
+This is a blocking command that will expose the logs of your app
+on `http://127.0.0.1:32101` if port `32101` is free, or it will pick another
+random free port.
+
+Once this is running, you can privately see streaming logs of your app
+by visitng `http://127.0.0.1:32101`
+
