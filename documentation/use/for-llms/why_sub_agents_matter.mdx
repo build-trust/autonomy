@@ -1,0 +1,44 @@
+---
+title: "Introduction to Sub-Agents"
+description: "How and when to use sub-agents instead of smashing large amounts of data into big context windows."
+---
+
+### **The future of AI looks more like orchestration, than brute-force.**
+
+Did you catch it at the **OpenAI** event this week? They talked about **sub-agents**. **Anthropic** is now talking about them too!
+
+This moment matters — not because it was new, but because it validated what many builders have already known. The future of AI architecture isn’t necessarily just about bigger models or longer context windows anymore. It’s about well architected systems that are autonomous; that can **spawn, delegate, and coordinate** in real time.
+
+This shift moves us from one big agent connected to one big model that's trying to do everything, to a network of smaller, specialized, autonomous agents that "hand-off" work to each other. It’s a move from brute-force to orchestration.
+
+### **Bigger context isn’t better**
+
+Over the past year, developers have chased bigger context windows, hoping that more tokens would equal more intelligence. But large language models are **probabilistic**, not deterministic. Feed them more context, and you often introduce more noise. The model starts guessing and drifting instead of clear reasoning.
+
+Smaller, focused contexts do the opposite — they improve precision and reduce variance. Sub-agents make that possible by dividing complex work into clear, self-contained units. Each one operates with its own narrow context, producing cleaner and more reliable results. When they finish, they report back to the main agent, which integrates everything into a coherent outcome.
+
+This is not just efficient; it’s scalable. And it’s exactly how distributed computing has worked for decades — divide, process, merge, repeat.
+
+### **Agents that spawn agents**
+
+Think of a **main agent** as an orchestrator. It understands the big picture and knows how to delegate. When a large task appears — analyzing thousands of documents, for example — it doesn’t try to do everything itself. It spins up thousands of **sub-agents**, each responsible for a single document.
+
+Those sub-agents run in parallel, each with their own local context, and report back when done. This gives the system lower variance, faster throughput, and dramatically higher reliability. It’s a self-scaling pattern where the number of agents expands and contracts dynamically with workload demand.
+
+In short, it’s how intelligent systems should behave — distributed, specialized, and adaptive.
+
+### **Autonomy was built for this moment**
+
+At [**Autonomy**](https://www.linkedin.com/company/autonomy-computer/) , we foresaw this moment. Our platform was designed from the ground up for **embarrassingly parallel scale** — where agents can spawn other agents that spawn even more, all connected to move messages between each other through secure, trusted channels.
+
+Developers use Autonomy to build and run dynamic hierarchies of cooperating agents. The platform manages the lifecycle, identity, and secure communication between them — so developers don’t have to reinvent orchestration every time they scale. It turns the complexity of coordination into a simple, declarative model.
+
+The result is a foundation that can support billions of agents running everywhere, interoperating across systems and clouds — without collapsing under its own weight.
+
+### **The architectural future**
+
+What makes OpenAI’s public focus on sub-agents significant is that it confirms something important: **more context isn’t the answer**. Good architecture is. The next wave of AI won’t be won by models that remember more — it will be won by systems that **organize better**.
+
+Sub-agents are not a feature. They’re the blueprint for how intelligent systems can be architected to scale. And that future is exactly what we built at Autonomy...so that you don't have to.
+
+Autonomy is the complete platform-as-a-service for building, running, and scaling agentic systems — from one to billions of sub-agents. [**https://autonomy.computer**](https://autonomy.computer)
