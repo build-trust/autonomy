@@ -4,7 +4,6 @@ mode: "wide"
 description: "This file has instructions for Claude, Codex, Copilot, Cursor, Devin, Replit, Zed Agent and other coding agents to create and run apps on the Autonomy Computer."
 ---
 
-
 ## Generate a new Autonomy application
 
 <Steps>
@@ -20,7 +19,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     All commands related to this app or zone should be run from inside this directory.
   </Step>
-
   <Step title="Create `autonomy.yaml`">
     Create `autonomy.yaml` with the following content:
 
@@ -38,7 +36,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     This defines a Zone in Autonomy Computer where the application will run.
   </Step>
-
   <Step title="Create `images/main/Dockerfile`">
     The zone (defined above) has a `main-pod` and this pod has a `main` container which is built using the `main` docker image. This `main` docker image is defined using the docker file at: `images/main/Dockerfile`.
 
@@ -48,10 +45,9 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     FROM ghcr.io/build-trust/autonomy-python
     COPY . .
     ENTRYPOINT ["python", "main.py"]
-
+    
     ```
   </Step>
-
   <Step title="Create `images/main/main.py`">
     The main image’s docker file (defined above) starts the main python program defined in the file `images/main/main.py` .
 
@@ -59,8 +55,8 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     ```python
     from autonomy import Agent, Model, Node
-
-
+    
+    
     async def main(node):
         await Agent.start(
         node=node,
@@ -68,13 +64,12 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
         instructions="You are Henry, an expert legal assistant",
         model=Model("claude-sonnet-4-v1")
         )
-
-
+    
+    
     Node.start(main)
-
+    
     ```
   </Step>
-
   <Step title="Create `images/main/index.html`">
     The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
@@ -95,20 +90,20 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             font: 21px "Courier New", Courier, monospace;
             padding: 0;
         }
-
+    
         main {
             max-width: 1080px;
             margin: 0 auto;
             padding: 3rem 1rem;
         }
-
+    
         pre {
             padding-top: 30px;
             box-sizing: border-box;
             white-space: pre-wrap;
             overflow-wrap: break-word;
         }
-
+    
         textarea {
             width: 100%;
             max-width: 1080px;
@@ -129,7 +124,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
         <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
         <pre id="out"></pre>
         <main>
-
+    
         <script>
         async function appendCharByChar(text, delay = 5) {
             for (const char of text) {
@@ -137,7 +132,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
-
+    
         async function processLine(line) {
             if (line.trim()) {
             const parsed = JSON.parse(line);
@@ -148,38 +143,38 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             }
             }
         }
-
+    
         async function send(message) {
             const input = document.getElementById("in");
             input.disabled = true;
-
+    
             const out = document.getElementById("out");
             out.textContent = "";
-
+    
             const response = await fetch("/agents/henry?stream=true", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ message: message }),
             });
-
+    
             const decoder = new TextDecoder();
             let buffer = "";
-
+    
             for await (const chunk of response.body) {
             buffer += decoder.decode(chunk, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop();
-
+    
             if (!out.textContent) input.value = "";
             for (const line of lines) await processLine(line);
             }
-
+    
             await processLine(buffer);
-
+    
             input.disabled = false;
             input.focus();
         }
-
+    
         document.getElementById("in").addEventListener("keydown", async e => {
             if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
             e.preventDefault();
@@ -191,12 +186,11 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     </html>
     ```
 
-    Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluser and Zone in the Autonomy Computer.
+    Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluster and Zone in the Autonomy Computer.
 
-    Unless the user has specifially asked for something different, use exactly the above content for `images/main/index.html`
+    Unless the user has specifically asked for something different, use exactly the above content for `images/main/index.html`
 
-    If you do need to generate a new UI, prefer generating streaming output. Refer the following
-    two examples for the structure of the output of interacting with the agent via the API
+    If you do need to generate a new UI, prefer generating streaming output. Refer the following two examples for the structure of the output of interacting with the agent via the API
 
     Here is an example of streaming output from the API:
 
@@ -208,9 +202,9 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "I", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "'ve already", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": " provided a detailed answer", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
-
+    
     ...
-
+    
     ```
 
     Here's example output of calling the API without streaming:
@@ -220,7 +214,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     --header "Content-Type: application/json" \
     --data '{"message":"What are the key elements of a contract?"}' \
     "https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry"
-
+    
     [
       {
         "content": {
@@ -238,7 +232,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     At this point the new zone's directory looks should look like this:
 
     ```
-
+    
     ├── autonomy.yaml
     └── images
         └── main
@@ -247,13 +241,11 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             └── main.py
     ```
   </Step>
-
   <Step title="Confirm that the user has signed up">
     Before proceeding forward ask the user if they have already created an account with Autonomy. If not, instruct them to [sign up](https://my.autonomy.computer) so they get a dedicated Cluster in the Autonomy Computer.
 
     Once they have signed up, proceed to the next step.
   </Step>
-
   <Step title="Install the `autonomy` command">
     Check if the `autonomy` command is already installed by running `autonomy --version`. If the command is not installed, install it by running the following in a terminal.
 
@@ -263,7 +255,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     You can check that it is successfully installed by running `autonomy --version`. If it is not found, you may need to run `source "$HOME/.autonomy/env"` to make it available.
   </Step>
-
   <Step title="Ensure docker is installed and running">
     Before running the `autonomy` command, ensure [Docker](https://www.docker.com/get-started/) is installed and running in your environment. You can check that docker is working correctly by running:
 
@@ -273,7 +264,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     The `autonomy` command uses docker to build docker images and push them to a Zone in a Cluseter in the Autonomy Computer.
   </Step>
-
   <Step title="Enroll with your Cluster">
     Enroll your workstation with your Cluster in Autonomy Computer
 
@@ -283,7 +273,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     This command will block and print a code that your user has to paste into their browser to sign in, remind them to do that. The command will continue once they have signed in.
   </Step>
-
   <Step title="Deploy the zone">
     Deploy the zone dedicated to this app as follows:
 
@@ -297,7 +286,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     The zone can take up to a minute to be ready to use.
   </Step>
-
   <Step title="List all agents">
     Get a list of all running agents by calling the `/agents` endpoint:
 
@@ -308,7 +296,6 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     This will return a JSON array containing information about all agents that are currently running.
   </Step>
-
   <Step title="Check that the agent is responding">
     Check that the agent defined in `images/main/main.py` is responding to an api call:
 
@@ -316,14 +303,12 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     curl --silent --request POST \
     --header "Content-Type: application/json" \
     --data '{"message":"who are you?"}' \
-    "https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/agents/henry"
+    "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
     ```
   </Step>
-
   <Step title="Guide your user to interact with the app in their browser">
-    Try it: `https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/`
+    Try it: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
   </Step>
-
   <Step title="See logs">
     Start the logs server in the background to view streaming logs from your app:
 
@@ -331,14 +316,14 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     # Start logs server in background and capture output to get the actual port
     autonomy zone inlet --to logs > logs_server.log 2>&1 &
     LOGS_PID=$!
-
+    
     # Wait for server to start and extract the port number
     sleep 3
     LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
     if [ -z "$LOGS_PORT" ]; then
         LOGS_PORT=32101  # fallback to default port
     fi
-
+    
     echo "Logs server running on port: $LOGS_PORT"
     echo "Logs server PID: $LOGS_PID"
     ```
@@ -365,7 +350,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     ```bash
     # Kill the specific logs server process
     kill $LOGS_PID
-
+    
     # Or kill all autonomy inlet processes
     pkill -f "autonomy zone inlet"
     ```
@@ -374,9 +359,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
 ## Define a custom API
 
-If the app needs more control, instead of using the default agent endpoints,
-the app can have custom FastAPI routes and easily integreate them with
-Autonomy agents.
+If the app needs more control, instead of using the default agent endpoints, the app can have custom FastAPI routes and easily integrate them with Autonomy agents.
 
 **Important**: Don't define `@app.get("/")` in your FastAPI app if you want the Autonomy HTTP server to automatically serve your `index.html` file at the root URL. Custom root routes take precedence over automatic file serving.
 
@@ -391,14 +374,14 @@ Here is an example:
     ```python
     from autonomy import Agent, HttpServer, Model, Node, NodeDep
     from fastapi import FastAPI
-
+    
     app = FastAPI()
     agent = None
-
+    
     @app.post("/translate")
     async def translate(request: dict, node: NodeDep):
         global agent
-
+    
         if not agent:
             agent = await Agent.start(
                 node=node,
@@ -408,25 +391,22 @@ Here is an example:
                 from English to Hindi. When you're given text in English,
                 output the corresponding translation in Hindi written
                 using the Latin alphabet (Roman script).
-
+    
                 Provide only the translation, no additional explanation.
                 """,
                 model=Model("claude-sonnet-4-v1"),
             )
-
+    
         response = await agent.send(f"English:\n\n{request.get("text", "")}")
         return {"translation": response[-1].content.text}
-
+    
     Node.start(http_server=HttpServer(app=app))
     ```
 
-    This creates a simple translation service that uses a single agent for all requests.
-    The `autonomy.yaml`, `Dockerfile` remain same as in the previous section.
+    This creates a simple translation service that uses a single agent for all requests. The `autonomy.yaml`, `Dockerfile` remain same as in the previous section.
 
-    The `index.html` would have to be adapted to call the `/translate` endpont. To start,
-    we can test using curl.
+    The `index.html` would have to be adapted to call the `/translate` endpont. To start, we can test using curl.
   </Step>
-
   <Step title="Deploy the translation API">
     Deploy the zone using the same command as before:
 
@@ -434,10 +414,8 @@ Here is an example:
     autonomy zone deploy
     ```
 
-    Once, the zone is deployed, the translation API will be available at:
-    `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate`
+    Once, the zone is deployed, the translation API will be available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate`
   </Step>
-
   <Step title="Test the translation API">
     Test your translation service by sending English text to be translated:
 
@@ -464,8 +442,7 @@ Here is an example:
 
 <Steps>
   <Step title="Create a parallel translation API">
-    For more advanced use cases, the app can process multiple translations concurrently
-    by running thousands of parallel agents.
+    For more advanced use cases, the app can process multiple translations concurrently by running thousands of parallel agents.
 
     Replace `images/main/main.py` with:
 
@@ -474,9 +451,9 @@ Here is an example:
     from fastapi import FastAPI
     from asyncio import gather, create_task
     from typing import List, Dict
-
+    
     app = FastAPI()
-
+    
     async def translate_item(node: Node, item: str) -> Dict[str, str]:
         agent = None
         try:
@@ -488,12 +465,12 @@ Here is an example:
                 from English to Hindi. When you're given text in English,
                 output the corresponding translation in Hindi written
                 using the Latin alphabet (Roman script).
-
+    
                 Provide only the translation, no additional explanation.
                 """,
                 model=Model("claude-sonnet-4-v1"),
             )
-
+    
             response = await agent.send(f"English:\n\n{item}", timeout=60)
             return {"text": item, "translation": response[-1].content.text}
         except Exception as e:
@@ -501,25 +478,22 @@ Here is an example:
         finally:
             if agent:
                 create_task(Agent.stop(node, agent.name))
-
+    
     @app.post("/translate")
     async def translate(request: dict, node: NodeDep):
         texts = request.get("texts", [])
         results = await gather(*(translate_item(node, text) for text in texts))
         return {"translations": results}
-
+    
     Node.start(http_server=HttpServer(app=app))
     ```
 
-    This creates a scalable translation service that can translate thousands of
-    items in parallel by creating an individual agent per item.
+    This creates a scalable translation service that can translate thousands of items in parallel by creating an individual agent per item.
 
     The `autonomy.yaml`, `Dockerfile` remain same as in the previous sections.
 
-    The `index.html` would have to be adapted to call the `/translate` endpont.
-    To start, we can test using curl.
+    The `index.html` would have to be adapted to call the `/translate` endpont. To start, we can test using curl.
   </Step>
-
   <Step title="Deploy the parallel translation API">
     Deploy the zone:
 
@@ -527,7 +501,6 @@ Here is an example:
     autonomy zone deploy
     ```
   </Step>
-
   <Step title="Test the parallel translation API">
     Test the parallel translation API by sending multiple English phrases:
 
@@ -565,11 +538,12 @@ Here is an example:
     }
     ```
   </Step>
-
   <Step title="View your API documentation">
-    FastAPI automatically generates interactive API documentation. View it at:
-    `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/docs`
+    FastAPI automatically generates interactive API documentation. View it at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/docs`
 
     This provides a complete interface to test your endpoints directly in the browser.
   </Step>
 </Steps>
+
+
+- [Coding Agents: Define a custom UI](https://autonomy.computer/docs/for-coding-agents/define-a-custom-ui): For applications that need user interfaces that are more complex than what is ideal for a simple `index.html` , Autonomy apps can serve a compiled static site using FastAPI. This site can call APIs defined within the app.
