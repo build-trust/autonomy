@@ -1,401 +1,570 @@
----
-title: "Coding Agents: How to create Autonomy applications"
-mode: "wide"
-description: "This file has instructions for Claude, Codex, Copilot, Cursor, Devin, Cline, Replit, Zed Agent and other coding agents to create and run apps on the Autonomy Computer."
----
+# Coding Agents: How to create Autonomy applications
+
+> This file has instructions for Claude, Codex, Copilot, Cursor, Devin, Replit, Zed Agent and other coding agents to create and run apps on the Autonomy Computer.
 
 ## Generate a new Autonomy application
 
 <Steps>
+  <Step title="Create a new directory for the app">
+    Pick a name for the app and its zone, for example `hello`.
 
-<Step title="Create a new directory for the app">
-Pick a name for the app and its zone, for example `hello`.
+    Create that new directory and change into it:
 
-Create that new directory and change into it:
+    ```bash  theme={null}
+    mkdir hello
+    cd hello
+    ```
 
-```bash
-mkdir hello
-cd hello
-```
+    All commands related to this app or zone should be run from inside this directory.
+  </Step>
 
-All commands related to this app or zone should be run from inside this directory.
-</Step>
+  <Step title="Create `autonomy.yaml`">
+    Create `autonomy.yaml` with the following content:
 
-<Step title="Create `autonomy.yaml`">
-Create `autonomy.yaml` with the following content:
+    ```yaml  theme={null}
+    name: hello # The zone's name should be less than 10 characters
+    pods:
+      - name: main-pod
+        public: true
+        containers:
+          - name: main
+            image: main
+    ```
 
-```yaml
-name: hello # The zone's name should be less than 10 characters
-pods:
-  - name: main-pod
-    public: true
-    containers:
-      - name: main
-        image: main
-```
+    Unless the user has asked for a different specific name for the app, use `hello`.
 
-Unless the user has asked for a different specific name for the app, use `hello`.
+    This defines a Zone in Autonomy Computer where the application will run.
+  </Step>
 
-This defines a Zone in Autonomy Computer where the application will run.
-</Step>
+  <Step title="Create `images/main/Dockerfile`">
+    The zone (defined above) has a `main-pod` and this pod has a `main` container which is built using the `main` docker image. This `main` docker image is defined using the docker file at: `images/main/Dockerfile`.
 
-<Step title="Create `images/main/Dockerfile`">
-The zone (defined above) has a `main-pod` and this pod has a `main` container which is built using the `main` docker image. This `main` docker image is defined using the docker file at: `images/main/Dockerfile`.
+    Create `images/main/Dockerfile` with the following content:
 
-Create `images/main/Dockerfile` with the following content:
+    ```bash  theme={null}
+    FROM ghcr.io/build-trust/autonomy-python
+    COPY . .
+    ENTRYPOINT ["python", "main.py"]
 
-```bash
-FROM ghcr.io/build-trust/autonomy-python
-COPY . .
-ENTRYPOINT ["python", "main.py"]
+    ```
+  </Step>
 
-```
-</Step>
+  <Step title="Create `images/main/main.py`">
+    The main image’s docker file (defined above) starts the main python program defined in the file `images/main/main.py` .
 
-<Step title="Create `images/main/main.py`">
-The main image’s docker file (defined above) starts the main python program defined in the file `images/main/main.py` .
+    Create `images/main/main.py` with the following content:
 
-Create `images/main/main.py` with the following content:
-
-```python
-from autonomy import Agent, Model, Node
-
-
-async def main(node):
-    await Agent.start(
-    node=node,
-    name="henry",
-    instructions="You are Henry, an expert legal assistant",
-    model=Model("claude-sonnet-4-v1")
-    )
+    ```python  theme={null}
+    from autonomy import Agent, Model, Node
 
 
-Node.start(main)
+    async def main(node):
+        await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant",
+        model=Model("claude-sonnet-4-v1")
+        )
 
-```
-</Step>
 
-<Step title="Create `images/main/index.html`">
-The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
+    Node.start(main)
 
-**Important:** For interactive UIs, use the streaming API endpoint (`/agents/agent-name?stream=true`) instead of the regular endpoint for real-time responses.
+    ```
+  </Step>
 
-Create `images/main/index.html` with the following content:
+  <Step title="Create `images/main/index.html`">
+    The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
-```html
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-    body {
-        margin: 10% 15%;
-        line-height: 1.8;
-        overflow-y: scroll;
-        overflow-x: hidden;
-        font: 21px "Courier New", Courier, monospace;
-        padding: 0;
-    }
+    Create `images/main/index.html` with the following content:
 
-    main {
-        max-width: 1080px;
-        margin: 0 auto;
-        padding: 3rem 1rem;
-    }
-
-    pre {
-        padding-top: 30px;
-        box-sizing: border-box;
-        white-space: pre-wrap;
-        overflow-wrap: break-word;
-    }
-
-    textarea {
-        width: 100%;
-        max-width: 1080px;
-        box-sizing: border-box;
-        border: 1px solid #e9e9e9;
-        border-radius: 5px;
-        box-shadow: 2px 2px 10px #f4f4f4;
-        font-size: inherit;
-        padding: 1rem;
-        display: block;
-        height: calc(3 * 1.8em + 14.8px);
-    }
-    </style>
-    <title></title>
-</head>
-<body>
-    <main>
-    <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
-    <pre id="out"></pre>
-    <main>
-
-    <script>
-    async function appendCharByChar(text, delay = 5) {
-        for (const char of text) {
-        out.textContent += char;
-        await new Promise(resolve => setTimeout(resolve, delay));
+    ```html  theme={null}
+    <!doctype html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+        body {
+            margin: 10% 15%;
+            line-height: 1.8;
+            overflow-y: scroll;
+            overflow-x: hidden;
+            font: 21px "Courier New", Courier, monospace;
+            padding: 0;
         }
-    }
 
-    async function processLine(line) {
-        if (line.trim()) {
-        const parsed = JSON.parse(line);
-        for (const message of parsed.messages) {
-            if (message && message.content && message.content.text) {
-            await appendCharByChar(message.content.text);
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 3rem 1rem;
+        }
+
+        pre {
+            padding-top: 30px;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+
+        textarea {
+            width: 100%;
+            max-width: 1080px;
+            box-sizing: border-box;
+            border: 1px solid #e9e9e9;
+            border-radius: 5px;
+            box-shadow: 2px 2px 10px #f4f4f4;
+            font-size: inherit;
+            padding: 1rem;
+            display: block;
+            height: calc(3 * 1.8em + 14.8px);
+        }
+        </style>
+        <title></title>
+    </head>
+    <body>
+        <main>
+        <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
+        <pre id="out"></pre>
+        <main>
+
+        <script>
+        async function appendCharByChar(text, delay = 5) {
+            for (const char of text) {
+            out.textContent += char;
+            await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
+
+        async function processLine(line) {
+            if (line.trim()) {
+            const parsed = JSON.parse(line);
+            for (const message of parsed.messages) {
+                if (message && message.content && message.content.text) {
+                await appendCharByChar(message.content.text);
+                }
+            }
+            }
         }
-    }
 
-    async function send(message) {
-        const input = document.getElementById("in");
-        input.disabled = true;
+        async function send(message) {
+            const input = document.getElementById("in");
+            input.disabled = true;
 
-        const out = document.getElementById("out");
-        out.textContent = "";
+            const out = document.getElementById("out");
+            out.textContent = "";
 
-        const response = await fetch("/agents/henry?stream=true", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: message }),
+            const response = await fetch("/agents/henry?stream=true", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: message }),
+            });
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            for await (const chunk of response.body) {
+            buffer += decoder.decode(chunk, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            if (!out.textContent) input.value = "";
+            for (const line of lines) await processLine(line);
+            }
+
+            await processLine(buffer);
+
+            input.disabled = false;
+            input.focus();
+        }
+
+        document.getElementById("in").addEventListener("keydown", async e => {
+            if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
+            e.preventDefault();
+            await send(e.target.value);
+            }
         });
+        </script>
+    </body>
+    </html>
+    ```
 
-        const decoder = new TextDecoder();
-        let buffer = "";
+    Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluser and Zone in the Autonomy Computer.
 
-        for await (const chunk of response.body) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
+    Unless the user has specifially asked for something different, use exactly the above content for `images/main/index.html`
 
-        if (!out.textContent) input.value = "";
-        for (const line of lines) await processLine(line);
-        }
+    If you do need to generate a new UI, prefer generating streaming output. Refer the following
+    two examples for the structure of the output of interacting with the agent via the API
 
-        await processLine(buffer);
+    Here is an example of streaming output from the API:
 
-        input.disabled = false;
-        input.focus();
+    ```
+    curl --silent --request POST \
+    --header "Content-Type: application/json" \
+    --data '{"message":"What are the key elements of a contract?"}' \
+    "https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry?stream=true"
+    {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "I", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
+    {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "'ve already", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
+    {"scope": "None", "conversation": "None", "messages": [{"content": {"text": " provided a detailed answer", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
+
+    ...
+
+    ```
+
+    Here's example output of calling the API without streaming:
+
+    ```
+    curl --silent --request POST \
+    --header "Content-Type: application/json" \
+    --data '{"message":"What are the key elements of a contract?"}' \
+    "https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry"
+
+    [
+      {
+        "content": {
+          "text": "Great question! The key elements that make a contract legally ...",
+          "type": "text"
+        },
+        "phase": "executing",
+        "thinking": false,
+        "tool_calls": [],
+        "role": "assistant"
+      }
+    ]
+    ```
+
+    At this point the new zone's directory looks should look like this:
+
+    ```
+
+    ├── autonomy.yaml
+    └── images
+        └── main
+            ├── Dockerfile
+            ├── index.html
+            └── main.py
+    ```
+  </Step>
+
+  <Step title="Confirm that the user has signed up">
+    Before proceeding forward ask the user if they have already created an account with Autonomy. If not, instruct them to [sign up](https://my.autonomy.computer) so they get a dedicated Cluster in the Autonomy Computer.
+
+    Once they have signed up, proceed to the next step.
+  </Step>
+
+  <Step title="Install the `autonomy` command">
+    Check if the `autonomy` command is already installed by running `autonomy --version`. If the command is not installed, install it by running the following in a terminal.
+
+    ```bash  theme={null}
+    curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
+    ```
+
+    You can check that it is successfully installed by running `autonomy --version`. If it is not found, you may need to run `source "$HOME/.autonomy/env"` to make it available.
+  </Step>
+
+  <Step title="Ensure docker is installed and running">
+    Before running the `autonomy` command, ensure [Docker](https://www.docker.com/get-started/) is installed and running in your environment. You can check that docker is working correctly by running:
+
+    ```
+    docker ps
+    ```
+
+    The `autonomy` command uses docker to build docker images and push them to a Zone in a Cluseter in the Autonomy Computer.
+  </Step>
+
+  <Step title="Enroll with your Cluster">
+    Enroll your workstation with your Cluster in Autonomy Computer
+
+    ```
+    autonomy cluster enroll --no-input
+    ```
+
+    This command will block and print a code that your user has to paste into their browser to sign in, remind them to do that. The command will continue once they have signed in.
+  </Step>
+
+  <Step title="Deploy the zone">
+    Deploy the zone dedicated to this app as follows:
+
+    ```
+    autonomy zone deploy
+    ```
+
+    This will display the name of this app’s zone and cluster. Take note of those values, you will need them later.
+
+    The `autonomy.yaml` file sets `public: true` on the main pod of the app. That instructs the Autonomy Computer to give this app a public api endpoint and cause the interactive web UI defined in `images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
+
+    The zone can take up to a minute to be ready to use.
+  </Step>
+
+  <Step title="List all agents">
+    Get a list of all running agents by calling the `/agents` endpoint:
+
+    ```
+    curl --silent --request GET \
+    "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents"
+    ```
+
+    This will return a JSON array containing information about all agents that are currently running.
+  </Step>
+
+  <Step title="Check that the agent is responding">
+    Check that the agent defined in `images/main/main.py` is responding to an api call:
+
+    ```
+    curl --silent --request POST \
+    --header "Content-Type: application/json" \
+    --data '{"message":"who are you?"}' \
+    "https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/agents/henry"
+    ```
+  </Step>
+
+  <Step title="Guide your user to interact with the app in their browser">
+    Try it: `https://${CLUSTER}-$ZONE}.cluster.autonomy.computer/`
+  </Step>
+
+  <Step title="See logs">
+    Start the logs server in the background to view streaming logs from your app:
+
+    ```bash  theme={null}
+    # Start logs server in background and capture output to get the actual port
+    autonomy zone inlet --to logs > logs_server.log 2>&1 &
+    LOGS_PID=$!
+
+    # Wait for server to start and extract the port number
+    sleep 3
+    LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
+    if [ -z "$LOGS_PORT" ]; then
+        LOGS_PORT=32101  # fallback to default port
+    fi
+
+    echo "Logs server running on port: $LOGS_PORT"
+    echo "Logs server PID: $LOGS_PID"
+    ```
+
+    **Option 1: View logs in a browser**
+
+    ```bash  theme={null}
+    # Open logs in a web browser (shows streaming logs with a nice UI)
+    open "http://127.0.0.1:$LOGS_PORT"
+    ```
+
+    **Option 2: Stream logs in terminal**
+
+    ```bash  theme={null}
+    # Get the dynamic full pod name and stream logs directly on the terminal
+    POD_NAME=main-pod && \
+    CONTAINER_NAME=main && \
+    FULL_POD_NAME=$(curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1) && \
+    curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
+    ```
+
+    **Stop the logs server when done:**
+
+    ```bash  theme={null}
+    # Kill the specific logs server process
+    kill $LOGS_PID
+
+    # Or kill all autonomy inlet processes
+    pkill -f "autonomy zone inlet"
+    ```
+  </Step>
+</Steps>
+
+## Define a custom API
+
+If the app needs more control, instead of using the default agent endpoints,
+the app can have custom FastAPI routes and easily integreate them with
+Autonomy agents.
+
+Here is an example:
+
+### Simple Translation API
+
+<Steps>
+  <Step title="Create a simple translation API">
+    In a new Autonomy app, create a `images/main/main.py` that defines a simple translation service:
+
+    ```python
+    from autonomy import Agent, HttpServer, Model, Node, NodeDep
+    from fastapi import FastAPI
+    from types import SimpleNamespace
+
+    app = FastAPI()
+    agent = None
+
+    @app.post("/translate")
+    async def translate(request: dict, node: NodeDep):
+        global agent
+
+        if not agent:
+            agent = await Agent.start(
+                node=node,
+                name="translator",
+                instructions="""
+                You are an agent that specializes in translating text
+                from English to Hindi. When you're given text in English,
+                output the corresponding translation in Hindi written
+                using the Latin alphabet (Roman script).
+
+                Provide only the translation, no additional explanation.
+                """,
+                model=Model("claude-sonnet-4-v1"),
+            )
+
+        response = await agent.send(f"English:\n\n{request.get("text", "")}")
+        return {"translation": response[-1].content.text}
+
+    Node.start(http_server=HttpServer(SimpleNamespace(api=app, routes=lambda n: None)))
+    ```
+
+    This creates a simple translation service that uses a single agent for all requests.
+    The `autonomy.yaml`, `Dockerfile` remain same as in the previous section.
+
+    The `index.html` would have to be adapted to call the `/translate` endpont. To start,
+    we can test using curl.
+  </Step>
+
+  <Step title="Deploy the translation API">
+    Deploy the zone using the same command as before:
+
+    ```bash
+    autonomy zone deploy
+    ```
+
+    Once, the zone is deployed, the translation API will be available at:
+    `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate`
+  </Step>
+
+  <Step title="Test the translation API">
+    Test your translation service by sending English text to be translated:
+
+    ```bash
+    curl --silent --request POST \
+    --header "Content-Type: application/json" \
+    --data '{
+      "text": "Hello, how are you?"
+    }' \
+    "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate"
+    ```
+
+    Expected response:
+    ```json
+    {
+      "translation": "Namaste, aap kaise hain?"
     }
+    ```
+  </Step>
+</Steps>
 
-    document.getElementById("in").addEventListener("keydown", async e => {
-        if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
-        e.preventDefault();
-        await send(e.target.value);
+### Parallelize work using many agents
+
+<Steps>
+  <Step title="Create a parallel translation API">
+    For more advanced use cases, the app can process multiple translations concurrently
+    by running thousands of parallel agents.
+
+    Replace `images/main/main.py` with:
+
+    ```python
+    from autonomy import Agent, HttpServer, Model, Node, NodeDep
+    from fastapi import FastAPI
+    from types import SimpleNamespace
+    from asyncio import gather, create_task
+    from typing import List, Dict
+
+    app = FastAPI()
+
+    async def translate_item(node: Node, item: str) -> Dict[str, str]:
+        agent = None
+        try:
+            agent = await Agent.start(
+                node=node,
+                name=f"translator_{id(item)}",
+                instructions="""
+                You are an agent that specializes in translating text
+                from English to Hindi. When you're given text in English,
+                output the corresponding translation in Hindi written
+                using the Latin alphabet (Roman script).
+
+                Provide only the translation, no additional explanation.
+                """,
+                model=Model("claude-sonnet-4-v1"),
+            )
+
+            response = await agent.send(f"English:\n\n{item}", timeout=60)
+            return {"text": item, "translation": response[-1].content.text}
+        except Exception as e:
+            return {"text": item, "error": str(e)}
+        finally:
+            if agent:
+                create_task(Agent.stop(node, agent.name))
+
+    @app.post("/translate")
+    async def translate(request: dict, node: NodeDep):
+        texts = request.get("texts", [])
+        results = await gather(*(translate_item(node, text) for text in texts))
+        return {"translations": results}
+
+    Node.start(http_server=HttpServer(SimpleNamespace(api=app, routes=lambda n: None)))
+    ```
+
+    This creates a scalable translation service that can translate thousands of
+    items in parallel by creating an individual agent per item.
+
+    The `autonomy.yaml`, `Dockerfile` remain same as in the previous sections.
+
+    The `index.html` would have to be adapted to call the `/translate` endpont.
+    To start, we can test using curl.
+  </Step>
+
+  <Step title="Deploy the parallel translation API">
+    Deploy the zone:
+
+    ```bash
+    autonomy zone deploy
+    ```
+  </Step>
+
+  <Step title="Test the parallel translation API">
+    Test the parallel translation API by sending multiple English phrases:
+
+    ```bash  theme={null}
+    curl --silent --request POST \
+    --header "Content-Type: application/json" \
+    --data '{
+      "texts": [
+        "Hello, how are you?",
+        "Thank you very much",
+        "Good morning"
+      ]
+    }' \
+    "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate"
+    ```
+
+    Expected response format:
+    ```json
+    {
+      "translations": [
+        {
+          "text": "Hello, how are you?",
+          "translation": "Namaste, aap kaise hain?"
+        },
+        {
+          "text": "Thank you very much",
+          "translation": "Dhanyawad bahut bahut"
+        },
+        {
+          "text": "Good morning",
+          "translation": "Suprabhat"
         }
-    });
-    </script>
-</body>
-</html>
-```
+      ]
+    }
+    ```
+  </Step>
 
-Later, when you deploy this zone to the Autonomy Computer, this web page will become available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`. Where `${CLUSTER}` and `${ZONE}` represent the name of this app's Cluser and Zone in the Autonomy Computer.
+  <Step title="View your API documentation">
+    FastAPI automatically generates interactive API documentation. View it at:
+    `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/docs`
 
-Unless the user has specifically asked for something different, use exactly the above content for `images/main/index.html`
-
-If you do need to generate a new UI, prefer generating streaming output for better user experience with real-time responses.
-
-## Streaming Implementation
-
-When creating interactive web applications, implement streaming for better UX:
-
-```javascript
-// Use ?stream=true and process with response.body.getReader()
-const response = await fetch('/agents/your-agent?stream=true', {
-    method: 'POST',
-    body: JSON.stringify({ message: userMessage })
-});
-
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-// Parse JSON chunks line by line and display incrementally
-```
-
-Consider adding character-by-character display using a text queue and setTimeout for smooth typewriter effects.
-
-Here is an example of streaming output from the API:
-
-```
-curl --silent --request POST \
---header "Content-Type: application/json" \
---data '{"message":"What are the key elements of a contract?"}' \
-"https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry?stream=true"
-{"scope": "None", "conversation": "None", "messages": [{"content": {"text": "I", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
-{"scope": "None", "conversation": "None", "messages": [{"content": {"text": "'ve already", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
-{"scope": "None", "conversation": "None", "messages": [{"content": {"text": " provided a detailed answer", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
-
-...
-
-```
-
-Here's example output of calling the API without streaming:
-
-```
-curl --silent --request POST \
---header "Content-Type: application/json" \
---data '{"message":"What are the key elements of a contract?"}' \
-"https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry"
-
-[
-  {
-    "content": {
-      "text": "Great question! The key elements that make a contract legally ...",
-      "type": "text"
-    },
-    "phase": "executing",
-    "thinking": false,
-    "tool_calls": [],
-    "role": "assistant"
-  }
-]
-```
-
-At this point the new zone's directory should look like this:
-
-```
-
-├── autonomy.yaml
-└── images
-    └── main
-        ├── Dockerfile
-        ├── index.html
-        └── main.py
-```
-</Step>
-
-<Step title="Confirm that the user has signed up">
-Before proceeding forward ask the user if they have already created an account with Autonomy. If not, instruct them to [sign up](https://my.autonomy.computer) so they get a dedicated Cluster in the Autonomy Computer.
-
-Once they have signed up, proceed to the next step.
-</Step>
-
-<Step title="Install the `autonomy` command">
-Check if the `autonomy` command is already installed by running `autonomy --version`. If the command is not installed, install it by running the following in a terminal.
-
-```bash
-curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
-```
-
-You can check that it is successfully installed by running `autonomy --version`. If it is not found, you may need to run `source "$HOME/.autonomy/env"` to make it available.
-</Step>
-
-<Step title="Ensure docker is installed and running">
-Before running the `autonomy` command, ensure [Docker](https://www.docker.com/get-started/) is installed and running in your environment. You can check that docker is working correctly by running:
-
-```
-docker ps
-```
-
-The `autonomy` command uses docker to build docker images and push them to a Zone in a Cluster in the Autonomy Computer.
-</Step>
-<Step title="Enroll with your Cluster">
-Enroll your workstation with your Cluster in Autonomy Computer
-
-```
-autonomy cluster enroll --no-input
-```
-
-This command will block and print a code that your user has to paste into their browser to sign in, remind them to do that. The command will continue once they have signed in.
-</Step>
-<Step title="Deploy the zone">
-Deploy the zone dedicated to this app as follows:
-
-```
-autonomy zone deploy
-```
-
-This will display the name of this app’s zone and cluster. Take note of those values, you will need them later.
-
-The `autonomy.yaml` file sets `public: true` on the main pod of the app. That instructs the Autonomy Computer to give this app a public API endpoint and cause the interactive web UI defined in `images/main/index.html` to be served from `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
-
-The zone can take up to a minute to be ready to use.
-</Step>
-
-<Step title="Check that the agent is running">
-Check that the agent defined in `images/main/main.py` is responding to api calls:
-
-```bash
-# Regular API
-curl --request POST \
---header "Content-Type: application/json" \
---data '{"message":"who are you?"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
-
-# Streaming API (preferred for UIs)
-curl --request POST \
---header "Content-Type: application/json" \
---data '{"message":"who are you?"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry?stream=true"
-```
-</Step>
-
-<Step title="Guide your user to interact with the app in their browser">
-Try it: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
-</Step>
-
-<Step title="See logs">
-Start the logs server in the background to view streaming logs from your app:
-
-```bash
-# Start logs server in background and capture output to get the actual port
-autonomy zone inlet --to logs > logs_server.log 2>&1 &
-LOGS_PID=$!
-
-# Wait for server to start and extract the port number
-sleep 3
-LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
-if [ -z "$LOGS_PORT" ]; then
-    LOGS_PORT=32101  # fallback to default port
-fi
-
-echo "Logs server running on port: $LOGS_PORT"
-echo "Logs server PID: $LOGS_PID"
-```
-
-**Option 1: View logs in a browser**
-
-```bash
-# Open logs in a web browser (shows streaming logs with a nice UI)
-open "http://127.0.0.1:$LOGS_PORT"
-```
-
-**Option 2: Stream logs in terminal**
-
-```bash
-# Get the dynamic full pod name and stream logs directly on the terminal
-POD_NAME=main-pod && \
-CONTAINER_NAME=main && \
-FULL_POD_NAME=$(curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1) && \
-curl -s -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
-```
-
-Note: curl's `-N` flag is necessary to disable buffering and enable real-time streaming of logs.
-
-**Stop the logs server when done:**
-```bash
-# Kill the specific logs server process
-kill $LOGS_PID
-
-# Or kill all autonomy inlet processes
-pkill -f "autonomy zone inlet"
-```
-
-Remember to remove the `logs_server.log` file as well.
-
-</Step>
-
-<Step title="Delete the zone (optional)">
-If you need to delete the zone and clean up all resources:
-
-```bash
-autonomy zone delete --yes
-```
-
-This will completely remove the zone, including all pods, containers, and associated resources from the Autonomy Computer.
-</Step>
-
+    This provides a complete interface to test your endpoints directly in the browser.
+  </Step>
 </Steps>
