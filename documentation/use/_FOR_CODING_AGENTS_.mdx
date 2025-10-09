@@ -13,7 +13,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     Create that new directory and change into it:
 
-    ```bash  theme={null}
+    ```bash
     mkdir hello
     cd hello
     ```
@@ -24,7 +24,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
   <Step title="Create `autonomy.yaml`">
     Create `autonomy.yaml` with the following content:
 
-    ```yaml  theme={null}
+    ```yaml
     name: hello # The zone's name should be less than 10 characters
     pods:
       - name: main-pod
@@ -44,7 +44,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     Create `images/main/Dockerfile` with the following content:
 
-    ```bash  theme={null}
+    ```bash
     FROM ghcr.io/build-trust/autonomy-python
     COPY . .
     ENTRYPOINT ["python", "main.py"]
@@ -57,7 +57,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     Create `images/main/main.py` with the following content:
 
-    ```python  theme={null}
+    ```python
     from autonomy import Agent, Model, Node
 
 
@@ -80,7 +80,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     Create `images/main/index.html` with the following content:
 
-    ```html  theme={null}
+    ```html
     <!doctype html>
     <html lang="en">
     <head>
@@ -257,7 +257,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
   <Step title="Install the `autonomy` command">
     Check if the `autonomy` command is already installed by running `autonomy --version`. If the command is not installed, install it by running the following in a terminal.
 
-    ```bash  theme={null}
+    ```bash
     curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
     ```
 
@@ -327,7 +327,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
   <Step title="See logs">
     Start the logs server in the background to view streaming logs from your app:
 
-    ```bash  theme={null}
+    ```bash
     # Start logs server in background and capture output to get the actual port
     autonomy zone inlet --to logs > logs_server.log 2>&1 &
     LOGS_PID=$!
@@ -345,14 +345,14 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     **Option 1: View logs in a browser**
 
-    ```bash  theme={null}
+    ```bash
     # Open logs in a web browser (shows streaming logs with a nice UI)
     open "http://127.0.0.1:$LOGS_PORT"
     ```
 
     **Option 2: Stream logs in terminal**
 
-    ```bash  theme={null}
+    ```bash
     # Get the dynamic full pod name and stream logs directly on the terminal
     POD_NAME=main-pod && \
     CONTAINER_NAME=main && \
@@ -362,7 +362,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     **Stop the logs server when done:**
 
-    ```bash  theme={null}
+    ```bash
     # Kill the specific logs server process
     kill $LOGS_PID
 
@@ -378,6 +378,8 @@ If the app needs more control, instead of using the default agent endpoints,
 the app can have custom FastAPI routes and easily integreate them with
 Autonomy agents.
 
+**Important**: Don't define `@app.get("/")` in your FastAPI app if you want the Autonomy HTTP server to automatically serve your `index.html` file at the root URL. Custom root routes take precedence over automatic file serving.
+
 Here is an example:
 
 ### Simple Translation API
@@ -389,7 +391,6 @@ Here is an example:
     ```python
     from autonomy import Agent, HttpServer, Model, Node, NodeDep
     from fastapi import FastAPI
-    from types import SimpleNamespace
 
     app = FastAPI()
     agent = None
@@ -416,7 +417,7 @@ Here is an example:
         response = await agent.send(f"English:\n\n{request.get("text", "")}")
         return {"translation": response[-1].content.text}
 
-    Node.start(http_server=HttpServer(SimpleNamespace(api=app, routes=lambda n: None)))
+    Node.start(http_server=HttpServer(app=app))
     ```
 
     This creates a simple translation service that uses a single agent for all requests.
@@ -450,6 +451,7 @@ Here is an example:
     ```
 
     Expected response:
+
     ```json
     {
       "translation": "Namaste, aap kaise hain?"
@@ -470,7 +472,6 @@ Here is an example:
     ```python
     from autonomy import Agent, HttpServer, Model, Node, NodeDep
     from fastapi import FastAPI
-    from types import SimpleNamespace
     from asyncio import gather, create_task
     from typing import List, Dict
 
@@ -507,7 +508,7 @@ Here is an example:
         results = await gather(*(translate_item(node, text) for text in texts))
         return {"translations": results}
 
-    Node.start(http_server=HttpServer(SimpleNamespace(api=app, routes=lambda n: None)))
+    Node.start(http_server=HttpServer(app=app))
     ```
 
     This creates a scalable translation service that can translate thousands of
@@ -530,7 +531,7 @@ Here is an example:
   <Step title="Test the parallel translation API">
     Test the parallel translation API by sending multiple English phrases:
 
-    ```bash  theme={null}
+    ```bash
     curl --silent --request POST \
     --header "Content-Type: application/json" \
     --data '{
@@ -544,6 +545,7 @@ Here is an example:
     ```
 
     Expected response format:
+
     ```json
     {
       "translations": [
