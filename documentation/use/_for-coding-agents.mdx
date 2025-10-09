@@ -572,6 +572,8 @@ API_KEY: your_api_key_here
 DATABASE_PASSWORD: your_secure_password_here
 ```
 
+If you need to generate a new secure random secret, use `openssl rand -hex 32`
+
 **Important**: Always add `secrets.yaml` to your `.gitignore`:
 
 ```gitignore
@@ -592,9 +594,6 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 API_KEY = os.getenv("API_KEY")
 if not API_KEY:
     raise ValueError("API_KEY environment variable is required")
-
-# Use in your application
-headers = {"Authorization": f"Bearer {API_KEY}"}
 ```
 
 Redeploy the zone changing environment variables or secrets.
