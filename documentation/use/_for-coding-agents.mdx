@@ -767,6 +767,313 @@ function handleSubmit(text) {
 ```
 
 
+## Using Memory, Conversation, and Scope in Autonomy Agents
+
+> Enable persistent, contextual conversations with memory, multi-turn interactions, and user isolation.
+
+Memory in Autonomy agents allows your applications to maintain context across multiple interactions, making conversations more natural and coherent. Instead of treating each message in isolation, agents can "remember" previous exchanges, user preferences, and conversation flow. This is essential for building sophisticated conversational applications.
+
+### Basic Memory Usage
+
+By default, Autonomy agents automatically maintain memory within the same conversation. Here's a simple example that demonstrates persistent memory:
+
+#### Basic Memory Agent
+
+Create `images/main/main.py`:
+
+```python
+from autonomy import Agent, Model, Node
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="memory-assistant",
+        instructions="""
+        You are a helpful assistant with perfect memory. Remember everything 
+        the user tells you throughout our conversation. Reference previous 
+        topics naturally when relevant.
+        """,
+        model=Model("claude-sonnet-4-v1")
+    )
+
+Node.start(main)
+```
+
+#### Testing Basic Memory
+
+Deploy your zone and test the memory functionality:
+
+```bash
+# First message - establish context
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"My name is Alice and I work as a software engineer at TechCorp."}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
+
+# Follow-up message - agent should remember the context
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"What do you remember about me?"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
+```
+
+The agent will remember that you're Alice, a software engineer at TechCorp, and reference this information in the follow-up response.
+
+### Managing Multiple Conversations
+
+For applications that need to handle multiple separate conversations simultaneously, use conversation identifiers. Each conversation ID maintains its own independent memory thread:
+
+#### Multi-Conversation Agent
+
+```python
+from autonomy import Agent, Model, Node
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="chat-assistant",
+        instructions="""
+        You are a helpful assistant. Remember the context of each conversation 
+        and provide personalized responses based on what each user has shared.
+        """,
+        model=Model("claude-sonnet-4-v1")
+    )
+
+Node.start(main)
+```
+
+#### Testing Multiple Conversations
+
+```bash
+# Conversation 1 - User talking about cooking
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"I love cooking Italian food, especially pasta dishes.", "conversation":"cooking-chat"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+
+# Conversation 2 - Different user talking about travel
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"I am planning a trip to Japan next month.", "conversation":"travel-chat"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+
+# Follow up in conversation 1 - should remember cooking context
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"What ingredients do I need for carbonara?", "conversation":"cooking-chat"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+
+# Follow up in conversation 2 - should remember travel context  
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"What should I pack for the weather?", "conversation":"travel-chat"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+```
+
+Each conversation maintains its own memory thread - the cooking conversation remembers Italian food preferences, while the travel conversation remembers the Japan trip.
+
+### User Isolation with Scope
+
+For multi-user applications, use scope to ensure complete isolation between different users. This prevents memory leakage between users while allowing multiple conversations per user:
+
+#### Multi-User Agent with Scope
+
+```python
+from autonomy import Agent, Model, Node
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="personal-assistant",
+        instructions="""
+        You are a personal assistant. Remember each user's preferences, 
+        goals, and personal information. Provide personalized assistance 
+        based on their individual context and history.
+        """,
+        model=Model("claude-sonnet-4-v1")
+    )
+
+Node.start(main)
+```
+
+#### Testing User Isolation
+
+```bash
+# User 1 - Alice shares personal information
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"I am Alice, a vegetarian who loves hiking.", "scope":"user-alice", "conversation":"profile"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+
+# User 2 - Bob shares different personal information  
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"I am Bob, I eat meat and prefer indoor activities.", "scope":"user-bob", "conversation":"profile"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+
+# Alice asks for meal suggestions - should get vegetarian options
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"What should I have for dinner?", "scope":"user-alice", "conversation":"meal-planning"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+
+# Bob asks for meal suggestions - should get meat options
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"What should I have for dinner?", "scope":"user-bob", "conversation":"meal-planning"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+```
+
+Alice will receive vegetarian meal suggestions while Bob gets meat-based options, demonstrating perfect user isolation.
+
+### Memory in Custom FastAPI Applications
+
+For more complex applications using custom FastAPI routes, you can integrate memory management directly into your API endpoints:
+
+#### Custom API with Memory Management
+
+Create `images/main/main.py`:
+
+```python
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+import uuid
+
+app = FastAPI()
+
+class ChatMessage(BaseModel):
+    message: str
+    user_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+class UserProfile(BaseModel):
+    name: str
+    preferences: dict
+    user_id: str
+
+# Store user profiles (in production, use a proper database)
+user_profiles = {}
+
+@app.post("/chat")
+async def chat_with_memory(request: ChatMessage, node: NodeDep):
+    """Chat endpoint with automatic memory management"""
+    
+    # Generate conversation ID if not provided
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+    
+    # Get or create agent for this conversation
+    agent_name = f"chat_agent_{conversation_id}"
+    
+    try:
+        # Get user context if available
+        user_context = ""
+        if request.user_id and request.user_id in user_profiles:
+            profile = user_profiles[request.user_id]
+            user_context = f"User profile: {profile['name']}, Preferences: {profile['preferences']}"
+        
+        agent = await Agent.start(
+            node=node,
+            name=agent_name,
+            instructions=f"""
+            You are a helpful assistant with memory. Remember everything from 
+            this conversation and provide contextual responses.
+            
+            {user_context}
+            """,
+            model=Model("claude-sonnet-4-v1")
+        )
+        
+        # Send message with scope and conversation for memory
+        response = await agent.send(
+            request.message,
+            scope=request.user_id,
+            conversation=conversation_id
+        )
+        
+        return {
+            "response": response[-1].content.text,
+            "conversation_id": conversation_id,
+            "user_id": request.user_id
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/users")
+async def create_user_profile(profile: UserProfile):
+    """Create or update user profile for personalized interactions"""
+    user_profiles[profile.user_id] = {
+        "name": profile.name,
+        "preferences": profile.preferences
+    }
+    return {"message": "Profile created", "user_id": profile.user_id}
+
+@app.get("/users/{user_id}/conversations")
+async def get_user_conversations(user_id: str, node: NodeDep):
+    """Get conversation history for a user (simplified example)"""
+    # In a real application, you'd query the conversation history from the agent's memory
+    return {"user_id": user_id, "conversations": ["Available via agent memory"]}
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+#### Testing Custom API with Memory
+
+```bash
+# Create user profiles
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{
+  "user_id": "alice123", 
+  "name": "Alice", 
+  "preferences": {"diet": "vegetarian", "hobbies": ["hiking", "reading"]}
+}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/users"
+
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{
+  "user_id": "bob456", 
+  "name": "Bob", 
+  "preferences": {"diet": "omnivore", "hobbies": ["gaming", "cooking"]}
+}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/users"
+
+# Start conversation with Alice
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{
+  "message": "I want to plan a healthy meal for this week",
+  "user_id": "alice123",
+  "conversation_id": "meal-planning-alice"
+}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
+
+# Continue Alice's conversation
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{
+  "message": "What did I mention about my dietary preferences?",
+  "user_id": "alice123", 
+  "conversation_id": "meal-planning-alice"
+}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
+
+# Separate conversation with Bob
+curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{
+  "message": "I want to cook something new this weekend",
+  "user_id": "bob456",
+  "conversation_id": "cooking-bob"
+}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
+```
+
+With these patterns, your Autonomy agents can maintain sophisticated, personalized conversations that span multiple interactions while ensuring proper user isolation and context management.
+
 
 ## Creating Agents that can use Tools
 
