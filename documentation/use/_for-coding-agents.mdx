@@ -34,6 +34,8 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     Unless the user has asked for a different specific name for the app, use `hello`.
 
+    **Important**: Zone names must be 10 characters or less.
+
     This defines a Zone in Autonomy Computer where the application will run.
   </Step>
   <Step title="Create `images/main/Dockerfile`">
@@ -45,7 +47,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     FROM ghcr.io/build-trust/autonomy-python
     COPY . .
     ENTRYPOINT ["python", "main.py"]
-
+    
     ```
   </Step>
   <Step title="Create `images/main/main.py`">
@@ -55,8 +57,8 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     ```python
     from autonomy import Agent, Model, Node
-
-
+    
+    
     async def main(node):
         await Agent.start(
         node=node,
@@ -64,10 +66,10 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
         instructions="You are Henry, an expert legal assistant",
         model=Model("claude-sonnet-4-v1")
         )
-
-
+    
+    
     Node.start(main)
-
+    
     ```
   </Step>
   <Step title="Create `images/main/index.html`">
@@ -90,20 +92,20 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             font: 21px "Courier New", Courier, monospace;
             padding: 0;
         }
-
+    
         main {
             max-width: 1080px;
             margin: 0 auto;
             padding: 3rem 1rem;
         }
-
+    
         pre {
             padding-top: 30px;
             box-sizing: border-box;
             white-space: pre-wrap;
             overflow-wrap: break-word;
         }
-
+    
         textarea {
             width: 100%;
             max-width: 1080px;
@@ -124,7 +126,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
         <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
         <pre id="out"></pre>
         <main>
-
+    
         <script>
         async function appendCharByChar(text, delay = 5) {
             for (const char of text) {
@@ -132,7 +134,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
-
+    
         async function processLine(line) {
             if (line.trim()) {
             const parsed = JSON.parse(line);
@@ -143,38 +145,38 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             }
             }
         }
-
+    
         async function send(message) {
             const input = document.getElementById("in");
             input.disabled = true;
-
+    
             const out = document.getElementById("out");
             out.textContent = "";
-
+    
             const response = await fetch("/agents/henry?stream=true", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ message: message }),
             });
-
+    
             const decoder = new TextDecoder();
             let buffer = "";
-
+    
             for await (const chunk of response.body) {
             buffer += decoder.decode(chunk, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop();
-
+    
             if (!out.textContent) input.value = "";
             for (const line of lines) await processLine(line);
             }
-
+    
             await processLine(buffer);
-
+    
             input.disabled = false;
             input.focus();
         }
-
+    
         document.getElementById("in").addEventListener("keydown", async e => {
             if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
             e.preventDefault();
@@ -202,9 +204,9 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "I", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "'ve already", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": " provided a detailed answer", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
-
+    
     ...
-
+    
     ```
 
     Here's example output of calling the API without streaming:
@@ -214,7 +216,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     --header "Content-Type: application/json" \
     --data '{"message":"What are the key elements of a contract?"}' \
     "https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry"
-
+    
     [
       {
         "content": {
@@ -232,7 +234,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     At this point the new zone's directory looks should look like this:
 
     ```
-
+    
     ├── autonomy.yaml
     └── images
         └── main
@@ -316,14 +318,14 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     # Start logs server in background and capture output to get the actual port
     autonomy zone inlet --to logs > logs_server.log 2>&1 &
     LOGS_PID=$!
-
+    
     # Wait for server to start and extract the port number
     sleep 3
     LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
     if [ -z "$LOGS_PORT" ]; then
         LOGS_PORT=32101  # fallback to default port
     fi
-
+    
     echo "Logs server running on port: $LOGS_PORT"
     echo "Logs server PID: $LOGS_PID"
     ```
@@ -350,7 +352,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     ```bash
     # Kill the specific logs server process
     kill $LOGS_PID
-
+    
     # Or kill all autonomy inlet processes
     pkill -f "autonomy zone inlet"
     ```
@@ -374,14 +376,14 @@ Here is an example:
     ```python
     from autonomy import Agent, HttpServer, Model, Node, NodeDep
     from fastapi import FastAPI
-
+    
     app = FastAPI()
     agent = None
-
+    
     @app.post("/translate")
     async def translate(request: dict, node: NodeDep):
         global agent
-
+    
         if not agent:
             agent = await Agent.start(
                 node=node,
@@ -391,15 +393,15 @@ Here is an example:
                 from English to Hindi. When you're given text in English,
                 output the corresponding translation in Hindi written
                 using the Latin alphabet (Roman script).
-
+    
                 Provide only the translation, no additional explanation.
                 """,
                 model=Model("claude-sonnet-4-v1"),
             )
-
+    
         response = await agent.send(f"English:\n\n{request.get("text", "")}")
         return {"translation": response[-1].content.text}
-
+    
     Node.start(http_server=HttpServer(app=app))
     ```
 
@@ -451,9 +453,9 @@ Here is an example:
     from fastapi import FastAPI
     from asyncio import gather, create_task
     from typing import List, Dict
-
+    
     app = FastAPI()
-
+    
     async def translate_item(node: Node, item: str) -> Dict[str, str]:
         agent = None
         try:
@@ -465,12 +467,12 @@ Here is an example:
                 from English to Hindi. When you're given text in English,
                 output the corresponding translation in Hindi written
                 using the Latin alphabet (Roman script).
-
+    
                 Provide only the translation, no additional explanation.
                 """,
                 model=Model("claude-sonnet-4-v1"),
             )
-
+    
             response = await agent.send(f"English:\n\n{item}", timeout=60)
             return {"text": item, "translation": response[-1].content.text}
         except Exception as e:
@@ -478,13 +480,13 @@ Here is an example:
         finally:
             if agent:
                 create_task(Agent.stop(node, agent.name))
-
+    
     @app.post("/translate")
     async def translate(request: dict, node: NodeDep):
         texts = request.get("texts", [])
         results = await gather(*(translate_item(node, text) for text in texts))
         return {"translations": results}
-
+    
     Node.start(http_server=HttpServer(app=app))
     ```
 
@@ -544,7 +546,6 @@ Here is an example:
     This provides a complete interface to test your endpoints directly in the browser.
   </Step>
 </Steps>
-
 
 ## Environment Variables and Secrets
 
@@ -623,6 +624,7 @@ ENTRYPOINT ["python", "main.py"]
 ```
 
 This pattern:
+
 1. Uses `autonomy-python-dev` image (which includes pip) to install dependencies
 2. Copies the installed packages to the production `autonomy-python` image
 3. Keeps the final image size optimized while having all required packages
@@ -766,7 +768,6 @@ function handleSubmit(text) {
 }
 ```
 
-
 ## Using Memory, Conversation, and Scope in Autonomy Agents
 
 > Enable persistent, contextual conversations with memory, multi-turn interactions, and user isolation.
@@ -775,7 +776,15 @@ Memory in Autonomy agents allows your applications to maintain context across mu
 
 ### Basic Memory Usage
 
-By default, Autonomy agents automatically maintain memory within the same conversation. Here's a simple example that demonstrates persistent memory:
+By default, Autonomy agents automatically maintain memory within the same conversation.
+
+> **IMPORTANT**: Memory in Autonomy agents is **conversation-local**. Each conversation thread maintains its own memory context. Memory does NOT persist across different conversations, even for the same user/scope.
+>
+> - ✅ Same scope + same conversation = shared memory within that thread
+> - ❌ Same scope + different conversation = no shared memory (fresh start)
+> - ❌ Different scope = completely isolated (as expected)
+
+Here's a simple example that demonstrates persistent memory:
 
 #### Basic Memory Agent
 
@@ -1075,6 +1084,30 @@ curl --silent --request POST \
 With these patterns, your Autonomy agents can maintain sophisticated, personalized conversations that span multiple interactions while ensuring proper user isolation and context management.
 
 
+## Agent Lifecycle
+
+Agents keep running after they are started, until they are stopped.
+Handle this correctly, when using custom FastAPI endpoints:
+
+```python
+# ❌ This will cause "AlreadyExists" errors on subsequent requests
+agent = await Agent.start(node=node, name="my-agent", ...)
+
+# ✅ Better: Use a global reference and initialize once
+global_agent = None
+
+if global_agent is None:
+    try:
+        global_agent = await Agent.start(node=node, name="my-agent", ...)
+    except Exception as e:
+        if "AlreadyExists" in str(e):
+            # Agent already exists, continue using it
+            pass
+        else:
+            raise e
+```
+
+
 ## Creating Agents that can use Tools
 
 Autonomy agents can be enhanced with tools to perform specific actions or access external data. There are two main ways to add tools to your agents:
@@ -1117,9 +1150,7 @@ Node.start(main)
 
 Create the following files for a basic tool-enabled agent:
 
-**main.py** - Your main application file
-**Dockerfile** - Container configuration
-**autonomy.yaml** - Deployment configuration
+**main.py** - Your main application file **Dockerfile** - Container configuration **autonomy.yaml** - Deployment configuration
 
 ##### Dockerfile
 
@@ -1162,10 +1193,7 @@ Here's how to create an agent that can perform web searches using the Brave Sear
 
 ##### Project Structure
 
-**autonomy.yaml** - Includes MCP server configuration
-**secrets.yaml** - API keys and sensitive data
-**images/main/main.py** - Main application
-**images/main/Dockerfile** - Container setup
+**autonomy.yaml** - Includes MCP server configuration **secrets.yaml** - API keys and sensitive data **images/main/main.py** - Main application **images/main/Dockerfile** - Container setup
 
 ##### autonomy.yaml with MCP
 
@@ -1291,3 +1319,10 @@ open "http://127.0.0.1:$LOGS_PORT"
 kill $LOGS_PID
 #-------------------------------------------------------------------------------------
 ```
+
+# Best Practices
+
+- Pefer simple and minimal approaches where possible.
+- When you're asked to create an example, create a simplest case first and then offer to improve it.
+- When a user asks you to create an app, first ask 2 or 3 clarifying questions to gather requirements before proceeding.
+- Generate a README.md in new apps that you create. Include ascii architecture diagrams in this README.md file.
