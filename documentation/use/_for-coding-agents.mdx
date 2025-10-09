@@ -546,4 +546,60 @@ Here is an example:
 </Steps>
 
 
-- [Coding Agents: Define a custom UI](https://autonomy.computer/docs/_for-coding-agents/define-a-custom-ui): For applications that need user interfaces that are more complex than what is ideal for a simple `index.html`, Autonomy apps can serve a compiled static site using FastAPI. This site can call APIs defined within the app.
+## Environment Variables and Secrets
+
+Configure environment variables directly in your `autonomy.yaml`:
+
+```yaml
+name: translator
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+        env:
+          - MAX_FILE_SIZE: "52428800"  # 50MB in bytes
+          - LOG_LEVEL: "INFO"
+          - API_KEY: secrets.API_KEY  # Reference to secret
+```
+
+For sensitive values like API keys, use a separate `secrets.yaml` file:
+
+```yaml
+# secrets.yaml
+API_KEY: your_api_key_here
+DATABASE_PASSWORD: your_secure_password_here
+```
+
+**Important**: Always add `secrets.yaml` to your `.gitignore`:
+
+```gitignore
+# Never commit secrets
+secrets.yaml
+```
+
+Access environment variables and secrets in your Python code:
+
+```python
+import os
+
+# Environment variables
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "50000000"))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# Secrets
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise ValueError("API_KEY environment variable is required")
+
+# Use in your application
+headers = {"Authorization": f"Bearer {API_KEY}"}
+```
+
+Redeploy the zone changing environment variables or secrets.
+
+
+## Define a custom UI
+
+[Coding Agents: Define a custom UI](https://autonomy.computer/docs/_for-coding-agents/define-a-custom-ui): For applications that need user interfaces that are more complex than what is ideal for a simple `index.html`, Autonomy apps can serve a compiled static site using FastAPI. This site can call APIs defined within the app.
