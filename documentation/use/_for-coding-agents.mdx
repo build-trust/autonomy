@@ -649,3 +649,44 @@ The command will automatically handle the multi-stage build and package installa
 ## Define a custom UI
 
 [Coding Agents: Define a custom UI](https://autonomy.computer/docs/_for-coding-agents/define-a-custom-ui): For applications that need user interfaces that are more complex than what is ideal for a simple `index.html`, Autonomy apps can serve a compiled static site using FastAPI. This site can call APIs defined within the app.
+
+
+## Common Autonomy Commands
+
+Essential commands for managing your zones and deployments:
+
+```bash
+# Install the autonomy command
+curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
+
+# Check if already enrolled and has a cluster
+autonomy cluster show                 # Show cluster info, if enrolled
+
+# If not enrolled, enroll and get a cluster
+autonomy cluster enroll --no-input
+
+# Manage Zones
+autonomy zone list                    # List all zones in your cluster
+autonomy zone deploy                  # Deploy/update your zone
+autonomy zone delete                  # Delete your zone
+
+#-------------------------------------------------------------------------------------
+# Monitor and debug - start logs server in background
+autonomy zone inlet --to logs > logs_server.log 2>&1 &
+LOGS_PID=$!
+
+# Get the port and stream logs in terminal
+sleep 3
+LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
+POD_NAME=main-pod
+CONTAINER_NAME=main
+FULL_POD_NAME=$(curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1)
+curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
+
+# Or view logs in browser
+open "http://127.0.0.1:$LOGS_PORT"
+
+# Stop logs server when done
+kill $LOGS_PID
+#-------------------------------------------------------------------------------------
+```
