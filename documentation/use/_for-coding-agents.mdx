@@ -598,6 +598,53 @@ if not API_KEY:
 
 Redeploy the zone changing environment variables or secrets.
 
+### Multi-Stage Docker Builds for Python Dependencies
+
+When your application requires additional Python packages beyond what's included in the base `autonomy-python` image, use a multi-stage build approach.
+
+Create a `requirements.txt` file with your Python dependencies:
+
+```txt
+PyPDF2
+aiofiles
+```
+
+Update your `images/main/Dockerfile` to use multi-stage build:
+
+```dockerfile
+FROM ghcr.io/build-trust/autonomy-python-dev AS dev
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+FROM ghcr.io/build-trust/autonomy-python
+COPY --from=dev /app/venv venv
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+This pattern:
+1. Uses `autonomy-python-dev` image (which includes pip) to install dependencies
+2. Copies the installed packages to the production `autonomy-python` image
+3. Keeps the final image size optimized while having all required packages
+
+Your project structure should look like:
+
+```
+├── autonomy.yaml
+└── images
+    └── main
+        ├── Dockerfile
+        ├── requirements.txt
+        └── main.py
+```
+
+Deploy as usual:
+
+```bash
+autonomy zone deploy
+```
+
+The command will automatically handle the multi-stage build and package installation.
 
 ## Define a custom UI
 
