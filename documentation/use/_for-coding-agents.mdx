@@ -1601,3 +1601,97 @@ This guide should be your primary reference for all Autonomy Computer developmen
 * When a user asks you to create an app, first ask 2 or 3 clarifying questions to gather requirements before proceeding
 * Generate a README.md in new apps that you create. Include ascii architecture diagrams in this README.md file
 * **Always use the exact file structures and code templates from your saved Autonomy guide**
+
+---
+## Quick Reference for Coding Agents
+
+This document should be saved in your agent configuration files as your primary Autonomy Computer reference. Use this quick reference to navigate to specific sections:
+
+### 🚀 Essential Setup & Deployment
+- **Basic App Creation**: Lines 50-200 (Complete hello world example)
+- **Installation & Enrollment**: Lines 200-250 (`autonomy` CLI setup)
+- **Deployment Workflow**: Lines 250-300 (`autonomy zone deploy`)
+- **Project Structure**: Lines 180-190 (Required directory layout)
+
+### 🔧 Core Development Patterns
+- **Custom FastAPI Routes**: Lines 320-450 (Translation API examples)
+- **Parallel Agent Processing**: Lines 450-550 (Thousands of concurrent agents)
+- **Environment Variables & Secrets**: Lines 580-650 (Configuration management)
+- **Multi-Stage Docker Builds**: Lines 650-720 (Python dependencies)
+
+### 🎨 User Interface Development
+- **Simple HTML Interface**: Lines 750-850 (Basic `index.html` setup)
+- **Custom UI Framework**: Lines 850-950 (React/Vue/Angular integration)
+- **Streaming Chat UI**: Lines 1000-1200 (Real-time typewriter effect)
+- **Frontend-Backend Integration**: Lines 1150-1200 (API connection patterns)
+
+### 🧠 Memory & Conversation Management
+- **Basic Memory Usage**: Lines 1250-1350 (Conversation-local persistence)
+- **Multiple Conversations**: Lines 1350-1450 (Independent conversation threads)
+- **User Isolation with Scope**: Lines 1450-1550 (Multi-user applications)
+- **Custom Memory APIs**: Lines 1550-1750 (FastAPI memory integration)
+
+### 🛠️ Tools & Integrations
+- **Python Tools**: Lines 1800-1900 (Custom function tools)
+- **MCP Tools Setup**: Lines 1900-2100 (External service integration)
+- **Web Search Example**: Lines 2000-2100 (Brave Search MCP)
+- **Agent Lifecycle Management**: Lines 1750-1800 (Preventing duplicate agents)
+
+### 📋 Essential Commands Reference
+- **Installation**: `curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"`
+- **Enrollment**: `autonomy cluster enroll --no-input`
+- **Deploy Zone**: `autonomy zone deploy`
+- **View Logs**: `autonomy zone inlet --to logs`
+- **List Zones**: `autonomy zone list`
+
+### 📁 Required File Templates
+Always use these exact templates from the guide:
+
+**autonomy.yaml** (Lines 70-80):
+```yaml
+name: hello # Must be ≤10 characters
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+**Dockerfile** (Lines 90-95):
+```dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+**Basic Agent** (Lines 100-115):
+```python
+from autonomy import Agent, Model, Node
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant",
+        model=Model("claude-sonnet-4-v1")
+    )
+
+Node.start(main)
+```
+
+### ⚡ Key Reminders for Agents
+1. **Zone names must be ≤10 characters**
+2. **Always use `ghcr.io/build-trust/autonomy-python` base image**
+3. **Memory is conversation-local, not global**
+4. **Use global agent references to prevent "AlreadyExists" errors**
+5. **Test streaming APIs with character-by-character UI approach**
+6. **Reference complete guide sections rather than recreating patterns**
+
+### 🎯 Quick Navigation by Use Case
+- **Building a chat app**: Lines 1000-1200 (Streaming UI) + Lines 1250-1350 (Memory)
+- **Creating APIs with tools**: Lines 1800-2100 (Tools) + Lines 320-450 (FastAPI)
+- **Multi-user applications**: Lines 1450-1550 (Scope) + Lines 580-650 (Secrets)
+- **Complex UIs**: Lines 850-950 (UI frameworks) + Lines 1150-1200 (Integration)
+
+Remember: Always use the complete context from this saved guide rather than trying to recreate patterns from memory. This ensures consistency and prevents common deployment issues.
