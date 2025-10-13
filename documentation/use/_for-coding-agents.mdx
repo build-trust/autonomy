@@ -1668,6 +1668,7 @@ timeout 10s curl -s "endpoint" | grep pattern | head -1
 - **Parallel Agent Processing**: Lines 450-550 (Thousands of concurrent agents)
 - **Environment Variables & Secrets**: Lines 580-650 (Configuration management)
 - **Multi-Stage Docker Builds**: Lines 650-720 (Python dependencies)
+- **NPM Dependencies & Security**: Always update to latest stable versions (`npm update`) and fix vulnerabilities (`npm audit fix`)
 
 ### 🎨 User Interface Development
 - **Simple HTML Interface**: Lines 750-850 (Basic `index.html` setup)
@@ -1747,7 +1748,7 @@ Node.start(main)
 # DON'T: These can hang or consume unlimited output
 curl -s ... | tail -n 10
 curl ... | head -20
-curl -N "endpoint" 
+curl -N "endpoint"
 ```
 
 **✅ USE these safe patterns instead:**
