@@ -48,7 +48,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     FROM ghcr.io/build-trust/autonomy-python
     COPY . .
     ENTRYPOINT ["python", "main.py"]
-    
+
     ```
   </Step>
   <Step title="Create `images/main/main.py`">
@@ -58,8 +58,8 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
 
     ```python
     from autonomy import Agent, Model, Node
-    
-    
+
+
     async def main(node):
         await Agent.start(
         node=node,
@@ -67,10 +67,10 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
         instructions="You are Henry, an expert legal assistant",
         model=Model("claude-sonnet-4-v1")
         )
-    
-    
+
+
     Node.start(main)
-    
+
     ```
   </Step>
   <Step title="Create `images/main/index.html`">
@@ -93,20 +93,20 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             font: 21px "Courier New", Courier, monospace;
             padding: 0;
         }
-    
+
         main {
             max-width: 1080px;
             margin: 0 auto;
             padding: 3rem 1rem;
         }
-    
+
         pre {
             padding-top: 30px;
             box-sizing: border-box;
             white-space: pre-wrap;
             overflow-wrap: break-word;
         }
-    
+
         textarea {
             width: 100%;
             max-width: 1080px;
@@ -127,7 +127,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
         <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
         <pre id="out"></pre>
         <main>
-    
+
         <script>
         async function appendCharByChar(text, delay = 5) {
             for (const char of text) {
@@ -135,7 +135,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
-    
+
         async function processLine(line) {
             if (line.trim()) {
             const parsed = JSON.parse(line);
@@ -146,38 +146,38 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
             }
             }
         }
-    
+
         async function send(message) {
             const input = document.getElementById("in");
             input.disabled = true;
-    
+
             const out = document.getElementById("out");
             out.textContent = "";
-    
+
             const response = await fetch("/agents/henry?stream=true", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ message: message }),
             });
-    
+
             const decoder = new TextDecoder();
             let buffer = "";
-    
+
             for await (const chunk of response.body) {
             buffer += decoder.decode(chunk, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop();
-    
+
             if (!out.textContent) input.value = "";
             for (const line of lines) await processLine(line);
             }
-    
+
             await processLine(buffer);
-    
+
             input.disabled = false;
             input.focus();
         }
-    
+
         document.getElementById("in").addEventListener("keydown", async e => {
             if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
             e.preventDefault();
@@ -198,26 +198,26 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     Here is an example of streaming output from the API:
 
     ```
-    curl --silent --request POST \
+    timeout 15s curl --silent --request POST \
     --header "Content-Type: application/json" \
     --data '{"message":"What are the key elements of a contract?"}' \
     "https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry?stream=true"
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "I", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "'ve already", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
     {"scope": "None", "conversation": "None", "messages": [{"content": {"text": " provided a detailed answer", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
-    
+
     ...
-    
+
     ```
 
     Here's example output of calling the API without streaming:
 
     ```
-    curl --silent --request POST \
+    timeout 15s curl --silent --request POST \
     --header "Content-Type: application/json" \
     --data '{"message":"What are the key elements of a contract?"}' \
     "https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry"
-    
+
     [
       {
         "content": {
@@ -235,7 +235,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     At this point the new zone's directory looks should look like this:
 
     ```
-    
+
     ├── autonomy.yaml
     └── images
         └── main
@@ -293,7 +293,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     Get a list of all running agents by calling the `/agents` endpoint:
 
     ```
-    curl --silent --request GET \
+    timeout 15s curl --silent --request GET \
     "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents"
     ```
 
@@ -303,7 +303,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     Check that the agent defined in `images/main/main.py` is responding to an api call:
 
     ```
-    curl --silent --request POST \
+    timeout 15s curl --silent --request POST \
     --header "Content-Type: application/json" \
     --data '{"message":"who are you?"}' \
     "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
@@ -319,14 +319,14 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     # Start logs server in background and capture output to get the actual port
     autonomy zone inlet --to logs > logs_server.log 2>&1 &
     LOGS_PID=$!
-    
+
     # Wait for server to start and extract the port number
     sleep 3
     LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
     if [ -z "$LOGS_PORT" ]; then
         LOGS_PORT=32101  # fallback to default port
     fi
-    
+
     echo "Logs server running on port: $LOGS_PORT"
     echo "Logs server PID: $LOGS_PID"
     ```
@@ -344,8 +344,8 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     # Get the dynamic full pod name and stream logs directly on the terminal
     POD_NAME=main-pod && \
     CONTAINER_NAME=main && \
-    FULL_POD_NAME=$(curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1) && \
-    curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
+    FULL_POD_NAME=$(timeout 10s curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1) && \
+    timeout 30s curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME" | head -50
     ```
 
     **Stop the logs server when done:**
@@ -353,7 +353,7 @@ description: "This file has instructions for Claude, Codex, Copilot, Cursor, Dev
     ```bash
     # Kill the specific logs server process
     kill $LOGS_PID
-    
+
     # Or kill all autonomy inlet processes
     pkill -f "autonomy zone inlet"
     ```
@@ -441,14 +441,14 @@ Here is an example:
     ```python
     from autonomy import Agent, HttpServer, Model, Node, NodeDep
     from fastapi import FastAPI
-    
+
     app = FastAPI()
     agent = None
-    
+
     @app.post("/translate")
     async def translate(request: dict, node: NodeDep):
         global agent
-    
+
         if not agent:
             agent = await Agent.start(
                 node=node,
@@ -458,15 +458,15 @@ Here is an example:
                 from English to Hindi. When you're given text in English,
                 output the corresponding translation in Hindi written
                 using the Latin alphabet (Roman script).
-    
+
                 Provide only the translation, no additional explanation.
                 """,
                 model=Model("claude-sonnet-4-v1"),
             )
-    
+
         response = await agent.send(f"English:\n\n{request.get("text", "")}")
         return {"translation": response[-1].content.text}
-    
+
     Node.start(http_server=HttpServer(app=app))
     ```
 
@@ -487,7 +487,7 @@ Here is an example:
     Test your translation service by sending English text to be translated:
 
     ```bash
-    curl --silent --request POST \
+    timeout 15s curl --silent --request POST \
     --header "Content-Type: application/json" \
     --data '{
       "text": "Hello, how are you?"
@@ -518,9 +518,9 @@ Here is an example:
     from fastapi import FastAPI
     from asyncio import gather, create_task
     from typing import List, Dict
-    
+
     app = FastAPI()
-    
+
     async def translate_item(node: Node, item: str) -> Dict[str, str]:
         agent = None
         try:
@@ -532,12 +532,12 @@ Here is an example:
                 from English to Hindi. When you're given text in English,
                 output the corresponding translation in Hindi written
                 using the Latin alphabet (Roman script).
-    
+
                 Provide only the translation, no additional explanation.
                 """,
                 model=Model("claude-sonnet-4-v1"),
             )
-    
+
             response = await agent.send(f"English:\n\n{item}", timeout=60)
             return {"text": item, "translation": response[-1].content.text}
         except Exception as e:
@@ -545,13 +545,13 @@ Here is an example:
         finally:
             if agent:
                 create_task(Agent.stop(node, agent.name))
-    
+
     @app.post("/translate")
     async def translate(request: dict, node: NodeDep):
         texts = request.get("texts", [])
         results = await gather(*(translate_item(node, text) for text in texts))
         return {"translations": results}
-    
+
     Node.start(http_server=HttpServer(app=app))
     ```
 
@@ -572,7 +572,7 @@ Here is an example:
     Test the parallel translation API by sending multiple English phrases:
 
     ```bash
-    curl --silent --request POST \
+    timeout 15s curl --silent --request POST \
     --header "Content-Type: application/json" \
     --data '{
       "texts": [
@@ -957,7 +957,7 @@ async function send(message) {
 #### Why This UI Approach Works for a streaming, typewriter like UI:
 
 1. **Simple Character Loop**: The `appendCharByChar` function just iterates through each character with a 5ms delay
-2. **Auto-Scroll**: Each character addition scrolls the chat to bottom for continuous visibility  
+2. **Auto-Scroll**: Each character addition scrolls the chat to bottom for continuous visibility
 3. **Stream Processing**: Handles chunked data by buffering incomplete lines
 4. **User Experience**: Disables input during response and clears it once streaming starts
 
@@ -1093,8 +1093,8 @@ async def main(node):
         node=node,
         name="memory-assistant",
         instructions="""
-        You are a helpful assistant with perfect memory. Remember everything 
-        the user tells you throughout our conversation. Reference previous 
+        You are a helpful assistant with perfect memory. Remember everything
+        the user tells you throughout our conversation. Reference previous
         topics naturally when relevant.
         """,
         model=Model("claude-sonnet-4-v1")
@@ -1109,13 +1109,13 @@ Deploy your zone and test the memory functionality:
 
 ```bash
 # First message - establish context
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"My name is Alice and I work as a software engineer at TechCorp."}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
 # Follow-up message - agent should remember the context
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What do you remember about me?"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
@@ -1137,7 +1137,7 @@ async def main(node):
         node=node,
         name="chat-assistant",
         instructions="""
-        You are a helpful assistant. Remember the context of each conversation 
+        You are a helpful assistant. Remember the context of each conversation
         and provide personalized responses based on what each user has shared.
         """,
         model=Model("claude-sonnet-4-v1")
@@ -1150,25 +1150,25 @@ Node.start(main)
 
 ```bash
 # Conversation 1 - User talking about cooking
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"I love cooking Italian food, especially pasta dishes.", "conversation":"cooking-chat"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
 
 # Conversation 2 - Different user talking about travel
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"I am planning a trip to Japan next month.", "conversation":"travel-chat"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
 
 # Follow up in conversation 1 - should remember cooking context
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What ingredients do I need for carbonara?", "conversation":"cooking-chat"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
 
-# Follow up in conversation 2 - should remember travel context  
-curl --silent --request POST \
+# Follow up in conversation 2 - should remember travel context
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What should I pack for the weather?", "conversation":"travel-chat"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
@@ -1190,8 +1190,8 @@ async def main(node):
         node=node,
         name="personal-assistant",
         instructions="""
-        You are a personal assistant. Remember each user's preferences, 
-        goals, and personal information. Provide personalized assistance 
+        You are a personal assistant. Remember each user's preferences,
+        goals, and personal information. Provide personalized assistance
         based on their individual context and history.
         """,
         model=Model("claude-sonnet-4-v1")
@@ -1204,25 +1204,25 @@ Node.start(main)
 
 ```bash
 # User 1 - Alice shares personal information
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"I am Alice, a vegetarian who loves hiking.", "scope":"user-alice", "conversation":"profile"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
 
-# User 2 - Bob shares different personal information  
-curl --silent --request POST \
+# User 2 - Bob shares different personal information
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"I am Bob, I eat meat and prefer indoor activities.", "scope":"user-bob", "conversation":"profile"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
 
 # Alice asks for meal suggestions - should get vegetarian options
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What should I have for dinner?", "scope":"user-alice", "conversation":"meal-planning"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
 
 # Bob asks for meal suggestions - should get meat options
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What should I have for dinner?", "scope":"user-bob", "conversation":"meal-planning"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
@@ -1263,45 +1263,45 @@ user_profiles = {}
 @app.post("/chat")
 async def chat_with_memory(request: ChatMessage, node: NodeDep):
     """Chat endpoint with automatic memory management"""
-    
+
     # Generate conversation ID if not provided
     conversation_id = request.conversation_id or str(uuid.uuid4())
-    
+
     # Get or create agent for this conversation
     agent_name = f"chat_agent_{conversation_id}"
-    
+
     try:
         # Get user context if available
         user_context = ""
         if request.user_id and request.user_id in user_profiles:
             profile = user_profiles[request.user_id]
             user_context = f"User profile: {profile['name']}, Preferences: {profile['preferences']}"
-        
+
         agent = await Agent.start(
             node=node,
             name=agent_name,
             instructions=f"""
-            You are a helpful assistant with memory. Remember everything from 
+            You are a helpful assistant with memory. Remember everything from
             this conversation and provide contextual responses.
-            
+
             {user_context}
             """,
             model=Model("claude-sonnet-4-v1")
         )
-        
+
         # Send message with scope and conversation for memory
         response = await agent.send(
             request.message,
             scope=request.user_id,
             conversation=conversation_id
         )
-        
+
         return {
             "response": response[-1].content.text,
             "conversation_id": conversation_id,
             "user_id": request.user_id
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1327,26 +1327,26 @@ Node.start(http_server=HttpServer(app=app))
 
 ```bash
 # Create user profiles
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{
-  "user_id": "alice123", 
-  "name": "Alice", 
+  "user_id": "alice123",
+  "name": "Alice",
   "preferences": {"diet": "vegetarian", "hobbies": ["hiking", "reading"]}
 }' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/users"
 
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{
-  "user_id": "bob456", 
-  "name": "Bob", 
+  "user_id": "bob456",
+  "name": "Bob",
   "preferences": {"diet": "omnivore", "hobbies": ["gaming", "cooking"]}
 }' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/users"
 
 # Start conversation with Alice
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{
   "message": "I want to plan a healthy meal for this week",
@@ -1356,17 +1356,17 @@ curl --silent --request POST \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
 
 # Continue Alice's conversation
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{
   "message": "What did I mention about my dietary preferences?",
-  "user_id": "alice123", 
+  "user_id": "alice123",
   "conversation_id": "meal-planning-alice"
 }' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
 
 # Separate conversation with Bob
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{
   "message": "I want to cook something new this weekend",
@@ -1472,7 +1472,7 @@ pods:
 Once deployed, you can interact with your agent via HTTP:
 
 ```bash
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{ "message": "What is the current time?" }' \
 "https://YOUR-DEPLOYMENT-URL/agents/henry"
@@ -1569,7 +1569,7 @@ ENTRYPOINT ["python", "main.py"]
 #### Testing MCP-Enabled Agent
 
 ```bash
-curl --silent --request POST \
+timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{ "message": "Which companies were acquired today?" }' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
@@ -1604,8 +1604,8 @@ sleep 3
 LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
 POD_NAME=main-pod
 CONTAINER_NAME=main
-FULL_POD_NAME=$(curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1)
-curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME"
+FULL_POD_NAME=$(timeout 10s curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1)
+timeout 30s curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME" | head -50
 
 # Or view logs in browser
 open "http://127.0.0.1:$LOGS_PORT"
@@ -1619,7 +1619,7 @@ kill $LOGS_PID
 
 * **For Coding Agents**: Always reference the complete Autonomy guide saved in your configuration files before starting any Autonomy-related development
 * Prefer simple and minimal approaches where possible
-* When you're asked to create an example, create a simplest case first and then offer to improve it  
+* When you're asked to create an example, create a simplest case first and then offer to improve it
 * When a user asks you to create an app, first ask 2 or 3 clarifying questions to gather requirements before proceeding
 * Generate a README.md in new apps that you create. Include ascii architecture diagrams in this README.md file
 * **Always use the exact file structures and code templates from your saved Autonomy guide**
@@ -1628,6 +1628,34 @@ kill $LOGS_PID
 ## Quick Reference for Coding Agents
 
 A link to this document should be saved in your agent configuration files as your primary Autonomy Computer reference. Use this quick reference to navigate to specific sections:
+
+### ⚠️ CRITICAL: curl Command Safety for Coding Agents
+
+**Coding agents frequently use problematic curl patterns that hang indefinitely. Always follow these rules:**
+
+**❌ NEVER use these patterns:**
+```bash
+curl -s ... | tail -n 10    # Can hang indefinitely
+curl ... | head -20         # No timeout protection
+curl -N "endpoint"           # Streaming without limits
+```
+
+**✅ ALWAYS use safe patterns:**
+```bash
+# For streaming endpoints (logs, real-time data)
+timeout 30s curl -N "127.0.0.1:32101/pods/main-pod-567479494f-6w9xq/containers/main" | head -50
+
+# For API calls
+timeout 15s curl --silent --request POST --header "Content-Type: application/json" --data '{}' "endpoint"
+
+# For data fetching
+timeout 10s curl -s "endpoint" | grep pattern | head -1
+```
+
+**Key principles:**
+- Always prefix with `timeout Xs` (10-30 seconds typical)
+- For streaming: combine timeout + `| head -N` to limit output
+- Test curl commands locally before using in automation
 
 ### 🚀 Essential Setup & Deployment
 - **Basic App Creation**: Lines 50-200 (Complete hello world example)
@@ -1665,6 +1693,8 @@ A link to this document should be saved in your agent configuration files as you
 - **Deploy Zone**: `autonomy zone deploy`
 - **View Logs**: `autonomy zone inlet --to logs`
 - **List Zones**: `autonomy zone list`
+- **Safe Log Streaming**: `timeout 30s curl -N "127.0.0.1:PORT/pods/POD_NAME/containers/CONTAINER" | head -50`
+- **API Testing**: `timeout 15s curl --silent --request POST --header "Content-Type: application/json" --data '{}' "ENDPOINT"`
 
 ### 📁 Required File Templates
 Always use these exact templates from the guide:
@@ -1709,6 +1739,37 @@ Node.start(main)
 4. **Use global agent references to prevent "AlreadyExists" errors**
 5. **Test streaming APIs with character-by-character UI approach**
 6. **Reference complete guide sections rather than recreating patterns**
+7. **🚨 CURL COMMANDS: Always use timeouts and limits to prevent hanging**
+
+### 🌐 Proper curl Command Patterns
+**❌ AVOID these patterns that can hang indefinitely:**
+```bash
+# DON'T: These can hang or consume unlimited output
+curl -s ... | tail -n 10
+curl ... | head -20
+curl -N "endpoint" 
+```
+
+**✅ USE these safe patterns instead:**
+```bash
+# Safe streaming with timeout and output limit
+timeout 30s curl -N "127.0.0.1:32101/pods/main-pod-567479494f-6w9xq/containers/main" | head -50
+
+# Safe data fetching with timeout
+timeout 10s curl -s "127.0.0.1:32101/" | grep -o 'pattern' | head -1
+
+# For API testing - always include timeout
+timeout 15s curl --silent --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"test"}' \
+  "https://endpoint.example.com/api"
+```
+
+**Why this matters:**
+- `timeout` prevents commands from hanging indefinitely
+- `head -N` limits output to prevent overwhelming the terminal
+- Streaming endpoints need both timeout AND output limits
+- Always test your curl commands locally first
 
 ### 🎯 Quick Navigation by Use Case
 - **Building a chat app**: Lines 1000-1200 (Streaming UI) + Lines 1250-1350 (Memory)
