@@ -7,7 +7,7 @@ description: "Create an new Autonomy app with an agent and a simple streaming ch
 
 Use the **Autonomy Framework** to build autonomous AI applications and deploy them on **Autonomy Computer** using **Autonomy Command**.
 
-> **Key Terms**: See the [main guide](../_f.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+> **Key Terms**: See the [main guide](https://autonomy.computer/docs/_f) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
 
 **Keywords:** setup, hello world, installation, first app, deployment, autonomy.yaml, docker
 
@@ -66,7 +66,6 @@ Create `images/main/Dockerfile` with the following content:
 FROM ghcr.io/build-trust/autonomy-python
 COPY . .
 ENTRYPOINT ["python", "main.py"]
-
 ```
 
 ### Step 4: Create `images/main/main.py`
@@ -89,7 +88,6 @@ async def main(node):
 
 
 Node.start(main)
-
 ```
 
 ### Step 5: Create `images/main/index.html`
@@ -225,7 +223,6 @@ timeout 15s curl --silent --request POST \
 {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "I", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
 {"scope": "None", "conversation": "None", "messages": [{"content": {"text": "'ve already", "type": "text"}, "phase": "executing", "thinking": false, "tool_calls": [], "role": "assistant"}], "type": "conversation_snippet"}
 ...
-
 ```
 
 Here's example output of calling the API without streaming:
@@ -264,8 +261,7 @@ At this point the new zone's directory looks should look like this:
 
 ### Step 6: Confirm that the user has signed up
 
-Before proceeding forward ask the user if they have already created an account with Autonomy.
-If not, instruct them to [sign up](https://my.autonomy.computer) so they get a dedicated Cluster in the Autonomy Computer.
+Before proceeding forward ask the user if they have already created an account with Autonomy. If not, instruct them to [sign up](https://my.autonomy.computer) so they get a dedicated Cluster in the Autonomy Computer.
 
 Once they have signed up, proceed to the next step.
 
@@ -396,6 +392,7 @@ pkill -f "autonomy zone inlet"
 ## Next Steps
 
 Take the application further:
+
 - **Build custom APIs**: Follow the [API Development Guide](./custom-apis.mdx)
 
 ## Troubleshooting
