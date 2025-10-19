@@ -8,12 +8,12 @@ description: "An in-depth reference for coding agents and assitants like Claude,
 
 ## 🎯 Quick Navigation by Topic
 
-The following guide provides complete implementation details, code templates, and best practices:
+The following guide provides complete implementation details, code templates, and
+best practices:
 
 ### 🚀 Get Started
-
-[**→ "Coding Agents: How to create and deploy a new Autonomy app"**](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app) _Keywords: setup, hello world, installation, first app, deployment, autonomy.yaml, docker_
-
+**→ ["Coding Agents: How to create and deploy a new Autonomy app"](./_for-coding-agents/create-a-new-autonomy-app.md)**
+*Keywords: setup, hello world, installation, first app, deployment, autonomy.yaml, docker*
 - Create an initial minimal setup and file structure
 - Create an agent and a simple streaming chat interface for this agent
 - Deploy from localhost to production in minutes
@@ -24,17 +24,14 @@ The following guide provides complete implementation details, code templates, an
 ### ⚠️ Essential Safety Rules
 
 **Zone Requirements:**
-
 - Zone names **MUST** be 10 characters or less
 - Use descriptive but short names
 
 **File Structure:**
-
 - Follow exact templates for reliability
 - Don't define `@app.get("/")` if using automatic `index.html` serving
 
 **curl Command Safety:**
-
 - **ALWAYS** use `timeout Xs` prefix (10-30 seconds typical)
 - **NEVER** use bare curl commands that can hang indefinitely
 - For streaming: combine timeout + `| head -N` to limit output
@@ -42,16 +39,15 @@ The following guide provides complete implementation details, code templates, an
 ### 🔧 Quick Setup Checklist
 
 1. **Create project directory** with zone name ≤ 10 characters
-2. **`Create autonomy.yaml`** with basic pod configuration
-3. **`Create images/main/Dockerfile`** using autonomy-python base
-4. **`Create images/main/main.py`** with Agent.start() pattern
-5. **`Optional: Create images/main/index.html`** for web interface
-6. **`Deploy with autonomy zone deploy`**
+2. **Create `autonomy.yaml`** with basic pod configuration
+3. **Create `images/main/Dockerfile`** using autonomy-python base
+4. **Create `images/main/main.py`** with Agent.start() pattern
+5. **Optional: Create `images/main/index.html`** for web interface
+6. **Deploy with `autonomy zone deploy`**
 
 ## 📖 Essential Templates
 
 ### Basic autonomy.yaml
-
 ```yaml
 name: hello
 pods:
@@ -63,7 +59,6 @@ pods:
 ```
 
 ### Basic main.py
-
 ```python
 from autonomy import Agent, Model, Node
 
@@ -79,7 +74,6 @@ Node.start(main)
 ```
 
 ### Basic Dockerfile
-
 ```dockerfile
 FROM ghcr.io/build-trust/autonomy-python
 COPY . .
@@ -89,7 +83,6 @@ ENTRYPOINT ["python", "main.py"]
 ## 🌐 Safe curl Command Patterns
 
 **✅ ALWAYS use these patterns:**
-
 ```bash
 # For API calls
 timeout 15s curl --silent --request POST --header "Content-Type: application/json" --data '{}' "endpoint"
@@ -102,7 +95,6 @@ timeout 10s curl -s "endpoint" | grep pattern | head -1
 ```
 
 **❌ NEVER use these patterns:**
-
 ```bash
 curl -s ... | tail -n 10    # Can hang indefinitely
 curl ... | head -20         # No timeout protection
@@ -114,7 +106,6 @@ curl -N "endpoint"           # Streaming without limits
 Each guide is designed to be self-contained while cross-referencing related topics. Use the keywords listed under each guide to quickly find relevant information.
 
 **For specific topics, find solutions in these guides:**
-
 - **Setup issues**: Check Getting Started Guide
 - **Model performance**: Review Models Guide
 - **API patterns**: Use Custom APIs Guide
@@ -139,13 +130,14 @@ Each guide is designed to be self-contained while cross-referencing related topi
 ## 📖 Definitions
 
 ### Autonomy
-
 Autonomy is a platform to ship autonomous AI products.
 
 It provides:
 
 1. **Autonomy Framework**: The Autonomy Framework is an open-source python framework to develop apps and products that leverage teams of collaborating AI agents to autonomously accomplish goals.
+
 2. **Autonomy Computer**: The Autonomy Computer is a cloud-based runtime to run, connect, and scale apps built using the Autonomy Framework. It provides managed infrastructure to run highly scalable and secure autonomous products.
+
 3. **Autonomy Command**: The Autonomy Command is a command-line program to build apps using the Autonomy Framework and run them on the Autonomy Computer.
 
 ### Agents
@@ -153,7 +145,6 @@ It provides:
 Agents are intelligent actors that autonomously accomplish goals. Apps, running on the Autonomy Computer, can create millions of parallel collaborating agents in seconds.
 
 Each agent:
-
 - Has a unique identity.
 - Uses a large language model to understand, reason, and make autonomous decisions.
 - Has memory, so it can retain and recall information over time, to make better autonomous decisions.
@@ -165,15 +156,12 @@ Each agent:
 Autonomy Agents are built using the actor model and have all the properties of actors.
 
 ### Models
-
 Agents use large language models to understand, reason, and make autonomous decisions. Apps running on the Autonomy Computer can use a wide variety of managed models.
 
 ### Memory
-
 Agents have memory organized by scope ID and conversation ID so they can retain and recall information over time to make better autonomous decisions.
 
 ### Tools
-
 Tools are external functions that agents can invoke to take actions and gather more information. These external functions can be written in Python or provided by MCP servers.
 
 ---
