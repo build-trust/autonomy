@@ -7,19 +7,15 @@ description: "Create an new Autonomy app with an agent and a simple streaming ch
 
 Use the **Autonomy Framework** to build autonomous AI applications and deploy them on **Autonomy Computer** using **Autonomy Command**.
 
-> **Key Terms**: See the [main guide](https://autonomy.computer/docs/_f.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_f.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
 
 **Keywords:** setup, hello world, installation, first app, deployment, autonomy.yaml, docker
 
 This guide will:
-
-- Create an initial minimal setup and file structure
-- Install and configure the Autonomy Command
-- Create the required configuration files
-- Create an new app with an agent and a simple streaming chat interface for this agent
-- Deploy this new app to the Autonomy Computer
-- Test and access your deployed app
-- See logs of the deployed app
+* Create an initial minimal setup and file structure.
+* Install and configure the Autonomy Command.
+* Create an new app with an agent and a simple streaming chat interface for this agent.
+* Deploy this new app to the Autonomy Computer, test it, and see logs.
 
 ## Create and deploy a new Autonomy app
 
@@ -81,10 +77,10 @@ from autonomy import Agent, Model, Node
 
 async def main(node):
     await Agent.start(
-    node=node,
-    name="henry",
-    instructions="You are Henry, an expert legal assistant",
-    model=Model("claude-sonnet-4-v1")
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant",
+        model=Model("claude-sonnet-4-v1")
     )
 
 
@@ -96,7 +92,7 @@ Node.start(main)
 
 The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .
 
-Create `images/main/index.html` with the following content:
+Create `images/main/index.html` with the following content. It creates a simple web interface that allows users to chat with the agent directly in their browser. The interface sends messages to the agent's streaming API endpoint and displays the streaming responses with a typewriter effect.
 
 ```html
 <!doctype html>
@@ -105,68 +101,77 @@ Create `images/main/index.html` with the following content:
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-    body {
-        margin: 10% 15%;
-        line-height: 1.8;
-        overflow-y: scroll;
-        overflow-x: hidden;
-        font: 21px "Courier New", Courier, monospace;
-        padding: 0;
-    }
+        body {
+            margin: 10% 15%;
+            line-height: 1.8;
+            overflow-y: scroll;
+            overflow-x: hidden;
+            font: 21px "Courier New", Courier, monospace;
+            padding: 0;
+        }
 
-    main {
-        max-width: 1080px;
-        margin: 0 auto;
-        padding: 3rem 1rem;
-    }
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 3rem 1rem;
+        }
 
-    pre {
-        padding-top: 30px;
-        box-sizing: border-box;
-        white-space: pre-wrap;
-        overflow-wrap: break-word;
-    }
+        pre {
+            padding-top: 30px;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
 
-    textarea {
-        width: 100%;
-        max-width: 1080px;
-        box-sizing: border-box;
-        border: 1px solid #e9e9e9;
-        border-radius: 5px;
-        box-shadow: 2px 2px 10px #f4f4f4;
-        font-size: inherit;
-        padding: 1rem;
-        display: block;
-        height: calc(3 * 1.8em + 14.8px);
-    }
+        textarea {
+            width: 100%;
+            max-width: 1080px;
+            box-sizing: border-box;
+            border: 1px solid #e9e9e9;
+            border-radius: 5px;
+            box-shadow: 2px 2px 10px #f4f4f4;
+            font-size: inherit;
+            padding: 1rem;
+            display: block;
+            height: calc(3 * 1.8em + 14.8px);
+        }
     </style>
     <title></title>
 </head>
 <body>
     <main>
-    <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
-    <pre id="out"></pre>
-    <main>
+        <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
+        <pre id="out"></pre>
+    </main>
 
     <script>
+    // Simulate the typing or typewriter effect by appending each character
+    // of the text to the output element one by one, with a delay.
     async function appendCharByChar(text, delay = 5) {
-        for (const char of text) {
+      for (const char of text) {
         out.textContent += char;
         await new Promise(resolve => setTimeout(resolve, delay));
-        }
+      }
     }
 
+    // Process a single line of streamed JSON response from the streaming api of the agent.
+    // Parse the JSON and extracs text content from messages.
+    // Call `appendCharByChar()` defined above to display the line character by character.
     async function processLine(line) {
         if (line.trim()) {
-        const parsed = JSON.parse(line);
-        for (const message of parsed.messages) {
-            if (message && message.content && message.content.text) {
-            await appendCharByChar(message.content.text);
+            const parsed = JSON.parse(line);
+            for (const message of parsed.messages) {
+                if (message && message.content && message.content.text) {
+                    await appendCharByChar(message.content.text);
+                }
             }
-        }
         }
     }
 
+    // Send a message to the streaming api of the agent and handle the streaming response.
+    // While the response is being streamed, disable input, clear output.
+    // Handle streamed chunks line by line, and re-enable input when complete.
+    // Call `processLine()` defined above to parse the line an display it character by character.
     async function send(message) {
         const input = document.getElementById("in");
         input.disabled = true;
@@ -183,16 +188,17 @@ Create `images/main/index.html` with the following content:
         const decoder = new TextDecoder();
         let buffer = "";
 
+        // Process the streaming response chunk by chunk
         for await (const chunk of response.body) {
-        buffer += decoder.decode(chunk, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
+          // Accumulate chunks in a buffer and split by newlines to get complete JSON lines
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // Keep the incomplete line in the buffer for the next iteration
 
-        if (!out.textContent) input.value = "";
-        for (const line of lines) await processLine(line);
+          if (!out.textContent) input.value = ""; // Clear input once we start displaying output
+          for (const line of lines) await processLine(line); // Process each complete line
         }
-
-        await processLine(buffer);
+        await processLine(buffer); // Handle any remaining content in the buffer after streaming ends
 
         input.disabled = false;
         input.focus();
@@ -200,8 +206,8 @@ Create `images/main/index.html` with the following content:
 
     document.getElementById("in").addEventListener("keydown", async e => {
         if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
-        e.preventDefault();
-        await send(e.target.value);
+            e.preventDefault();
+            await send(e.target.value);
         }
     });
     </script>
@@ -348,22 +354,23 @@ Try it: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
 
 ### Step 14: See logs
 
-Start the logs server in the background to view streaming logs from your app:
+Create an encrypted portal to the logs server in your zone. This will show
+streaming logs to the app.
 
 ```bash
-# Start logs server in background and capture output to get the actual port
-autonomy zone inlet --to logs > logs_server.log 2>&1 &
+# Create a portal to the logs server in background and capture output to extract its port number
+autonomy zone inlet --to logs > portal_to_logs_server.log 2>&1 &
 LOGS_PID=$!
 
-# Wait for server to start and extract the port number
+# Wait for the portal to be created and extract its port number
 sleep 3
-LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
+LOGS_PORT=$(grep -o "localhost:[0-9]*" portal_to_logs_server.log | cut -d: -f2 | head -1)
 if [ -z "$LOGS_PORT" ]; then
     LOGS_PORT=32101  # fallback to default port
 fi
 
-echo "Logs server running on port: $LOGS_PORT"
-echo "Logs server PID: $LOGS_PID"
+echo "Portal to the logs server has an inlet on port: $LOGS_PORT"
+echo "Portal to the logs server PID: $LOGS_PID"
 ```
 
 **Option 1: View logs in a browser**
@@ -387,7 +394,7 @@ timeout 30s curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAI
 
 ```bash
 # Kill the specific logs server process
-kill $LOGS_PID
+kill "$LOGS_PID"
 
 # Or kill all autonomy inlet processes
 pkill -f "autonomy zone inlet"
@@ -396,7 +403,8 @@ pkill -f "autonomy zone inlet"
 ## Next Steps
 
 Take the application further:
-- **Build custom APIs**: Follow the [API Development Guide](./custom-apis.mdx)
+- **Select a Model**: Follow the [guide on selecting models](https://autonomy.computer/docs/_for-coding-agents/select-models.mdx)
+- **Create custom APIs**: Follow the [guide on creating custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.mdx)
 
 ## Troubleshooting
 

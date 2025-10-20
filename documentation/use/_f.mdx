@@ -1,131 +1,27 @@
 ---
 title: "Coding Agents: How to build and deploy Autonomy apps"
 mode: "wide"
-description: "An in-depth reference for coding agents and assitants like Claude, Cursor, Codex, Cline, Zed, Devin, Replit, etc. to build and deploy Autonomy apps. It includes links to focused guides covering Setup, Agents, Models, Tools, Memory, UI development, API development, Deployment workflows, and Debugging instructions."
+description: "An in-depth reference for coding agents and assitants like Claude, Cursor, Codex, Cline, Zed, Devin, Replit, etc. to build and deploy Autonomy apps."
 ---
 
 # A reference for coding agents and assitants to build and deploy Autonomy apps
 
 ## 🎯 Quick Navigation by Topic
 
-The following guide provides complete implementation details, code templates, and
-best practices:
+The following topic specific guides provides complete implementation details,
+code templates, and best practices:
 
-### 🚀 Get Started
-**→ ["Coding Agents: How to create and deploy a new Autonomy app"](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)**
+### 🚀 [How to create and deploy a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
 *Keywords: setup, hello world, installation, first app, deployment, autonomy.yaml, docker*
-- Create an initial minimal setup and file structure
-- Create an agent and a simple streaming chat interface for this agent
-- Deploy from localhost to production in minutes
-- See logs of deployed apps
+* Create an initial minimal setup and file structure.
+* Install and configure the Autonomy Command.
+* Create an new app with an agent and a simple streaming chat interface for this agent.
+* Deploy this new app to the Autonomy Computer, test it, and see logs.
 
-## 🚨 Critical Information for Coding Agents
-
-### ⚠️ Essential Safety Rules
-
-**Zone Requirements:**
-- Zone names **MUST** be 10 characters or less
-- Use descriptive but short names
-
-**File Structure:**
-- Follow exact templates for reliability
-- Don't define `@app.get("/")` if using automatic `index.html` serving
-
-**curl Command Safety:**
-- **ALWAYS** use `timeout Xs` prefix (10-30 seconds typical)
-- **NEVER** use bare curl commands that can hang indefinitely
-- For streaming: combine timeout + `| head -N` to limit output
-
-### 🔧 Quick Setup Checklist
-
-1. **Create project directory** with zone name ≤ 10 characters
-2. **Create `autonomy.yaml`** with basic pod configuration
-3. **Create `images/main/Dockerfile`** using autonomy-python base
-4. **Create `images/main/main.py`** with Agent.start() pattern
-5. **Optional: Create `images/main/index.html`** for web interface
-6. **Deploy with `autonomy zone deploy`**
-
-## 📖 Essential Templates
-
-### Basic autonomy.yaml
-```yaml
-name: hello
-pods:
-  - name: main-pod
-    public: true
-    containers:
-      - name: main
-        image: main
-```
-
-### Basic main.py
-```python
-from autonomy import Agent, Model, Node
-
-async def main(node):
-    await Agent.start(
-        node=node,
-        name="assistant",
-        instructions="You are a helpful assistant",
-        model=Model("claude-sonnet-4-v1")
-    )
-
-Node.start(main)
-```
-
-### Basic Dockerfile
-```dockerfile
-FROM ghcr.io/build-trust/autonomy-python
-COPY . .
-ENTRYPOINT ["python", "main.py"]
-```
-
-## 🌐 Safe curl Command Patterns
-
-**✅ ALWAYS use these patterns:**
-```bash
-# For API calls
-timeout 15s curl --silent --request POST --header "Content-Type: application/json" --data '{}' "endpoint"
-
-# For streaming endpoints
-timeout 30s curl -N "endpoint" | head -50
-
-# For data fetching
-timeout 10s curl -s "endpoint" | grep pattern | head -1
-```
-
-**❌ NEVER use these patterns:**
-```bash
-curl -s ... | tail -n 10    # Can hang indefinitely
-curl ... | head -20         # No timeout protection
-curl -N "endpoint"           # Streaming without limits
-```
-
-## 🔍 Finding Information
-
-Each guide is designed to be self-contained while cross-referencing related topics. Use the keywords listed under each guide to quickly find relevant information.
-
-**For specific topics, find solutions in these guides:**
-- **Setup issues**: Check Getting Started Guide
-- **Model performance**: Review Models Guide
-- **API patterns**: Use Custom APIs Guide
-- **Security**: Apply Configuration Guide + Best Practices Guide
-- **Frontend**: Build with UI Development Guide
-- **State management**: Manage with Memory Guide
-- **External services**: Integrate with Tools Guide
-- **Deployment problems**: Debug with Commands Reference Guide
-
-## ⚡ Key Reminders for Agents
-
-1. **Reference complete guides** rather than recreate patterns from memory
-2. **Use exact file structures** and code templates from the guides
-3. **Test incrementally** - start simple, then add complexity
-4. **Follow safe patterns** especially for curl commands
-5. **Check prerequisites** before you proceed with complex setups
-6. **Verify zone names** stay 10 characters or less
-7. **Add timeouts** to all external calls and curl commands
-
----
+### 🤖 [How to select and configure models](https://autonomy.computer/docs/_for-coding-agents/select-models.mdx)
+*Keywords: claude, llama, model selection, models, LLMs, claude-sonnet*
+* See list of available models in the Autonomy Computer from Claude, Llama, DeepSeek, and AWS.
+* Select and configure the right model for an agent.
 
 ## 📖 Definitions
 
@@ -135,9 +31,7 @@ Autonomy is a platform to ship autonomous AI products.
 It provides:
 
 1. **Autonomy Framework**: The Autonomy Framework is an open-source python framework to develop apps and products that leverage teams of collaborating AI agents to autonomously accomplish goals.
-
 2. **Autonomy Computer**: The Autonomy Computer is a cloud-based runtime to run, connect, and scale apps built using the Autonomy Framework. It provides managed infrastructure to run highly scalable and secure autonomous products.
-
 3. **Autonomy Command**: The Autonomy Command is a command-line program to build apps using the Autonomy Framework and run them on the Autonomy Computer.
 
 ### Agents
