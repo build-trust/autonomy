@@ -18,38 +18,38 @@ code templates, and best practices:
 * Create an new app with an agent and a simple streaming chat interface for this agent.
 * Deploy this new app to the Autonomy Computer, test it, and see logs.
 
-### 🤖 [How to select and configure models](https://autonomy.computer/docs/_for-coding-agents/select-models.mdx)
+### 🤖 [How to select and configure models](https://autonomy.computer/docs/_for-coding-agents/select-models.md)
 *Keywords: claude, llama, model selection, models, LLMs, claude-sonnet*
 * See list of available models in the Autonomy Computer from Claude, Llama, DeepSeek, and AWS.
 * Select and configure the right model for an agent.
 
-### ⚙️ [How to configure apps with environment variables and dependencies](https://autonomy.computer/docs/_for-coding-agents/configure-apps.mdx)
+### ⚙️ [How to configure apps with environment variables and dependencies](https://autonomy.computer/docs/_for-coding-agents/configure-apps.md)
 *Keywords: environment variables, secrets, python dependencies, docker, configuration, env, security, multi-stage builds*
 * Set environment variables and provide secrets securely to your Autonomy applications.
 * Add Python dependencies using multi-stage Docker builds.
 
-### 🌐 [How to create custom APIs for Autonomy apps](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.mdx)
+### 🌐 [How to create custom APIs for Autonomy apps](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
 *Keywords: fastapi, custom api, translation, parallel agents, http server, routes, endpoints*
 * Create custom FastAPI routes tailored to an application's needs.
 * Build both single-agent and parallel multi-agent architectures.
 * Implement scalable translation services that process thousands of requests concurrently.
 * Deploy custom APIs with proper error handling and documentation.
 
-### 🎨 [How to create custom user interfaces for Autonomy apps](https://autonomy.computer/docs/_for-coding-agents/create-custom-ui.mdx)
+### 🎨 [How to create custom user interfaces for Autonomy apps](https://autonomy.computer/docs/_for-coding-agents/create-custom-ui.md)
 *Keywords: custom ui, nextjs, react, vue, angular, svelte, streaming chat, fastapi, static files, user interface, frontend*
 * Set up custom user interfaces using modern web frameworks like Nextjs, React, Vue, Angular, or Svelte.
 * Configure static file serving in Autonomy Computer, with FastAPI, for production deployments.
 * Build streaming chat interfaces that provide real-time AI responses with typewriter effects.
 * Create sophisticated user experiences that integrate seamlessly with Autonomy agents.
 
-### 🧠 [How to use memory, conversation, and scope in agents](https://autonomy.computer/docs/_for-coding-agents/memory.mdx)
+### 🧠 [How to use memory, conversation, and scope in agents](https://autonomy.computer/docs/_for-coding-agents/memory.md)
 *Keywords: memory, conversation, scope, context, persistent conversations, multi-user, conversation threads, user isolation, multi-tenant*
 * Configure agents with memory to maintain context across multiple interactions.
 * Manage separate conversation threads for different topics or sessions.
 * Implement user isolation using scope to prevent memory leakage between users.
 * Build custom APIs with sophisticated memory management patterns.
 
-### 🔧 [How to give agents tools](https://autonomy.computer/docs/_for-coding-agents/tools.mdx)
+### 🔧 [How to give agents tools](https://autonomy.computer/docs/_for-coding-agents/tools.md)
 *Keywords: tools, python tools, mcp tools, model context protocol, web search, external apis, functions, capabilities*
 * Create Python tools by defining functions that agents can invoke.
 * Set up MCP (Model Context Protocol) servers for external service integration.
@@ -111,7 +111,7 @@ timeout 30s curl -N "127.0.0.1:32101/pods/main-pod-567479494f-6w9xq/containers/m
 
 ### 📁 Important File Templates
 
-When creating new files always refer the following file templates and the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.mdx)
+When creating new files always refer the following file templates and the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
 
 **autonomy.yaml** (Lines 70-80):
 
@@ -187,7 +187,7 @@ Tools are external functions that agents can invoke to take actions and gather m
 
 ## Best Practices
 
-* When creating new files always refer the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.mdx) to find the right initial file template.
+* When creating new files always refer the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md) to find the right initial file template.
 * Always reference the complete Autonomy guide before starting any Autonomy-related development.
 * Prefer simple and minimal approaches where possible.
 * When you're asked to create an example, create a simplest case first and then offer to improve it.
