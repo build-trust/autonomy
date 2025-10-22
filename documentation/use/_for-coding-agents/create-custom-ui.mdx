@@ -43,21 +43,6 @@ your-app/
 
 ### Package Manager and Build Scripts
 
-**Use pnpm over npm**: pnpm is faster, more efficient with disk space, and provides better dependency resolution. Install pnpm if not already available:
-
-```bash  theme={null}
-npm install -g pnpm
-```
-
-**Configure pnpm for security**: Set up pnpm to only install packages that have been available for at least 7 days to avoid supply chain attacks:
-
-```bash  theme={null}
-# Create or update .npmrc in your project root
-echo "minimum-release-age=10080" >> .npmrc
-```
-
-This setting ensures that only packages released 7+ days ago (10080 minutes) are installed, providing time for the community to identify and report malicious packages.
-
 Add to your UI `package.json`:
 
 ```json  theme={null}
@@ -65,8 +50,8 @@ Add to your UI `package.json`:
   "scripts": {
     "dev": "[framework dev command]",
     "build": "[framework build command]",
-    "build-autonomy": "pnpm run build && rm -rf ../images/main/public/* && cp -r [output-dir]/* ../images/main/public/",
-    "security-check": "pnpm audit && pnpm outdated",
+    "build-autonomy": "npm run build && rm -rf ../images/main/public/* && cp -r [output-dir]/* ../images/main/public/",
+    "security-check": "npm audit && npm outdated",
     ...
   }
 }
@@ -78,25 +63,23 @@ Before deploying, always ensure your dependencies are secure and up-to-date:
 
 ```bash  theme={null}
 # Check for vulnerabilities and outdated packages
-pnpm run security-check
+npm run security-check
 
 # Fix any vulnerabilities
-pnpm audit --fix
+npm audit --fix
 
 # Update all dependencies to latest versions
-pnpm update --latest
+npm update
 
 # Rebuild and test after updates
-pnpm run build
-pnpm run build-autonomy
+npm run build
+npm run build-autonomy
 ```
 
 **Best Practices:**
-- Always configure `minimum-release-age=10080` in `.npmrc` to avoid newly released malicious packages
-- Run `pnpm audit --fix` before every deployment
-- Keep dependencies updated with `pnpm update --latest`
+- Run `npm audit --fix` before every deployment
+- Keep dependencies updated with `npm update`
 - Test your application after dependency updates
-- Use `pnpm` instead of `npm` for better performance and reliability
 
 ### FastAPI Backend Configuration
 
@@ -255,7 +238,7 @@ Node.start(http_server=HttpServer(app=app))
 
 The frontend implementation focuses on simplicity and reliability:
 
-```aaa/minimal-streaming-example/images/main/index.html#L80-130  theme={null}
+```js
 async function appendCharByChar(text, delay = 5) {
     for (const char of text) {
         out.textContent += char;
@@ -312,7 +295,7 @@ This approach can be adapted to any UI framework.
 
 The complete interface includes clean styling and proper event handling:
 
-```aaa/minimal-streaming-example/images/main/index.html#L1-79  theme={null}
+```html
 <!doctype html>
 <html>
     <head>
