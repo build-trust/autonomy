@@ -1,0 +1,375 @@
+---
+title: "Coding Agents: How to create custom user interfaces for Autonomy apps"
+description: "Build custom user interfaces with Nextjs, Svelte, React, Vue, Angular, or other frameworks. Create streaming chat interfaces and integrate with APIs running on the Autonomy Computer for sophisticated AI applications."
+---
+
+# A guide for coding agents to create custom user interfaces for Autonomy apps
+
+Build sophisticated user interfaces that integrate seamlessly with **Autonomy** applications using modern web frameworks and streaming APIs.
+
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+
+**Keywords:** custom ui, nextjs, react, vue, angular, svelte, streaming chat, fastapi, static files, user interface, frontend
+
+This guide will:
+- Set up custom user interfaces using modern web frameworks like Nextjs, React, Vue, Angular, or Svelte
+- Configure static file serving in Autonomy Computer, with FastAPI, for production deployments
+- Build streaming chat interfaces that provide real-time AI responses with typewriter effects
+- Create sophisticated user experiences that integrate seamlessly with Autonomy agents
+
+## Define a custom UI
+
+For applications that need user interfaces that are more complex than what is ideal for a simple `index.html`, Autonomy apps can serve a compiled static site using FastAPI. This site can call APIs defined within the app.
+
+### Project Structure
+
+Recomended project structure
+
+```bash  theme={null}
+your-app/
+├── autonomy.yaml
+├── images/main/
+│   ├── Dockerfile
+│   ├── main.py
+│   └── public/           # Compiled UI files go here
+└── ui/                   # UI source code goes here
+    ├── package.json
+    ...
+```
+
+* Pick a UI framework that can output static files like Nextjs, React, Vue, Angular, Svelte, etc.
+* Configure it to output static files.
+* Copy the output directory to `images/main/public`
+
+### Build and Deploy Scripts
+
+Add to your UI `package.json`:
+
+```json  theme={null}
+{
+  "scripts": {
+    "dev": "[framework dev command]",
+    "build": "[framework build command]",
+    "build-autonomy": "npm run build && rm -rf ../images/main/public/* && cp -r [output-dir]/* ../images/main/public/",
+    ...
+  }
+}
+```
+
+### FastAPI Backend Configuration
+
+Configure `images/main/main.py`:
+
+```python  theme={null}
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+import os
+import time
+
+app = FastAPI()
+
+class ChatRequest(BaseModel):
+    text: str
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest, node: NodeDep):
+    agent_name = f"chat_{int(time.time() * 1000)}"
+
+    try:
+        agent = await Agent.start(
+            node=node,
+            name=agent_name,
+            instructions="You are a helpful assistant.",
+            model=Model("claude-sonnet-4-v1")
+        )
+
+        response = await agent.send(request.text)
+        reply = response[-1].content.text
+
+        return {"reply": reply}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        if agent_name:
+            await Agent.stop(node, agent_name)
+
+# Serve static files (must be last)
+if os.path.exists("public"):
+    app.mount("/", StaticFiles(directory="public", html=True), name="static")
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+### UI Integration Pattern
+
+Basic API integration (framework-agnostic):
+
+```javascript  theme={null}
+// Fetch data from Autonomy backend
+async function sendMessage(text) {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to send message')
+  }
+
+  return await response.json()
+}
+
+// Example usage in component
+function handleSubmit(text) {
+  sendMessage(text)
+    .then(data => {
+      // Update UI with data.reply
+    })
+    .catch(error => {
+      console.error('Error:', error)
+      // Handle error in UI
+    })
+}
+```
+
+## Building a Custom Streaming API and UI
+
+When building AI applications, providing real-time streaming responses creates a much better user experience than waiting for complete responses. This guide shows you how to build a minimal but effective streaming chat interface that displays responses character by character.
+
+### The Simple UI Approach That Works
+
+The key to smooth streaming UI is surprisingly straightforward: **just append characters one by one with a small delay**. Don't overthink it with complex animation frameworks or typing libraries. This simple approach works reliably across all browsers and provides the satisfying typewriter effect users expect.
+
+### Backend: Streaming API with Autonomy
+
+Here's a minimal FastAPI server that streams AI responses:
+
+```python
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import json
+from dataclasses import asdict, is_dataclass
+from enum import Enum
+
+def json_serializer(obj):
+    if is_dataclass(obj):
+        return asdict(obj)
+    if isinstance(obj, Enum):
+        return obj.value
+    if hasattr(obj, '__dict__'):
+        return obj.__dict__
+    return str(obj)
+
+app = FastAPI()
+agent = None
+
+@app.post("/chat")
+async def chat(request: dict, node: NodeDep):
+    global agent
+
+    # Initialize agent once and reuse
+    if not agent:
+        try:
+            agent = await Agent.start(
+                node=node,
+                name="streaming-agent",
+                instructions="You are a helpful assistant. Give clear, engaging responses.",
+                model=Model("claude-sonnet-4-v1")
+            )
+        except Exception as e:
+            if "AlreadyExists" not in str(e):
+                raise e
+
+    message = request.get("message", "")
+    scope = request.get("scope", None)
+    conversation = request.get("conversation", None)
+
+    async def stream_response():
+        try:
+            async for response in agent.send_stream(message, scope, conversation, timeout=60):
+                yield json.dumps(response.snippet, default=json_serializer) + "\n"
+        except Exception as e:
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+    return StreamingResponse(stream_response(), media_type="application/json")
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+### Key Backend Concepts for a streaming api:
+
+1. **Agent Reuse**: Initialize the agent once and reuse it for all requests to avoid setup overhead
+2. **Streaming Response**: Use FastAPI's `StreamingResponse` with newline-delimited JSON
+3. **Error Handling**: Gracefully handle exceptions and stream error messages
+4. **Custom JSON Serializer**: Handle dataclasses and complex objects in the streaming response
+
+### Frontend: Character-by-Character Streaming
+
+The frontend implementation focuses on simplicity and reliability:
+
+```aaa/minimal-streaming-example/images/main/index.html#L80-130  theme={null}
+async function appendCharByChar(text, delay = 5) {
+    for (const char of text) {
+        out.textContent += char;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+}
+
+async function processLine(line) {
+    if (line.trim()) {
+        const parsed = JSON.parse(line);
+        for (const message of parsed.messages) {
+            if (message?.content?.text) {
+                await appendCharByChar(message.content.text);
+            }
+        }
+    }
+}
+
+async function send(message) {
+    input.disabled = true;
+    addMessage(message, true);
+    out = createAssistantMessage();
+    const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+    });
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        if (!out.textContent) input.value = "";
+        for (const line of lines) await processLine(line);
+    }
+    await processLine(buffer);
+    input.disabled = false;
+    input.focus();
+}
+```
+
+#### Why This UI Approach Works for a streaming, typewriter like UI:
+
+1. **Simple Character Loop**: The `appendCharByChar` function just iterates through each character with a 5ms delay
+2. **Auto-Scroll**: Each character addition scrolls the chat to bottom for continuous visibility
+3. **Stream Processing**: Handles chunked data by buffering incomplete lines
+4. **User Experience**: Disables input during response and clears it once streaming starts
+
+This approach can be adapted to any UI framework.
+
+### Complete HTML Structure
+
+The complete interface includes clean styling and proper event handling:
+
+```aaa/minimal-streaming-example/images/main/index.html#L1-79  theme={null}
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Minimal Streaming Chat</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #f5f5f5;
+            }
+
+            .container {
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
+            }
+
+            .chat-area {
+                height: 400px;
+                overflow-y: auto;
+                padding: 20px;
+                background: #fafafa;
+            }
+
+            .message {
+                margin: 15px 0;
+                padding: 12px 16px;
+                border-radius: 18px;
+                max-width: 80%;
+                word-wrap: break-word;
+            }
+
+            .user-message {
+                background: #007bff;
+                color: white;
+                margin-left: auto;
+                text-align: right;
+            }
+
+            .assistant-message {
+                background: white;
+                border: 1px solid #e1e5e9;
+                margin-right: auto;
+            }
+
+            .input-container {
+                padding: 20px;
+                background: white;
+                border-top: 1px solid #e1e5e9;
+                display: flex;
+                gap: 12px;
+            }
+
+            #in {
+                flex: 1;
+                padding: 12px 16px;
+                border: 2px solid #e1e5e9;
+                border-radius: 24px;
+                outline: none;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Minimal Streaming Chat</h1>
+                <p>Chat with an AI assistant using streaming responses</p>
+            </div>
+            <div id="chatArea" class="chat-area"></div>
+            <div class="input-container">
+                <input type="text" id="in" placeholder="Type your message here..." />
+                <button id="sendButton">Send</button>
+            </div>
+        </div>
+        <!-- JavaScript continues... -->
+    </body>
+</html>
+```
+
+### Key Takeaways for a streaming api and ui
+
+1. **Keep the UI Simple**: The character-by-character approach with `setTimeout` is simple, reliable, and provides great UX
+2. **Handle Streaming Properly**: Buffer incomplete JSON lines and process complete ones immediately
+3. **Agent Reuse**: Initialize expensive resources once and reuse them
+4. **Error Handling**: Stream errors as JSON so the frontend can handle them gracefully
+5. **User Experience**: Disable input during responses, auto-scroll, and maintain focus
+
+This approach gives you a production-ready streaming chat interface that users will love. The simplicity is its strength—it works consistently across all browsers and provides the smooth typing effect that makes AI interactions feel natural and engaging. This approach can also be easily adapted to any UI framework.
+
+## Related Guides
+
+- **Getting Started**: Follow the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.mdx)
+- **Configure apps**: Follow the [guide on setting environment variables, providing secrets, and adding python dependencies](https://autonomy.computer/docs/_for-coding-agents/configure-apps.mdx)
+- **Create custom APIs**: Follow the [guide on creating custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.mdx)
+- **Select a Model**: Follow the [guide on selecting models](https://autonomy.computer/docs/_for-coding-agents/select-models.mdx)
+- **Memory**: Follow the [guide on using memory, conversation, and scope in Autonomy agents](https://autonomy.computer/docs/_for-coding-agents/memory.mdx)
+- **Give Agents Tools**: Follow the [guide on creating agents that can invoke tools](https://autonomy.computer/docs/_for-coding-agents/tools.mdx)

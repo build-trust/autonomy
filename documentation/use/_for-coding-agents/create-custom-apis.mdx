@@ -1,0 +1,216 @@
+---
+title: "Coding Agents: How to create custom APIs for Autonomy apps and agents"
+description: "Create and deploy custom HTTP APIs for Autonomy apps and agents using FastAPI. This guide covers covers custom APIs, endpoint design, parallel processing, and streaming responses."
+---
+
+# A guide for coding agents to to create and deploy custom APIs for Autonomy apps and agents
+
+Use the **Autonomy Framework** and FastAPI to add custom HTTP APIs to Autonomy apps and deploy them on **Autonomy Computer**.
+
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+
+**Keywords:** fastapi, custom api, translation, parallel agents, http server, routes, endpoints
+
+This guide will:
+- Create custom FastAPI routes tailored to an application's needs
+- Build both single-agent and parallel multi-agent architectures
+- As an example, implement scalable translation services that process thousands of requests concurrently
+- Deploy custom APIs with proper error handling and documentation
+
+The **Autonomy Framework** provides built-in APIs for Agents. See the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.mdx) for examples of how to use the built-in API endpoints.
+
+## Define a custom API
+
+If the app needs more control, instead of using the built-in agent endpoints, the app can have custom FastAPI routes that are tailored to you application.
+
+**Important:** Don't define `@app.get("/")` in your FastAPI app if you want the Autonomy HTTP server to automatically serve your `index.html` file at the root URL. Custom root routes take precedence over automatic file serving.
+
+Here is an example:
+
+### Create a simple translation API
+
+In a new Autonomy app, create a `images/main/main.py` that defines a simple translation service:
+
+```python
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+
+app = FastAPI()
+agent = None
+
+@app.post("/translate")
+async def translate(request: dict, node: NodeDep):
+    global agent
+
+    if not agent:
+        agent = await Agent.start(
+            node=node,
+            name="translator",
+            model=Model("claude-sonnet-4-v1"),
+            instructions="""
+            You are an agent that specializes in translating text
+            from English to Hindi. When you're given text in English,
+            output the corresponding translation in Hindi written
+            using the Latin alphabet (Roman script).
+
+            Provide only the translation, no additional explanation.
+            """,
+        )
+
+    response = await agent.send(f"English:\n\n{request.get("text", "")}")
+    return {"translation": response[-1].content.text}
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+This creates a simple translation service that uses a single agent for all requests. The `autonomy.yaml`, `Dockerfile` remain same as in the previous section.
+
+The `index.html` would have to be adapted to call the `/translate` endpont. To start, we can test using curl.
+
+### Deploy the translation API
+
+Deploy the zone using the same command as before:
+
+```bash
+autonomy zone deploy
+```
+
+Once, the zone is deployed, the translation API will be available at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate`
+
+### Test the translation API
+
+Test your translation service by sending English text to be translated:
+
+```bash
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{
+  "text": "Hello, how are you?"
+}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate"
+```
+
+Expected response:
+
+```json
+{
+  "translation": "Namaste, aap kaise hain?"
+}
+```
+
+## Parallelize work using many agents
+
+### Create a parallel translation API
+
+For more advanced use cases, the app can process multiple translations concurrently by running thousands of parallel agents.
+
+Replace `images/main/main.py` with:
+
+```python
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+from asyncio import gather, create_task
+from typing import List, Dict
+
+app = FastAPI()
+
+async def translate_item(node: Node, item: str) -> Dict[str, str]:
+    agent = None
+    try:
+        agent = await Agent.start(
+            node=node,
+            name=f"translator_{id(item)}",
+            instructions="""
+            You are an agent that specializes in translating text
+            from English to Hindi. When you're given text in English,
+            output the corresponding translation in Hindi written
+            using the Latin alphabet (Roman script).
+
+            Provide only the translation, no additional explanation.
+            """,
+            model=Model("claude-sonnet-4-v1"),
+        )
+
+        response = await agent.send(f"English:\n\n{item}", timeout=60)
+        return {"text": item, "translation": response[-1].content.text}
+    except Exception as e:
+        return {"text": item, "error": str(e)}
+    finally:
+        if agent:
+            create_task(Agent.stop(node, agent.name))
+
+@app.post("/translate")
+async def translate(request: dict, node: NodeDep):
+    texts = request.get("texts", [])
+    results = await gather(*(translate_item(node, text) for text in texts))
+    return {"translations": results}
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+This creates a scalable translation service that can translate thousands of items in parallel by creating an individual agent per item.
+
+The `autonomy.yaml`, `Dockerfile` remain same as in the previous sections.
+
+The `index.html` would have to be adapted to call the `/translate` endpont. To start, we can test using curl.
+
+### Deploy the parallel translation API
+
+Deploy the zone:
+
+```bash
+autonomy zone deploy
+```
+
+### Test the parallel translation API
+
+Test the parallel translation API by sending multiple English phrases:
+
+```bash
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{
+  "texts": [
+    "Hello, how are you?",
+    "Thank you very much",
+    "Good morning"
+  ]
+}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/translate"
+```
+
+Expected response format:
+
+```json
+{
+  "translations": [
+    {
+      "text": "Hello, how are you?",
+      "translation": "Namaste, aap kaise hain?"
+    },
+    {
+      "text": "Thank you very much",
+      "translation": "Dhanyawad bahut bahut"
+    },
+    {
+      "text": "Good morning",
+      "translation": "Suprabhat"
+    }
+  ]
+}
+```
+
+## View your API documentation
+
+FastAPI automatically generates interactive API documentation. View it at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/docs`
+
+This provides a complete interface to test your endpoints directly in the browser.
+
+## Related Guides
+
+- **Getting Started**: Follow the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.mdx)
+- **Configure apps**: Follow the [guide on setting environment variables, providing secrets, and adding python dependencies](https://autonomy.computer/docs/_for-coding-agents/configure-apps.mdx)
+- **Select a Model**: Follow the [guide on selecting models](https://autonomy.computer/docs/_for-coding-agents/select-models.mdx)
+- **Create custom UI**: Follow the [guide on creating custom user interfaces](https://autonomy.computer/docs/_for-coding-agents/create-custom-ui.mdx)
+- **Memory**: Follow the [guide on using memory, conversation, and scope in Autonomy agents](https://autonomy.computer/docs/_for-coding-agents/memory.mdx)
+- **Give Agents Tools**: Follow the [guide on creating agents that can invoke tools](https://autonomy.computer/docs/_for-coding-agents/tools.mdx)

@@ -1,0 +1,125 @@
+---
+title: "Coding Agents: How to set environment variables, provide secrets, and add python dependencies"
+description: "Configure environment variables, securely manage secrets, and add Python dependencies to your Autonomy applications using multi-stage Docker builds."
+---
+
+# A guide for coding agents to configure environment and secrets
+
+Configure environment variables, add Python dependencies, and manage secrets securely in your **Autonomy** applications.
+
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+
+**Keywords:** environment variables, secrets, python dependencies, docker, configuration, env, security, multi-stage builds
+
+This guide will show how to:
+- Set environment variables and provide secrets securely to your Autonomy applications
+- Add Python dependencies using multi-stage Docker builds
+
+## Environment Variables and Secrets
+
+Configure environment variables directly in your `autonomy.yaml`:
+
+```yaml
+name: translator
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+        env:
+          - MAX_FILE_SIZE: "52428800"  # 50MB in bytes
+          - LOG_LEVEL: "INFO"
+          - API_KEY: secrets.API_KEY  # Reference to secret
+```
+
+For sensitive values like API keys, use a separate `secrets.yaml` file:
+
+```yaml
+# secrets.yaml
+API_KEY: your_api_key_here
+DATABASE_PASSWORD: your_secure_password_here
+```
+
+If you need to generate a new secure random secret, use `openssl rand -hex 32`
+
+**Important**: Always add `secrets.yaml` to your `.gitignore`:
+
+```.gitignore
+# Never commit secrets
+secrets.yaml
+```
+
+Access environment variables and secrets in your Python code:
+
+```python
+import os
+
+# Environment variables
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "50000000"))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# Secrets
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise ValueError("API_KEY environment variable is required")
+```
+
+Redeploy the zone after changing environment variables or secrets.
+
+### Multi-Stage Docker Builds for Python Dependencies
+
+When your application requires additional Python packages beyond what the base `autonomy-python` image includes, use a multi-stage build approach.
+
+Create a `requirements.txt` file with your Python dependencies:
+
+```txt  theme={null}
+PyPDF2
+aiofiles
+```
+
+Update your `images/main/Dockerfile` to use multi-stage build:
+
+```dockerfile  theme={null}
+FROM ghcr.io/build-trust/autonomy-python-dev AS dev
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+FROM ghcr.io/build-trust/autonomy-python
+COPY --from=dev /app/venv venv
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+This pattern:
+
+1. Uses the `autonomy-python-dev` image (which includes pip), as base, to install dependencies
+2. Then copies the packages you installed to the production image
+3. Keeps the final image size optimized while having all packages you need
+
+Your file structure should look like:
+
+```
+├── autonomy.yaml
+└── images
+    └── main
+        ├── Dockerfile
+        ├── requirements.txt
+        └── main.py
+```
+
+Deploy as usual:
+
+```bash
+autonomy zone deploy
+```
+
+The deploy command will automatically handle the multi-stage build and package installation.
+
+## Related Guides
+
+- **Getting Started**: Follow the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.mdx)
+- **Select a Model**: Follow the [guide on selecting models](https://autonomy.computer/docs/_for-coding-agents/select-models.mdx)
+- **Create custom APIs**: Follow the [guide on creating custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.mdx)
+- **Memory**: Follow the [guide on using memory, conversation, and scope in Autonomy agents](https://autonomy.computer/docs/_for-coding-agents/memory.mdx)
+- **Give Agents Tools**: Follow the [guide on creating agents that can invoke tools](https://autonomy.computer/docs/_for-coding-agents/tools.mdx)
