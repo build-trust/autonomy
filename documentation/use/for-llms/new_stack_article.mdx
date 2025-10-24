@@ -1,0 +1,92 @@
+---
+title: "How the Actor Model Could Power the Next Generation of Agentic Products"
+description: "By running agents in parallel, the actor model can orchestrate workloads across clusters to produce scalable, concurrent, resilient systems. "
+---
+
+[_<u>This article was originally published in the New Stack</u>_](https://thenewstack.io/can-the-50-year-old-actor-model-rescue-agentic-ai/)
+
+### **The Year Agentic AI Got Real — and Hard**
+
+2025 is shaping up to be the year agentic AI crossed from research to production. Gartner reports that 34 percent of businesses now deploy AI agents, and by 2028, as much as 15 percent of daily work decisions may be made autonomously. A third of enterprise software applications are expected to include some form of agentic capability.
+
+Yet the promise hasn’t matched excitement, so far. “Most agentic AI projects right now are early stage experiments or proof of concepts that are mostly driven by hype,” said Anushree Verma, Senior Director Analyst, Gartner. “This can blind organizations to the real cost and complexity of deploying AI agents at scale, stalling projects from moving into production. The problem, as it turns out, may not be the intelligence of AI models that have the spotlight - it’s probably their cloud infrastructure too.
+
+Agentic AI introduces a new kind of workload: thousands or even millions of semi-autonomous processes that perceive, reason, act, and collaborate over time. They hold memory, context, and goals. These properties break most of the cloud architecture patterns we’ve spent two decades perfecting.
+
+To understand why so many agentic projects stall, and what might unblock them, I spoke with [Matthew Gregory](https://www.linkedin.com/in/matthewgregory/), founder and CEO of [<u>Autonomy</u>](https://autonomy.computer), a new platform-as-a-service (PaaS) built entirely around the actor model. Matthew and his team have spent years exploring what it takes to run autonomous, distributed systems at production scale, and their perspective sheds light on how this next wave of AI products will be built.
+
+“Familiar cloud architecture patterns have actually become barriers,” Matthew told me. “Agentic products function differently than modern web apps, and they need tools designed for that difference.”
+
+### **The Rediscovery: Actors Fit Agents**
+
+The actor model isn’t new. Conceived in 1973, it’s an elegant pattern for managing concurrency — one that quietly powers some of today’s most demanding systems, including WhatsApp, Discord, and Databricks.
+
+In the actor model, the basic unit of computation isn’t a container or function, but an actor - a lightweight, independent entity that owns its own state, processes messages asynchronously, and communicates with others through message passing. Hundreds of thousands of actors can run in parallel inside a single process. They start in milliseconds, idle cheaply, and persist as long as they’re needed.
+
+For AI agents, modeling each one as a single actor is an almost perfect fit. Actors (agents) are:
+
+- **Stateful:** each actor remembers its identity, memories, context, and goals.
+- **Long-lived:** actors can stay idle for long periods without wasting resources.
+- **Asynchronous:** they yield gracefully while waiting for LLM completions or tool responses.
+- **Massively parallel:** millions can coordinate and collaborate to support agentic patterns like sub-agents and orchestrated workflows.
+- **Built-in messaging:** mailboxes and queues make secure communication natural.
+
+“An actor has a tiny footprint and handles concurrency and messaging beautifully,” Matthew explained. “It’s the right atomic unit for agentic systems.”
+
+### **Why Containers and Serverless Fall Short**
+
+Traditional cloud primitives weren’t designed for workloads like these. Serverless functions are perfect for short, stateless bursts of work that are measured in milliseconds - the opposite of an agent that must hold memory and context across long-running tasks. Reconstructing state with every invocation adds latency and cost while breaking continuity.
+
+Containers, meanwhile, preserve state but come with weight. Keeping thousands (let alone millions) of mostly idle containers online is operationally painful and financially unsustainable.
+
+“If you put an agent in a container, it idles while you pay for the capacity. At scale that’s a dev ops nightmare,” Matthew said. “Go serverless and the agent forgets who it was every time it wakes up. Actors give you persistent state _and_ exceptional cost efficiency.”
+
+In other words, actors let developers think in terms of relationships and collaboration — without operational overhead or resource waste that kills most agentic prototypes.
+
+### **Beyond Compute: Trust and Data-in-Motion**
+
+Even if you solve concurrency and scale, another challenge quickly surfaces: trust. Agents don’t just compute; they communicate — often across clouds, services, and organizations. Each interaction must be authenticated, encrypted, and verifiable.
+
+Autonomy addresses this with Private Links, a secure messaging layer built on top of the open-source Ockam toolkit that Matthew’s team launched several years ago. Every agent on the platform mints a unique cryptographic non-human identity (NHI), then establishes mutually authenticated, end-to-end encrypted channels with its peers. No VPNs, no public endpoints, no shared secrets need to be built.
+
+“Data-in-motion is one of the hardest problems for agentic developers,” Matthew said. “Autonomy’s Private Links solve that with opinionated cryptography and protocols baked in from day one. Better yet, an agent running on the Autonomy Computer can create a secure connection with any other agent, MCP server, tool, application, or datastore in any other cloud or network.”
+
+That heritage matters. Ockam - an identity, messaging, and access-control library with a vibrant open-source community - has been battle-tested for secure communication between distributed systems. Autonomy extends those same trust primitives to a world of AI agents.
+
+“In a way, we’ve got a five-year head start on the problems that need solving to ship agentic products,” Matthew noted. “Autonomy builds directly on that foundation.”
+
+### **From Pieces to Platform**
+
+Even with the right architecture and security model, many teams still drown in integration work. The typical agentic stack today involves a dozen frameworks — LangChain for LLM tooling, CrewAI for multi-agent coordination, plus vector databases, schedulers, observability layers, identity, maybe even some Kafka, and a mess of custom glue. Each solves one piece; none form a coherent whole.
+
+“Infrastructure is hard to scale and easy to get wrong,” Matthew said. “As a product company, you end up spending all your time on plumbing instead of product.”
+
+Autonomy’s Platform-as-a-Service aims to close that gap. It packages the actor runtime, trust layer, and observability tools into a single environment. Developers build locally with their Python SDK, then deploy into a globally distributed runtime without touching containers, Kubernetes, or serverless orchestration. Scaling, routing, and secure messaging come built in.
+
+At first touch, Autonomy might look like another agentic framework — but the distinction is important. Frameworks help you build; platforms help you ship. “It’s like the relationship between Next.js and Vercel, or between Rails and Heroku,” Matthew said. “Frameworks get you to code; platforms get you to customers.”
+
+### **Actors need good architecture too**
+
+While the actor model offers the right foundation for agentic systems, it isn’t a silver bullet just by itself. Engineers who have built actor-based frameworks before know the trade-offs well: tracing a single request across thousands of asynchronous actors can be notoriously difficult; unbounded concurrency can lead to message storms; and recovering state if an actor crashes or restarts requires careful orchestration. The model works great for agents, but it also needs some guardrails too.
+
+“Those are all real problems,” acknowledged Matthew. “Just telling people to ‘go use actors’ doesn’t make all the problems of distributed systems go away - it just hands them a new set of hard engineering challenges. Building a runtime that handles agent identity, tracing, scheduling, failure recovery, and security correctly is a serious piece of infrastructure work. That’s exactly the burden we wanted Autonomy to take off the developer’s plate.”
+
+By acknowledging the long-known challenges with actor based runtimes, and by designing their platform to address them, Autonomy turns a once-esoteric architecture into something that lean teams can use to ship reliable, production-grade agentic systems.
+
+### **Developer Experience: Small Teams, With Big Ambitions**
+
+Autonomy’s initial audience is small, fast-moving teams — startups and “startup-mode” groups inside larger enterprises that need to ship quickly with limited headcount. They can’t afford to build bespoke infrastructure that is tuned to scale before they ship to production.
+
+“We’re really really obsessed with developer experiences,” Matthew said. “Teams constrained by people, time, or resources need something that just works - that’s automagical, at full-scale.” 
+
+The platform already includes enterprise-grade tools — logs, metrics, evals, and secure endpoints for observability and operations — but Autonomy’s biggest advantage seems to be its simplicity. Developers can focus on what their agentic products can do, not how to make them run.
+
+### **Why This Matters Now**
+
+If the last decade of cloud computing was about elastic compute, the next one will be about elastic autonomy — running not just more servers, but more _decisions_. The architectural unit of that future isn’t a container or function; it’s an actor.
+
+The actor model provides the foundation for systems that can think, remember, and coordinate at scale. It’s an idea that has existed for half a century, but the rise of agentic AI finally gives it a renewed mainstream purpose.
+
+Autonomy’s bet is that a PaaS built around actors - with trust and security woven in - will become the default substrate for these systems. Teams that embrace this model won’t just build smarter agents; they’ll ship production-ready products faster.
+
+“We’re not inventing a new idea so much as putting a thousand architectural decisions into a single platform and offering it as a simple product experience,” Matthew said. “Actors always fit this problem. Now the Autonomy platform makes it easy for every builder to ship a scaleable, connected agentic product.”
