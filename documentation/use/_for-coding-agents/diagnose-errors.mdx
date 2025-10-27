@@ -1,0 +1,313 @@
+---
+title: "Coding Agents: How to diagnose errors"
+description: "Diagnose and fix common errors when building Autonomy apps, including message serialization, error handling, worker cleanup, and testing strategies."
+---
+
+# A guide for coding agents to diagnose errors
+
+*Keywords: errors, debugging, diagnose, troubleshooting, best practices, pitfalls, gotchas, common issues, mistakes, fix errors*
+
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
+
+This guide shows both incorrect and correct patterns side-by-side to help you diagnose common errors and fix them quickly.
+
+## 🔴 Message Serialization Errors
+
+**Problem**: Sending dictionaries or objects instead of serialized strings to workers.
+
+**Error**: `TypeError: 'dict' object cannot be converted to 'PyString'`
+
+❌ **WRONG** (will crash):
+
+```/dev/null/wrong-serialization.py#L1-10
+from autonomy import Node
+
+async def main(node):
+    await node.start_worker("worker", MyWorker())
+    
+    # This will crash!
+    message = {"data": 123}  # Dict, not string
+    reply = await node.send_and_receive("worker", message)  # TypeError!
+    
+    # This will also crash!
+    await context.reply({"result": 42})  # Dict - TypeError!
+```
+
+✅ **CORRECT**:
+
+```/dev/null/correct-serialization.py#L1-18
+import json
+from autonomy import Node
+
+class MyWorker:
+    async def handle_message(self, context, message: str):
+        data = json.loads(message)  # Parse JSON string
+        result = data["data"] * 2
+        await context.reply(json.dumps({"result": result}))  # JSON string
+
+async def main(node):
+    await node.start_worker("worker", MyWorker())
+    
+    # Convert to JSON string
+    message = json.dumps({"data": 123})
+    reply = await node.send_and_receive("worker", message)
+    
+    # Parse JSON string back to dict
+    result = json.loads(reply)
+    print(result["result"])  # 246
+```
+
+**Why**: Messages must be serialized to strings for network transmission. JSON is a convenient serialization format.
+
+---
+
+## 🔴 Missing Error Handling
+
+**Problem**: No timeout or exception handling on async operations.
+
+**Impact**: Cold start timeouts crash operations.
+
+❌ **WRONG** (will hang or crash):
+
+```/dev/null/no-error-handling.py#L1-10
+from autonomy import Zone
+
+async def process(node):
+    runners = await Zone.nodes(node, filter="runner")
+    
+    # Will hang on slow runners, no timeout
+    workers = await runner.list_workers()
+    
+    # Will crash on first exception
+    reply = await runner.send_and_receive("worker", "task")
+```
+
+✅ **CORRECT**:
+
+```/dev/null/with-error-handling.py#L1-30
+import asyncio
+from autonomy import Zone
+
+async def process(node):
+    try:
+        runners = await Zone.nodes(node, filter="runner")
+        workers = []
+        
+        for runner in runners:
+            try:
+                # Timeout for individual operations
+                runner_workers = await asyncio.wait_for(
+                    runner.list_workers(),
+                    timeout=3.0  # seconds
+                )
+                workers.extend(runner_workers)
+            except asyncio.TimeoutError:
+                print(f"Timeout on {runner.name}, continuing...")
+                continue  # Try next runner
+            except Exception as e:
+                print(f"Error on {runner.name}: {e}")
+                continue
+        
+        return workers
+        
+    except Exception as e:
+        print(f"Critical error: {e}")
+        return []  # Graceful degradation
+```
+
+**Why**: Distributed systems have variable latency requiring timeouts and exception handling.
+
+---
+
+## 🔴 Orphaned Workers
+
+**Problem**: Workers not cleaned up after errors or when done.
+
+**Impact**: Workers accumulate, consume resources, cause confusion about system state.
+
+❌ **WRONG** (workers leak):
+
+```/dev/null/no-cleanup.py#L1-15
+async def process(node):
+    runners = await Zone.nodes(node, filter="runner")
+    
+    for runner in runners:
+        await runner.start_worker("worker", MyWorker())
+        reply = await runner.send_and_receive("worker", "task")
+        # Oops! Forgot to stop worker
+        # If this errors, worker is orphaned
+    
+    # Workers still running!
+```
+
+✅ **CORRECT**:
+
+```/dev/null/with-cleanup.py#L1-30
+async def process(node):
+    runners = await Zone.nodes(node, filter="runner")
+    workers = []
+    
+    try:
+        # Create workers
+        for i, runner in enumerate(runners):
+            worker_name = f"worker_{i}"
+            await runner.start_worker(worker_name, MyWorker())
+            workers.append((runner, worker_name))
+        
+        # Process
+        for runner, worker_name in workers:
+            reply = await runner.send_and_receive(worker_name, "task")
+            # Process reply...
+        
+    finally:
+        # ALWAYS cleanup, even if error occurred
+        for runner, worker_name in workers:
+            try:
+                await asyncio.wait_for(
+                    runner.stop_worker(worker_name),
+                    timeout=5.0
+                )
+            except Exception as e:
+                print(f"Could not stop {worker_name}: {e}")
+                # Continue cleanup of other workers
+```
+
+**Why**: Use `try/finally` to ensure cleanup happens even when exceptions occur.
+
+---
+
+## 🔴 Incorrect Timeout Values
+
+**Problem**: Using same timeout for cold start and warm operations.
+
+**Impact**: Cold start operations timeout, or warm operations wait too long.
+
+❌ **WRONG** (too short for cold start):
+
+```/dev/null/wrong-timeout.py#L1-10
+# First request after deployment
+reply = await asyncio.wait_for(
+    runner.send_and_receive("worker", "task"),
+    timeout=2.0  # Too short! Cold start needs 10-30s
+)
+```
+
+✅ **CORRECT**:
+
+```/dev/null/correct-timeouts.py#L1-20
+# First request after deployment (cold start)
+try:
+    reply = await asyncio.wait_for(
+        runner.send_and_receive("worker", "task"),
+        timeout=30.0  # Generous for cold start
+    )
+except asyncio.TimeoutError:
+    print("Cold start timeout - try again")
+
+# Subsequent requests (warm)
+reply = await asyncio.wait_for(
+    runner.send_and_receive("worker", "task"),
+    timeout=5.0  # Normal timeout for warm operations
+)
+```
+
+**Timeouts**: Cold start 10-30s, warm 1-5s, network 5-10s, cleanup 5s.
+
+---
+
+## 🔴 Testing Too Complex Too Soon
+
+**Problem**: Starting with full distributed processing before testing basics.
+
+**Impact**: Multiple failures are hard to isolate.
+
+❌ **WRONG** (test everything at once):
+
+```/dev/null/complex-test.py#L1-15
+# First test - full distributed processing!
+async def main(node):
+    # Discover nodes
+    runners = await Zone.nodes(node, filter="runner")
+    # Create workers
+    for runner in runners:
+        await runner.start_worker("worker", ComplexWorker())
+    # Distribute tasks
+    results = await process_distributed(runners, tasks)
+    # Process results
+    aggregated = aggregate(results)
+    # Too much at once! Where did it fail?
+```
+
+✅ **CORRECT** (test progressively):
+
+```/dev/null/progressive-test.py#L1-35
+# Test 1: Can we discover nodes?
+async def test_nodes(node):
+    runners = await Zone.nodes(node, filter="runner")
+    print(f"Found {len(runners)} runners")
+    for runner in runners:
+        print(f"  - {runner.name}")
+
+# Test 2: Can we create a worker?
+async def test_create_worker(node):
+    runners = await Zone.nodes(node, filter="runner")
+    runner = runners[0]
+    await runner.start_worker("test", SimpleWorker())
+    workers = await runner.list_workers()
+    print(f"Workers: {workers}")
+    await runner.stop_worker("test")
+
+# Test 3: Can we send a message?
+async def test_message(node):
+    runners = await Zone.nodes(node, filter="runner")
+    runner = runners[0]
+    await runner.start_worker("test", SimpleWorker())
+    reply = await runner.send_and_receive("test", json.dumps({"ping": True}))
+    print(f"Reply: {reply}")
+    await runner.stop_worker("test")
+
+# Test 4: Full processing (only after above work)
+async def test_full_processing(node):
+    # Now test the complete flow
+    ...
+```
+
+**Test Strategy**: Node discovery → worker creation → messaging → full processing.
+
+---
+
+
+
+## Best Practices Summary
+
+### ✅ DO:
+- Serialize messages to strings (JSON with `json.dumps()`/`json.loads()` is convenient)
+- Add timeouts with `asyncio.wait_for()`
+- Clean up workers in `try/finally` blocks
+- Test progressively: discovery → workers → messaging → full system
+- Handle exceptions gracefully, return partial results
+
+### ❌ DON'T:
+- Send unserialized dicts/objects as messages
+- Skip error handling or timeouts
+- Leave workers running after errors
+- Use identical timeouts for cold/warm operations
+
+---
+
+## Quick Debugging Checklist
+
+When something fails, check:
+
+1. **Messages serialized?** Use `json.dumps()`/`json.loads()` or similar
+2. **Timeouts sufficient?** Cold start 10-30s, warm 1-5s
+3. **Error handling?** `try/except`, `asyncio.wait_for()`
+4. **Workers cleaned up?** `try/finally` pattern
+5. **Progressive testing?** Simple → complex
+
+---
+
+## Related Guides
+
+- [How to use workers and messaging](https://autonomy.computer/docs/_for-coding-agents/workers.md)
+- [How to create and deploy a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)

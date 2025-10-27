@@ -1,0 +1,453 @@
+---
+title: "Coding Agents: Architecture of Autonomy Computer"
+description: "Understand how applications run on Autonomy Computer - Clusters, Zones, Pods, Containers, Nodes, Workers, and Agents."
+---
+
+# A guide for coding agents to understand Autonomy Computer architecture
+
+*Keywords: architecture, cluster, zone, pod, container, node, worker, agent, infrastructure, deployment, distributed systems, scalability*
+
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
+
+This guide explains the hierarchical architecture of Autonomy Computer and how to design scalable distributed applications.
+
+## Architecture Overview
+
+Autonomy Computer uses a hierarchical architecture:
+
+```
+Cluster (dedicated cloud infrastructure)
+└── Zones (your applications)
+    └── Pods (logical grouping of containers)
+        └── Containers (Docker containers)
+            └── Node (Autonomy runtime)
+                ├── Agents (intelligent actors)
+                └── Workers (message processors)
+```
+
+**Note**: Not all containers are Autonomy Nodes. Containers can run Autonomy Nodes (by calling `Node.start()`), MCP servers, or other services.
+
+## Cluster
+
+A dedicated cloud infrastructure environment assigned to your account.
+
+**Characteristics**:
+- One cluster per user account
+- Has a unique cluster ID (e.g., `a9eb812238f753132652ae09963a05e9`)
+- Hosts all your zones
+
+**Setup**:
+
+```bash
+# Enroll your workstation
+autonomy cluster enroll --no-input
+
+# View cluster information
+autonomy cluster show
+```
+
+**URL Pattern**: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
+
+## Zone
+
+A single deployed application within your cluster.
+
+**Characteristics**:
+- Defined by `autonomy.yaml`
+- Name must be ≤10 characters
+- Contains one or more pods
+
+**Configuration** (`autonomy.yaml`):
+
+```yaml
+name: hello
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+**Commands**:
+
+```bash
+autonomy zone deploy              # Deploy or update
+autonomy zone list                # List all zones
+autonomy zone delete --yes        # Delete zone
+
+# View logs - see "How to View Logs" section:
+# https://autonomy.computer/docs/_for-coding-agents#how-to-view-logs
+```
+
+## Pod
+
+A logical group of containers that run together on the same machine.
+
+**Characteristics**:
+- All containers share network namespace (communicate via localhost)
+- Can be public (externally accessible) or private
+- Can be cloned to create multiple instances
+
+**Multi-Pod Example**:
+
+```yaml
+name: distribute
+pods:
+  - name: main-pod
+    size: big
+    public: true
+    containers:
+      - name: main
+        image: main
+
+  - name: runner-pod
+    size: big
+    clones: 5
+    containers:
+      - name: runner
+        image: runner
+```
+
+**Key Options**:
+- `public: true` - Exposes HTTP server on port 8000 at zone's public URL
+- `size: big` - Larger compute resources (4 CPU, 2Gi memory vs default 0.25 CPU, 256Mi)
+- `clones: 5` - Creates 5 identical pods on separate machines
+
+## Container
+
+A Docker container running inside a pod.
+
+**Characteristics**:
+- Built from Docker image in `images/${IMAGE_NAME}/Dockerfile`
+- Can be an Autonomy Node or any other service
+- Multiple containers in same pod use localhost
+
+**Autonomy Node Container**:
+
+```yaml
+containers:
+  - name: main
+    image: main
+```
+
+```python
+# images/main/main.py
+from autonomy import Agent, Model, Node
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant",
+        model=Model("claude-sonnet-4-v1")
+    )
+
+Node.start(main)
+```
+
+**Non-Node Container** (MCP server):
+
+```yaml
+containers:
+  - name: brave
+    image: ghcr.io/build-trust/mcp-proxy
+    env:
+      - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+    args:
+      ["--sse-port", "8001", "--pass-environment", "--",
+       "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+**Environment Variables**:
+
+```yaml
+containers:
+  - name: main
+    image: main
+    env:
+      - LOG_LEVEL: "INFO"
+      - API_KEY: secrets.API_KEY
+```
+
+## Node
+
+The Autonomy runtime that executes within a container.
+
+**Characteristics**:
+- Created by calling `Node.start(main)` in Python
+- Runs HTTP server on port 8000 (serves `index.html` if present)
+- Can discover and communicate with other Nodes
+
+**Basic Node**:
+
+```python
+from autonomy import Node
+
+async def main(node):
+    print(f"Node {node.name} is running")
+
+Node.start(main)
+```
+
+**Discovering Other Nodes**:
+
+```python
+from autonomy import Node, Zone
+
+async def main(node):
+    runners = await Zone.nodes(node, filter="runner")
+    print(f"Found {len(runners)} runner nodes")
+
+Node.start(main)
+```
+
+## Worker
+
+A message-processing component that runs inside a Node, following the actor model.
+
+**Characteristics**:
+- Unique name within its node
+- Processes messages sequentially
+- Can maintain internal state
+- Can run on local or remote nodes
+
+**Example**:
+
+```python
+from autonomy import Node, Zone
+
+class Counter:
+    def __init__(self):
+        self.count = 0
+
+    async def handle_message(self, context, message):
+        if message == "increment":
+            self.count += 1
+        await context.reply(f"Count: {self.count}")
+
+async def main(node):
+    # Local worker
+    await node.start_worker("counter", Counter())
+    reply = await node.send_and_receive("counter", "increment")
+
+    # Remote workers
+    runners = await Zone.nodes(node, filter="runner")
+    for i, runner in enumerate(runners):
+        await runner.start_worker(f"processor-{i}", Counter())
+        result = await node.send_and_receive(f"processor-{i}", "increment")
+
+Node.start(main)
+```
+
+**Message Patterns**:
+- `send_message()` - Send and forget
+- `send_and_receive()` - Send and wait for reply
+- `send_and_receive(..., timeout=5000)` - With timeout
+
+## Agent
+
+An intelligent actor that uses AI models to autonomously accomplish goals.
+
+**Characteristics**:
+- Runs inside a Node
+- Has memory organized by scope and conversation
+- Can invoke tools (Python functions or MCP servers)
+- Automatically exposes HTTP endpoints at `/agents/{name}`
+
+**Basic Agent**:
+
+```python
+from autonomy import Agent, Model, Node
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant",
+        model=Model("claude-sonnet-4-v1")
+    )
+
+Node.start(main)
+```
+
+**Advanced: Memory and Distribution**:
+
+```python
+from autonomy import Agent, Model, Node, Zone
+
+async def main(node):
+    # Agent with memory
+    await Agent.start(
+        node=node,
+        name="advisor",
+        instructions="You are a helpful advisor",
+        model=Model("claude-sonnet-4-v1"),
+        scope="user-123",
+        conversation="main-thread"
+    )
+
+    # Agents on remote nodes
+    runners = await Zone.nodes(node, filter="runner")
+    for i, runner in enumerate(runners):
+        await Agent.start(
+            node=runner,
+            name=f"analyzer-{i}",
+            instructions="You analyze code repositories",
+            model=Model("nova-micro-v1")
+        )
+
+Node.start(main)
+```
+
+## Architectural Patterns
+
+### Pattern 1: Simple Single-Node Application
+
+Single agent with web UI.
+
+```yaml
+name: hello
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+### Pattern 2: Multi-Container Service Architecture
+
+Agent with MCP server.
+
+```yaml
+name: myapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+      - name: brave
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+        args:
+          ["--sse-port", "8001", "--pass-environment", "--",
+           "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+### Pattern 3: Distributed Worker Architecture
+
+Parallel processing across multiple machines.
+
+```yaml
+name: distribute
+pods:
+  - name: main-pod
+    size: big
+    public: true
+    containers:
+      - name: main
+        image: main
+
+  - name: runner-pod
+    size: big
+    clones: 3
+    containers:
+      - name: runner
+        image: runner
+```
+
+```python
+from autonomy import Node, Zone
+
+class Processor:
+    async def handle_message(self, context, message):
+        await context.reply(f"Processed: {message}")
+
+async def main(node):
+    runners = await Zone.nodes(node, filter="runner")
+
+    for i, runner in enumerate(runners):
+        await runner.start_worker(f"processor-{i}", Processor())
+        reply = await node.send_and_receive(f"processor-{i}", f"task-{i}")
+
+Node.start(main)
+```
+
+### Pattern 4: Multi-Agent Collaboration
+
+Team of specialized agents.
+
+```python
+from autonomy import Agent, Model, Node
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="researcher",
+        instructions="Research topics and gather information",
+        model=Model("claude-sonnet-4-v1")
+    )
+
+    await Agent.start(
+        node=node,
+        name="writer",
+        instructions="Write clear, engaging content",
+        model=Model("claude-sonnet-4-v1")
+    )
+
+Node.start(main)
+```
+
+### Pattern 5: Hybrid Agent-Worker Architecture
+
+AI agents coordinating distributed workers. Combine Pattern 3 (distributed workers) with Pattern 4 (agents).
+
+## Decision Guide
+
+| If you need... | Use... |
+|----------------|--------|
+| Simple app with one agent | Pattern 1: Single-node |
+| Agent with MCP tools | Pattern 2: Multi-container |
+| Parallel processing | Pattern 3: Distributed workers |
+| Multiple AI specialists | Pattern 4: Multi-agent |
+| AI + heavy computation | Pattern 5: Hybrid |
+| User-specific memory | Agent with `scope` |
+| Stateful processing | Worker class with `__init__` |
+| High throughput | `clones` + distributed workers |
+| Larger compute | `size: big` |
+
+## Best Practices
+
+**Zone Design**:
+- Keep zone names ≤10 characters
+- Mark coordinator pods as `public: true`
+- Use `clones` for horizontal scaling
+
+**Container Organization**:
+- One Autonomy Node per container
+- Use non-Node containers for MCP servers
+- Set environment variables in `autonomy.yaml`
+
+**Worker Patterns**:
+- Use timeouts for `send_and_receive()` calls
+- Distribute CPU-intensive work across runner pods
+- Use meaningful worker names
+
+**Agent Patterns**:
+- Use `scope` for user isolation
+- Use `conversation` for topic separation
+- Choose appropriate models for the task
+
+**Performance**:
+- Use `clones` for horizontal scaling
+- Use `size: big` for compute-intensive pods
+- Monitor with logs - follow the [logging instructions](https://autonomy.computer/docs/_for-coding-agents#how-to-view-logs)
+
+## Related Guides
+
+- [How to create and deploy a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
+- [How to use workers and messaging](https://autonomy.computer/docs/_for-coding-agents/workers.md)
+- [How to use memory, conversation, and scope in agents](https://autonomy.computer/docs/_for-coding-agents/memory.md)

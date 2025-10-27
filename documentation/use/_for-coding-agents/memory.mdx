@@ -7,37 +7,31 @@ description: "Enable persistent, contextual conversations with memory management
 
 Enable persistent, contextual conversations that remember previous interactions and maintain separate contexts for different users and conversation threads.
 
-> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
 
-**Keywords:** memory, conversation, scope, context, persistent conversations, multi-user, conversation threads, user isolation, multi-tenant
+*Keywords: memory, conversation, scope, multi-user, user isolation*
 
-This guide will:
-- Configure agents with memory to maintain context across multiple interactions
-- Manage separate conversation threads for different topics or sessions
-- Implement user isolation using scope to prevent memory leakage between users
-- Build custom APIs with sophisticated memory management patterns
+This guide shows how to configure agents with memory, manage separate conversation threads, and implement user isolation using scope.
 
-## Using Memory, Conversation, and Scope in Autonomy Agents
+## Memory, Conversation, and Scope
 
-Memory in Autonomy agents allows your applications to maintain context across multiple interactions, making conversations more natural and coherent. Instead of treating each message in isolation, agents can "remember" previous exchanges, user preferences, and conversation flow. This is essential for building sophisticated conversational applications.
+Autonomy agents automatically maintain memory within conversations, allowing natural, contextual interactions.
 
-### Basic Memory Usage
-
-By default, Autonomy agents automatically maintain memory within the same conversation.
-
-> **IMPORTANT**: Memory in Autonomy agents is **conversation-local**. Each conversation thread maintains its own memory context. Memory does NOT persist across different conversations, even for the same user/scope.
+> **IMPORTANT**: Memory is **conversation-local**. Each conversation thread maintains its own context. Memory does NOT persist across different conversations, even for the same user/scope.
 >
 > * ✅ Same scope + same conversation = shared memory within that thread
 > * ❌ Same scope + different conversation = no shared memory (fresh start)
 > * ❌ Different scope = completely isolated (as expected)
 
-Here's a simple example that demonstrates persistent memory:
+### Memory with Multiple Conversations
 
-#### Basic Memory Agent
+This example demonstrates memory persistence, multiple conversation threads, and user isolation with scope:
+
+#### Agent with Memory
 
 Create `images/main/main.py`:
 
-```python  theme={null}
+```python
 from autonomy import Agent, Model, Node
 
 async def main(node):
@@ -45,9 +39,9 @@ async def main(node):
         node=node,
         name="memory-assistant",
         instructions="""
-        You are a helpful assistant with perfect memory. Remember everything
-        the user tells you throughout our conversation. Reference previous
-        topics naturally when relevant.
+        You are a helpful assistant with memory. Remember context within
+        each conversation and provide personalized responses based on what
+        each user has shared.
         """,
         model=Model("claude-sonnet-4-v1")
     )
@@ -55,142 +49,91 @@ async def main(node):
 Node.start(main)
 ```
 
-#### Testing Basic Memory
+#### Testing Memory and Conversations
 
-Deploy your zone and test the memory functionality:
+Deploy your zone, then test memory persistence:
 
-```bash  theme={null}
+```bash
 # First message - establish context
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
---data '{"message":"My name is Alice and I work as a software engineer at TechCorp."}' \
+--data '{"message":"My name is Alice and I work as a software engineer."}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
-# Follow-up message - agent should remember the context
+# Follow-up - agent remembers context
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What do you remember about me?"}' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 ```
 
-The agent will remember that you're Alice, a software engineer at TechCorp, and reference this information in the follow-up response.
+Test multiple independent conversations:
 
-### Managing Multiple Conversations
-
-For applications that need to handle multiple separate conversations simultaneously, use conversation identifiers. Each conversation ID maintains its own independent memory thread:
-
-#### Multi-Conversation Agent
-
-```python  theme={null}
-from autonomy import Agent, Model, Node
-
-async def main(node):
-    await Agent.start(
-        node=node,
-        name="chat-assistant",
-        instructions="""
-        You are a helpful assistant. Remember the context of each conversation
-        and provide personalized responses based on what each user has shared.
-        """,
-        model=Model("claude-sonnet-4-v1")
-    )
-
-Node.start(main)
-```
-
-#### Testing Multiple Conversations
-
-```bash  theme={null}
-# Conversation 1 - User talking about cooking
+```bash
+# Conversation 1 - cooking topic
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
---data '{"message":"I love cooking Italian food, especially pasta dishes.", "conversation":"cooking-chat"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+--data '{"message":"I love cooking Italian food, especially pasta.", "conversation":"cooking-chat"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
-# Conversation 2 - Different user talking about travel
+# Conversation 2 - travel topic
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"I am planning a trip to Japan next month.", "conversation":"travel-chat"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
-# Follow up in conversation 1 - should remember cooking context
+# Follow up in conversation 1 - remembers cooking context
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What ingredients do I need for carbonara?", "conversation":"cooking-chat"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
-# Follow up in conversation 2 - should remember travel context
+# Follow up in conversation 2 - remembers travel context
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What should I pack for the weather?", "conversation":"travel-chat"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/chat-assistant"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 ```
 
-Each conversation maintains its own memory thread - the cooking conversation remembers Italian food preferences, while the travel conversation remembers the Japan trip.
+Test user isolation with scope:
 
-### User Isolation with Scope
-
-For multi-user applications, use scope to ensure complete isolation between different users. This prevents memory leakage between users while allowing multiple conversations per user:
-
-#### Multi-User Agent with Scope
-
-```python  theme={null}
-from autonomy import Agent, Model, Node
-
-async def main(node):
-    await Agent.start(
-        node=node,
-        name="personal-assistant",
-        instructions="""
-        You are a personal assistant. Remember each user's preferences,
-        goals, and personal information. Provide personalized assistance
-        based on their individual context and history.
-        """,
-        model=Model("claude-sonnet-4-v1")
-    )
-
-Node.start(main)
-```
-
-#### Testing User Isolation
-
-```bash  theme={null}
-# User 1 - Alice shares personal information
+```bash
+# User Alice - shares preferences
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"I am Alice, a vegetarian who loves hiking.", "scope":"user-alice", "conversation":"profile"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
-# User 2 - Bob shares different personal information
+# User Bob - shares different preferences
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"I am Bob, I eat meat and prefer indoor activities.", "scope":"user-bob", "conversation":"profile"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
-# Alice asks for meal suggestions - should get vegetarian options
+# Alice asks for meal suggestions - gets vegetarian options
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What should I have for dinner?", "scope":"user-alice", "conversation":"meal-planning"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 
-# Bob asks for meal suggestions - should get meat options
+# Bob asks for meal suggestions - gets meat options
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{"message":"What should I have for dinner?", "scope":"user-bob", "conversation":"meal-planning"}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/personal-assistant"
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/memory-assistant"
 ```
 
-Alice will receive vegetarian meal suggestions while Bob gets meat-based options, demonstrating perfect user isolation.
+Each conversation maintains its own memory thread, and scope ensures complete user isolation.
 
 ### Memory in Custom FastAPI Applications
 
-For more complex applications using custom FastAPI routes, you can integrate memory management directly into your API endpoints:
+Integrate memory management into custom API endpoints:
 
-#### Custom API with Memory Management
+#### Custom API with Memory
 
 Create `images/main/main.py`:
 
-```python  theme={null}
+```python
 from autonomy import Agent, HttpServer, Model, Node, NodeDep
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -215,11 +158,7 @@ user_profiles = {}
 @app.post("/chat")
 async def chat_with_memory(request: ChatMessage, node: NodeDep):
     """Chat endpoint with automatic memory management"""
-
-    # Generate conversation ID if not provided
     conversation_id = request.conversation_id or str(uuid.uuid4())
-
-    # Get or create agent for this conversation
     agent_name = f"chat_agent_{conversation_id}"
 
     try:
@@ -241,7 +180,6 @@ async def chat_with_memory(request: ChatMessage, node: NodeDep):
             model=Model("claude-sonnet-4-v1")
         )
 
-        # Send message with scope and conversation for memory
         response = await agent.send(
             request.message,
             scope=request.user_id,
@@ -266,18 +204,12 @@ async def create_user_profile(profile: UserProfile):
     }
     return {"message": "Profile created", "user_id": profile.user_id}
 
-@app.get("/users/{user_id}/conversations")
-async def get_user_conversations(user_id: str, node: NodeDep):
-    """Get conversation history for a user (simplified example)"""
-    # In a real application, you'd query the conversation history from the agent's memory
-    return {"user_id": user_id, "conversations": ["Available via agent memory"]}
-
 Node.start(http_server=HttpServer(app=app))
 ```
 
-#### Testing Custom API with Memory
+#### Testing Custom API
 
-```bash  theme={null}
+```bash
 # Create user profiles
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
@@ -285,15 +217,6 @@ timeout 15s curl --silent --request POST \
   "user_id": "alice123",
   "name": "Alice",
   "preferences": {"diet": "vegetarian", "hobbies": ["hiking", "reading"]}
-}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/users"
-
-timeout 15s curl --silent --request POST \
---header "Content-Type: application/json" \
---data '{
-  "user_id": "bob456",
-  "name": "Bob",
-  "preferences": {"diet": "omnivore", "hobbies": ["gaming", "cooking"]}
 }' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/users"
 
@@ -307,7 +230,7 @@ timeout 15s curl --silent --request POST \
 }' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
 
-# Continue Alice's conversation
+# Continue Alice's conversation - agent remembers context
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
 --data '{
@@ -316,26 +239,13 @@ timeout 15s curl --silent --request POST \
   "conversation_id": "meal-planning-alice"
 }' \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
-
-# Separate conversation with Bob
-timeout 15s curl --silent --request POST \
---header "Content-Type: application/json" \
---data '{
-  "message": "I want to cook something new this weekend",
-  "user_id": "bob456",
-  "conversation_id": "cooking-bob"
-}' \
-"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat"
 ```
-
-With these patterns, your Autonomy agents can maintain sophisticated, personalized conversations that span multiple interactions while ensuring proper user isolation and context management.
 
 ## Agent Lifecycle
 
-Agents keep running after they are started, until they are stopped.
-Handle this correctly, when using custom FastAPI endpoints:
+Agents keep running after they are started, until they are stopped. Handle this correctly when using custom FastAPI endpoints:
 
-```python  theme={null}
+```python
 # ❌ This will cause "AlreadyExists" errors on subsequent requests
 agent = await Agent.start(node=node, name="my-agent", ...)
 
@@ -355,8 +265,5 @@ if global_agent is None:
 
 ## Related Guides
 
-- **Getting Started**: Follow the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
-- **Configure apps**: Follow the [guide on setting environment variables, providing secrets, and adding python dependencies](https://autonomy.computer/docs/_for-coding-agents/configure-apps.md)
-- **Create custom APIs**: Follow the [guide on creating custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
-- **Select a Model**: Follow the [guide on selecting models](https://autonomy.computer/docs/_for-coding-agents/select-models.md)
-- **Give Agents Tools**: Follow the [guide on creating agents that can invoke tools](https://autonomy.computer/docs/_for-coding-agents/tools.md)
+- [How to create custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
+- [How to give agents tools](https://autonomy.computer/docs/_for-coding-agents/tools.md)

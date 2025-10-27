@@ -18,6 +18,13 @@ code templates, and best practices:
 * Create an new app with an agent and a simple streaming chat interface for this agent.
 * Deploy this new app to the Autonomy Computer, test it, and see logs.
 
+### 🏗️ [Architecture of Autonomy Computer](https://autonomy.computer/docs/_for-coding-agents/architecture.md)
+*Keywords: architecture, cluster, zone, pod, container, node, worker, agent, infrastructure, deployment, distributed systems, scalability*
+* Understand the hierarchical architecture of Autonomy Computer.
+* Learn how Clusters, Zones, Pods, Containers, and Nodes relate to each other.
+* See how Workers and Agents run inside Nodes.
+* Explore architectural patterns for different use cases.
+
 ### 🤖 [How to select and configure models](https://autonomy.computer/docs/_for-coding-agents/select-models.md)
 *Keywords: claude, llama, model selection, models, LLMs, claude-sonnet*
 * See list of available models in the Autonomy Computer from Claude, Llama, DeepSeek, and AWS.
@@ -56,99 +63,121 @@ code templates, and best practices:
 * Build agents with web search capabilities using Brave Search MCP server.
 * Deploy tool-enabled agents with proper configuration and secrets management.
 
+### ⚡ [How to use workers and messaging](https://autonomy.computer/docs/_for-coding-agents/workers.md)
+*Keywords: workers, messaging, distributed computing, parallelism, send_and_receive, handle_message, multi-pod, scalability, actor model*
+* Create workers that process messages asynchronously.
+* Send messages to workers and receive replies.
+* Start workers on the same machine or distribute them across different machines.
+* Build distributed applications that scale across multiple pods.
+* Discover and communicate with nodes in other pods for parallel processing.
+
+### 🚨 [How to diagnose errors](https://autonomy.computer/docs/_for-coding-agents/diagnose-errors.md)
+*Keywords: errors, debugging, diagnose, troubleshooting, best practices, pitfalls, gotchas, common issues, mistakes, fix errors*
+* Diagnose common errors that cause immediate failures.
+* Fix message serialization errors (dict vs JSON string).
+* Implement proper error handling and timeout patterns.
+* Clean up workers to prevent resource leaks.
+* Test progressively from simple to complex.
+* Understand deployment timing and cold start behavior.
+
+### 📊 [How to visualize workers across a zone](https://autonomy.computer/docs/_for-coding-agents/visualize-workers.md)
+*Keywords: workers visualization, dashboard, monitoring, real-time, D3.js, worker tracking, distributed systems, zone monitoring, list_workers*
+* Build a real-time dashboard to visualize all workers running across nodes.
+* Create API endpoints to list workers grouped by node.
+* Display workers with interactive D3.js visualization.
+* Monitor worker creation and deletion in real-time.
+* Track worker distribution across multiple pods.
+
 ## Common Autonomy Commands
 
-Essential commands for managing your cluster and zones:
-
 ```bash
-# Install the autonomy command
+# Install
 curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
 
-# Check if already enrolled and has a cluster
-autonomy cluster show                 # Show cluster info, if enrolled
-
-# If not enrolled, enroll and get a cluster
+# Enroll and get cluster
 autonomy cluster enroll --no-input
+autonomy cluster show
 
-# Manage Zones
-autonomy zone list                    # List all zones in your cluster
-autonomy zone deploy                  # Deploy/update your zone
-autonomy zone delete --yes            # Delete your zone
+# Manage zones
+autonomy zone list
+autonomy zone deploy
+autonomy zone delete --yes
 
-#-------------------------------------------------------------------------------------
-# Monitor and debug - start logs server in background
-autonomy zone inlet --to logs > logs_server.log 2>&1 &
+# View logs - see "How to View Logs" section below for complete instructions
+```
+
+## How to View Logs
+
+> **IMPORTANT**: Never run `autonomy zone inlet --to logs` without backgrounding it - this will block your terminal. Always use the pattern below.
+
+To view logs from your deployed zone, create a portal to the logs server in your zone in the background, then stream logs or view them in a browser.
+
+**Step 1: Start a portal to the logs server in your zone in background**
+
+```bash
+# Start a portal to the logs server in your zone in background, and capture output.
+autonomy zone inlet --to logs > logs_portal.log 2>&1 &
 LOGS_PID=$!
 
-# Get the port and stream logs in terminal
+# Wait for the portal to start and extract its port
 sleep 3
-LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_server.log | cut -d: -f2 | head -1)
+LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_portal.log | cut -d: -f2 | head -1)
+if [ -z "$LOGS_PORT" ]; then
+    LOGS_PORT=32101  # fallback to default port
+fi
+
+echo "Portal to the logs server in your zone running on port: $LOGS_PORT (PID: $LOGS_PID)"
+```
+
+**Step 2: View logs (choose one option)**
+
+**Option A: View in browser (recommended when you want humans to see logs)**
+
+```bash
+# Open logs UI in browser - shows all pods/containers with live updates
+open "http://127.0.0.1:$LOGS_PORT"
+```
+
+**Option B: Stream logs in terminal (recommended for coding agents to see logs)**
+
+```bash
+# Get the full pod name and stream logs to terminal
 POD_NAME=main-pod
 CONTAINER_NAME=main
 FULL_POD_NAME=$(timeout 10s curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1)
 timeout 30s curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME" | head -50
-
-# Or view logs in browser
-open "http://127.0.0.1:$LOGS_PORT"
-
-# Stop logs server when done
-kill $LOGS_PID
-#-------------------------------------------------------------------------------------
 ```
 
-### Patterns for using curl to test and debug
+**Step 3: Stop the portal to the logs server in your zone when done**
 
 ```bash
-# To test APIs - always include timeout
+# Always clean up the portal process
+kill $LOGS_PID
+```
+
+**Key Points:**
+- The `&` at the end runs the portal in background (non-blocking)
+- Always capture the `LOGS_PID` so you can stop the portal later
+- Use `timeout` with curl to prevent hanging
+- The `-N` flag with curl disables buffering for streaming
+- The `| head -50` limits output to 50 lines
+- If the portal is not starting, kill all portals using `pkill -f "autonomy zone inlet"`, and try starting it again.
+
+## Testing with curl
+
+```bash
+# Test API with streaming - always include timeout
 timeout 15s curl --silent --request POST \
 --header "Content-Type: application/json" \
---data '{"message":"What are the key elements of a contract?"}' \
-"https://a9eb812238f753132652ae09963a05e9-hello.cluster.autonomy.computer/agents/henry?stream=true"
+--data '{"message":"Your message here"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/${AGENT_NAME}?stream=true"
 
-# To stream logs - always use timeout, -N, and head
-timeout 30s curl -N "127.0.0.1:32101/pods/main-pod-567479494f-6w9xq/containers/main" | head -50
+# Test API without streaming (returns complete response)
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"Your message here"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/${AGENT_NAME}"
 ```
-
-### 📁 Important File Templates
-
-When creating new files always refer the following file templates and the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
-
-**autonomy.yaml** (Lines 70-80):
-
-```yaml
-name: hello # Must be ≤10 characters
-pods:
-  - name: main-pod
-    public: true
-    containers:
-      - name: main
-        image: main
-```
-
-**images/main/Dockerfile**:
-
-```dockerfile
-FROM ghcr.io/build-trust/autonomy-python
-COPY . .
-ENTRYPOINT ["python", "main.py"]
-```
-
-**images/main/main.py**:
-
-```python
-from autonomy import Agent, Model, Node
-
-async def main(node):
-    await Agent.start(
-        node=node,
-        name="henry",
-        instructions="You are Henry, an expert legal assistant",
-        model=Model("claude-sonnet-4-v1")
-    )
-
-Node.start(main)
-```
-
 
 ## 📖 Definitions
 
@@ -187,13 +216,11 @@ Tools are external functions that agents can invoke to take actions and gather m
 
 ## Best Practices
 
-* When creating new files always refer the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md) to find the right initial file template.
-* Always reference the complete Autonomy guide before starting any Autonomy-related development.
-* Prefer simple and minimal approaches where possible.
-* When you're asked to create an example, create a simplest case first and then offer to improve it.
+* Reference the [getting started guide](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md) for file templates when creating new apps.
+* Start simple - create minimal working examples first, then enhance.
 * Zone names must be ≤10 characters.
 * Memory is conversation-local, not global.
-* Generate a README.md in new apps that you create. Include ascii architecture diagrams in this README.md file
+* Generate README.md with ASCII architecture diagrams for new apps.
 
 ---
 

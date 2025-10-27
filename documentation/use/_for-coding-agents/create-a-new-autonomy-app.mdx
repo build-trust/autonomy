@@ -7,15 +7,11 @@ description: "Create an new Autonomy app with an agent and a simple streaming ch
 
 Use the **Autonomy Framework** to build autonomous AI applications and deploy them on **Autonomy Computer** using **Autonomy Command**.
 
-> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
 
-**Keywords:** setup, hello world, installation, first app, deployment, autonomy.yaml, docker
+*Keywords: setup, hello world, installation, deployment, autonomy.yaml*
 
-This guide will:
-* Create an initial minimal setup and file structure.
-* Install and configure the Autonomy Command.
-* Create an new app with an agent and a simple streaming chat interface for this agent.
-* Deploy this new app to the Autonomy Computer, test it, and see logs.
+This guide shows how to create a new Autonomy app with an agent and streaming chat interface, then deploy it to Autonomy Computer.
 
 ## Create and deploy a new Autonomy app
 
@@ -319,7 +315,34 @@ The `autonomy.yaml` file sets `public: true` on the main pod of the app. That in
 
 The zone can take up to a minute to be ready to use.
 
-### Step 11: List all agents
+### Step 11: Wait for deployment to complete
+
+After running `autonomy zone deploy`, **wait 2-3 minutes** before testing:
+
+```bash
+echo "Waiting 120 seconds for pods to be ready..."
+sleep 120
+```
+
+**Expected Timeline:**
+
+| Stage | Time | What's Happening |
+|-------|------|------------------|
+| Build & Push | 30-60s | Docker images building and uploading |
+| Pod Scheduling | 60-90s | Kubernetes scheduling pods |
+| Container Start | 90-120s | Containers pulling images, starting |
+| **First Request** | **120-180s** | **Cold start - nodes establishing connections** |
+| Warm Requests | ~1-5s | Normal operation |
+
+**Cold Start Behavior:**
+- The **first request** after deployment may take 10-30 seconds to complete
+- Subsequent requests are much faster (1-5s)
+- This is normal for distributed systems
+- Happens because nodes need to establish connections
+
+**Best Practice:** Add a health check endpoint and call it first to "warm up" the system.
+
+### Step 12: List all agents
 
 Get a list of all running agents by calling the `/agents` endpoint:
 
@@ -330,7 +353,7 @@ timeout 15s curl --silent --request GET \
 
 This will return a JSON array containing information about all agents that are currently running.
 
-### Step 12: Check that the agent is responding
+### Step 13: Check that the agent is responding
 
 Check that the agent defined in `images/main/main.py` is responding to api calls:
 
@@ -348,70 +371,27 @@ timeout 15s curl --silent --request POST \
 "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry?stream=true"
 ```
 
-### Step 13: Guide your user to interact with the app in their browser
+### Step 14: Guide your user to interact with the app in their browser
 
 Try it: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`
 
-### Step 14: See logs
+### Step 15: See logs
 
-Create an encrypted portal to the logs server in your zone. This will show
-streaming logs to the app.
+To view logs from your deployed zone, follow the [logging instructions](https://autonomy.computer/docs/_for-coding-agents#how-to-view-logs).
 
-```bash
-# Create a portal to the logs server in background and capture output to extract its port number
-autonomy zone inlet --to logs > portal_to_logs_server.log 2>&1 &
-LOGS_PID=$!
-
-# Wait for the portal to be created and extract its port number
-sleep 3
-LOGS_PORT=$(grep -o "localhost:[0-9]*" portal_to_logs_server.log | cut -d: -f2 | head -1)
-if [ -z "$LOGS_PORT" ]; then
-    LOGS_PORT=32101  # fallback to default port
-fi
-
-echo "Portal to the logs server has an inlet on port: $LOGS_PORT"
-echo "Portal to the logs server PID: $LOGS_PID"
-```
-
-**Option 1: View logs in a browser**
-
-```bash
-# Open logs in a web browser (shows streaming logs with a nice UI)
-open "http://127.0.0.1:$LOGS_PORT"
-```
-
-**Option 2: Stream logs in a terminal**
-
-```bash
-# Get the dynamic full pod name and stream logs directly on the terminal
-POD_NAME=main-pod && \
-CONTAINER_NAME=main && \
-FULL_POD_NAME=$(timeout 10s curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1) && \
-timeout 30s curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME" | head -50
-```
-
-**Stop the logs server when done:**
-
-```bash
-# Kill the specific logs server process
-kill "$LOGS_PID"
-
-# Or kill all autonomy inlet processes
-pkill -f "autonomy zone inlet"
-```
+> **IMPORTANT**: Never run `autonomy zone inlet --to logs` by itself as it will block your terminal. Always use the background pattern shown in the [logging instructions](https://autonomy.computer/docs/_for-coding-agents#how-to-view-logs).
 
 ## Troubleshooting
 
 - **Zone name too long**: Keep it to 10 characters or less
 - **Docker not running**: Verify by running `docker ps`
 - **Command not found**: Fix by running `source "$HOME/.autonomy/env"`
-- **Deployment issues**: Check the logs using a portal to logs server
+- **Connection refused**: Wait 2-3 minutes after deployment for pods to be ready
+- **First request slow**: Cold start takes 10-30s, subsequent requests are 1-5s
+- **Deployment issues**: [Check the logs using a portal to the logs server in your zone](https://autonomy.computer/docs/_for-coding-agents#how-to-view-logs) to diagnose deployment problems
 
 ## Next Steps
 
-Take the application further:
-- **Configure apps**: Follow the [guide on setting environment variables, providing secrets, and adding python dependencies](https://autonomy.computer/docs/_for-coding-agents/configure-apps.md)
-- **Select a Model**: Follow the [guide on selecting models](https://autonomy.computer/docs/_for-coding-agents/select-models.md)
-- **Create custom APIs**: Follow the [guide on creating custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
-- **Memory**: Follow the [guide on using memory, conversation, and scope in Autonomy agents](https://autonomy.computer/docs/_for-coding-agents/memory.md)
-- **Give Agents Tools**: Follow the [guide on creating agents that can invoke tools](https://autonomy.computer/docs/_for-coding-agents/tools.md)
+- [How to configure apps with environment variables and secrets](https://autonomy.computer/docs/_for-coding-agents/configure-apps.md)
+- [How to create custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
+- [How to use memory, conversation, and scope in agents](https://autonomy.computer/docs/_for-coding-agents/memory.md)

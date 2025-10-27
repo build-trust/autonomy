@@ -7,13 +7,11 @@ description: "Configure environment variables, securely manage secrets, and add 
 
 Configure environment variables, add Python dependencies, and manage secrets securely in your **Autonomy** applications.
 
-> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions) for definitions of **Autonomy**, **Autonomy Framework**, **Autonomy Computer**, **Autonomy Command**, **Agents**, **Models**, **Tools**, and **Memory**.
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
 
-**Keywords:** environment variables, secrets, python dependencies, docker, configuration, env, security, multi-stage builds
+*Keywords: environment variables, secrets, python dependencies, docker, configuration*
 
-This guide will show how to:
-- Set environment variables and provide secrets securely to your Autonomy applications
-- Add Python dependencies using multi-stage Docker builds
+This guide shows how to set environment variables, provide secrets securely, and add Python dependencies using multi-stage Docker builds.
 
 ## Environment Variables and Secrets
 
@@ -73,14 +71,14 @@ When your application requires additional Python packages beyond what the base `
 
 Create a `requirements.txt` file with your Python dependencies:
 
-```txt  theme={null}
+```txt
 PyPDF2
 aiofiles
 ```
 
 Update your `images/main/Dockerfile` to use multi-stage build:
 
-```dockerfile  theme={null}
+```dockerfile
 FROM ghcr.io/build-trust/autonomy-python-dev AS dev
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
@@ -118,8 +116,5 @@ The deploy command will automatically handle the multi-stage build and package i
 
 ## Related Guides
 
-- **Getting Started**: Follow the [guide on creating and deploying a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
-- **Select a Model**: Follow the [guide on selecting models](https://autonomy.computer/docs/_for-coding-agents/select-models.md)
-- **Create custom APIs**: Follow the [guide on creating custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
-- **Memory**: Follow the [guide on using memory, conversation, and scope in Autonomy agents](https://autonomy.computer/docs/_for-coding-agents/memory.md)
-- **Give Agents Tools**: Follow the [guide on creating agents that can invoke tools](https://autonomy.computer/docs/_for-coding-agents/tools.md)
+- [How to create and deploy a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
+- [How to create custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)

@@ -1,0 +1,606 @@
+---
+title: "Coding Agents: How to visualize workers across a zone"
+description: "Build a real-time dashboard to visualize all workers running across multiple nodes in your zone, with interactive monitoring and D3.js visualization."
+---
+
+# A guide for coding agents to visualize workers across a zone
+
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
+
+*Keywords: workers visualization, dashboard, monitoring, D3.js, list_workers*
+
+This guide shows how to build a real-time dashboard with D3.js to visualize all workers running across nodes in your zone.
+
+## Understanding Worker Visualization
+
+When running distributed applications with workers across multiple nodes, you need visibility into:
+- Which nodes are running in your zone
+- How many workers are active on each node
+- Worker distribution across nodes
+- Real-time changes as workers start and stop
+
+This guide shows how to build a web dashboard that polls worker status and displays it visually.
+
+## Create the Backend API
+
+### Step 1: Create the Worker Listing Function
+
+Create a function that queries all nodes and collects their workers:
+
+```python
+from autonomy import Zone
+import asyncio
+
+
+async def list_workers(node):
+    runners = await Zone.nodes(node, filter="runner")
+    futures = [runner.list_workers() for runner in runners]
+    workers_per_runner = await asyncio.gather(*futures)
+    workers = []
+    for runner, workers_on_this_runner in zip(runners, workers_per_runner):
+        for w in workers_on_this_runner:
+            workers.append({"worker_name": w["name"], "runner_name": runner.name})
+    return workers
+```
+
+**How This Works:**
+
+1. **Get all nodes**: `Zone.nodes(node, filter="runner")` finds all nodes in pods matching "runner"
+2. **List workers on each**: `runner.list_workers()` returns list of workers on that node
+3. **Gather in parallel**: `asyncio.gather(*futures)` waits for all nodes to respond
+4. **Combine results**: Creates list with both worker name and runner name for each worker
+
+### Step 2: Create FastAPI Endpoints
+
+Add endpoints to serve worker data and trigger operations:
+
+```python
+from autonomy import HttpServer, Node, NodeDep, Zone
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+import asyncio
+
+
+async def list_workers(node):
+    runners = await Zone.nodes(node, filter="runner")
+    futures = [runner.list_workers() for runner in runners]
+    workers_per_runner = await asyncio.gather(*futures)
+    workers = []
+    for runner, workers_on_this_runner in zip(runners, workers_per_runner):
+        for w in workers_on_this_runner:
+            workers.append({"worker_name": w["name"], "runner_name": runner.name})
+    return workers
+
+
+app = FastAPI()
+
+
+@app.get("/")
+async def index():
+    return FileResponse("index.html")
+
+
+@app.get("/runners/workers")
+async def get_workers(node: NodeDep):
+    workers = await list_workers(node)
+    return JSONResponse(content={"workers": workers})
+
+
+@app.get("/runners")
+async def get_runners(node: NodeDep):
+    runners = await Zone.nodes(node, filter="runner")
+    return JSONResponse(content={"runners": [r.name for r in runners]})
+
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+**Endpoints:**
+
+- `GET /` - Serves the visualization HTML
+- `GET /runners/workers` - Returns all workers with their node names
+- `GET /runners` - Returns list of all runner node names
+
+## Create the Frontend Visualization
+
+### Step 3: Create the Interactive Dashboard
+
+Create `index.html` with D3.js visualization:
+
+```html
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Worker Visualization</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                margin: 0;
+                overflow-y: auto;
+                overflow-x: auto;
+                height: 100vh;
+            }
+            #container {
+                white-space: nowrap;
+                overflow-y: visible;
+                overflow-x: visible;
+                padding: 10px;
+                box-sizing: border-box;
+                display: flex;
+                flex-wrap: nowrap;
+                align-items: flex-start;
+                height: auto;
+            }
+            .node-column {
+                display: inline-block;
+                vertical-align: top;
+                margin-right: 6px;
+                margin-bottom: 10px;
+                background: #fff;
+                padding: 4px 2px 6px;
+                box-sizing: content-box;
+                width: max-content;
+            }
+            .node-label {
+                text-align: center;
+                font-weight: bold;
+                margin-bottom: 6px;
+                font-size: 12px;
+                white-space: normal;
+                width: 100%;
+                position: sticky;
+                top: 0;
+                background: #fff;
+                z-index: 10;
+            }
+            svg {
+                display: block;
+                background: #fff;
+            }
+            button {
+                margin: 10px;
+                padding: 6px 12px;
+                font-size: 14px;
+            }
+            @keyframes pulse {
+                0% {
+                    box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7);
+                }
+                70% {
+                    box-shadow: 0 0 0 10px rgba(0, 123, 255, 0);
+                }
+                100% {
+                    box-shadow: 0 0 0 0 rgba(0, 123, 255, 0);
+                }
+            }
+            .pulse {
+                animation: pulse 1.5s infinite;
+                border-color: #007bff;
+                outline: none;
+            }
+        </style>
+    </head>
+    <body>
+        <button id="run-btn">Run</button>
+        <div id="container"></div>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <script>
+            const circleDiameter = 6;
+            const circleMargin = 3;
+            const perRow = 16;
+
+            const container = d3.select("#container");
+
+            function render(data) {
+                const grouped = {};
+                for (const worker of data.workers) {
+                    if (!grouped[worker.runner_name]) {
+                        grouped[worker.runner_name] = [];
+                    }
+                    grouped[worker.runner_name].push(worker.worker_name);
+                }
+
+                const container = d3.select("#container");
+
+                const nodeColumns = container.selectAll(".node-column").data(Object.entries(grouped), (d) => d[0]);
+                nodeColumns.exit().remove();
+
+                const nodeColumnsEnter = nodeColumns.enter().append("div").attr("class", "node-column");
+                nodeColumnsEnter.append("div").attr("class", "node-label");
+                nodeColumnsEnter.append("svg");
+
+                const nodeColumnsMerge = nodeColumnsEnter.merge(nodeColumns);
+                nodeColumnsMerge.each(function ([nodeName, workers]) {
+                    const rowCount = Math.ceil(workers.length / perRow);
+                    const svgWidth = perRow * (circleDiameter + circleMargin) + circleMargin;
+                    const svgHeight = rowCount * (circleDiameter + circleMargin) + circleMargin;
+
+                    const nodeDiv = d3.select(this);
+                    nodeDiv.select(".node-label").text(nodeName.split("-").slice(2).join("-"));
+                    nodeDiv.style("width", svgWidth + "px");
+                    const svg = nodeDiv.select("svg").attr("width", svgWidth).attr("height", svgHeight);
+
+                    const circles = svg.selectAll("circle").data(workers, (d) => d);
+                    circles.exit().remove();
+
+                    const circlesEnter = circles.enter().append("circle");
+                    const circlesMerge = circlesEnter.merge(circles);
+                    circlesMerge
+                        .attr(
+                            "cx",
+                            (d, i) =>
+                                (i % perRow) * (circleDiameter + circleMargin) + circleMargin + circleDiameter / 2,
+                        )
+                        .attr(
+                            "cy",
+                            (d, i) =>
+                                Math.floor(i / perRow) * (circleDiameter + circleMargin) +
+                                circleMargin +
+                                circleDiameter / 2,
+                        )
+                        .attr("r", circleDiameter / 2)
+                        .attr("fill", (d) => "#" + d.slice(0, 6))
+                        .on("mouseenter", function (event, d) {
+                            d3.select(this)
+                                .raise()
+                                .transition()
+                                .duration(300)
+                                .attr("r", 3 * circleDiameter);
+                        })
+                        .on("mouseleave", function (event, d) {
+                            d3.select(this)
+                                .transition()
+                                .duration(300)
+                                .attr("r", circleDiameter / 2);
+                        })
+                        .on("click", function (event, d) {
+                            run(nodeName, d);
+                        });
+
+                    circles.select("title").remove();
+                    circlesMerge.append("title").text((d) => d);
+                });
+            }
+
+            document.getElementById("run-btn").addEventListener("click", async function () {
+                const button = this;
+                button.classList.add("pulse");
+                try {
+                    const response = await fetch("/analyze", { method: "POST" });
+                    const response_json = await response.json();
+                    console.log("Analysis: ", response_json);
+                } catch (error) {
+                    console.error("Error fetching /analyze:", error);
+                } finally {
+                    button.classList.remove("pulse");
+                }
+            });
+
+            async function fetchWorkers() {
+                while (true) {
+                    try {
+                        const response = await fetch("/runners/workers");
+                        if (response.ok) {
+                            const response_json = await response.json();
+                            console.log("Workers: ", response_json);
+                            render(response_json);
+                        }
+                    } catch (e) {
+                        console.error("Error fetching /runners/workers:", e);
+                    }
+                    await new Promise((r) => setTimeout(r, 200));
+                }
+            }
+
+            fetchWorkers();
+        </script>
+    </body>
+</html>
+```
+
+**How This Works:**
+
+1. **Poll for updates**: `fetchWorkers()` polls `/runners/workers` every 200ms
+2. **Group by node**: Workers are grouped by `runner_name`
+3. **Render columns**: Each node gets a column with a label
+4. **Visualize as circles**: Each worker is a colored circle (color from worker name hash)
+5. **Grid layout**: Workers arranged in 16-per-row grid
+6. **Interactive hover**: Circles expand on hover to show details
+7. **Tooltips**: Hover shows full worker name
+8. **Real-time updates**: D3.js updates display as workers appear/disappear
+
+## Complete Example with Worker Operations
+
+### File Structure
+
+```
+visualize/
+├── autonomy.yaml
+└── images/
+    ├── main/
+    │   ├── Dockerfile
+    │   ├── main.py
+    │   └── index.html
+    └── runner/
+        ├── Dockerfile
+        └── main.py
+```
+
+### autonomy.yaml
+
+```yaml
+name: visualize
+pods:
+  - name: main-pod
+    size: big
+    public: true
+    containers:
+      - name: main
+        image: main
+
+  - name: runner-pod
+    size: big
+    clones: 5
+    containers:
+      - name: runner
+        image: runner
+```
+
+### images/main/Dockerfile
+
+```dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+### images/runner/Dockerfile
+
+```dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+### images/runner/main.py
+
+```python
+from autonomy import Node
+
+# Runner just starts a node and waits
+# Workers will be started on it by the main pod
+Node.start()
+```
+
+### images/main/main.py
+
+```python
+from autonomy import HttpServer, Node, NodeDep, Zone
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+import asyncio
+import secrets
+
+
+class DemoWorker:
+    async def handle_message(self, context, message):
+        import asyncio
+        await asyncio.sleep(5)  # Simulate work
+        await context.reply(f"Processed: {message}")
+
+
+async def list_workers(node):
+    runners = await Zone.nodes(node, filter="runner")
+    futures = [runner.list_workers() for runner in runners]
+    workers_per_runner = await asyncio.gather(*futures)
+    workers = []
+    for runner, workers_on_this_runner in zip(runners, workers_per_runner):
+        for w in workers_on_this_runner:
+            workers.append({"worker_name": w["name"], "runner_name": runner.name})
+    return workers
+
+
+async def run_demo(node):
+    """Start workers on all runners and process tasks"""
+    runners = await Zone.nodes(node, filter="runner")
+
+    # Start 10 workers on each runner
+    worker_names = []
+    for runner in runners:
+        for i in range(10):
+            worker_name = secrets.token_hex(3)
+            await runner.start_worker(worker_name, DemoWorker())
+            worker_names.append((runner, worker_name))
+
+    # Send messages to all workers
+    futures = []
+    for runner, worker_name in worker_names:
+        future = runner.send_and_receive(worker_name, "demo task", timeout=10000)
+        futures.append(future)
+
+    results = await asyncio.gather(*futures)
+
+    # Stop all workers
+    for runner, worker_name in worker_names:
+        await runner.stop_worker(worker_name)
+
+    return {"processed": len(results)}
+
+
+app = FastAPI()
+
+
+@app.get("/")
+async def index():
+    return FileResponse("index.html")
+
+
+@app.post("/analyze")
+async def post_analyze(node: NodeDep):
+    response = await run_demo(node)
+    return JSONResponse(content=response)
+
+
+@app.get("/runners/workers")
+async def get_workers(node: NodeDep):
+    workers = await list_workers(node)
+    return JSONResponse(content={"workers": workers})
+
+
+@app.get("/runners")
+async def get_runners(node: NodeDep):
+    runners = await Zone.nodes(node, filter="runner")
+    return JSONResponse(content={"runners": [r.name for r in runners]})
+
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+### images/main/index.html
+
+Use the complete HTML file from Step 3 above.
+
+## Deploy and Test
+
+### Step 1: Deploy the Zone
+
+```bash
+autonomy zone deploy
+```
+
+### Step 2: Access the Dashboard
+
+Get the public URL:
+
+```bash
+autonomy zone list
+```
+
+Look for the URL in the output (e.g., `https://abc123-visualize.cluster.autonomy.computer`)
+
+Open in your browser to see the real-time worker visualization.
+
+### Step 3: Trigger Worker Creation
+
+Click the "Run" button in the dashboard. Watch as:
+1. Workers appear as colored circles
+2. Circles are grouped by node
+3. Workers process tasks for 5 seconds
+4. Workers disappear when tasks complete
+
+The visualization updates every 200ms, so you see workers appear and disappear in real-time.
+
+## Visualization Details
+
+### Worker Representation
+
+- **Circles**: Each worker is a small circle
+- **Color**: Derived from first 6 characters of worker name (hex color)
+- **Tooltips**: Hover shows full worker name
+- **Interactive**: Click handler available (customize `run()` function)
+
+### Layout
+
+- **Columns**: One column per node
+- **Labels**: Node name at top (simplified from full pod name)
+- **Grid**: 16 workers per row
+- **Responsive**: Columns side-by-side with horizontal scroll
+
+### Real-time Updates
+
+The dashboard uses D3.js data binding:
+- New workers fade in
+- Removed workers fade out
+- Position updates are smooth
+- No full page refresh needed
+
+## Customization Options
+
+### Change Polling Interval
+
+Adjust the refresh rate:
+
+```javascript
+await new Promise((r) => setTimeout(r, 200));  // 200ms (default)
+await new Promise((r) => setTimeout(r, 1000)); // 1 second (slower)
+await new Promise((r) => setTimeout(r, 50));   // 50ms (faster)
+```
+
+### Customize Worker Appearance
+
+Modify circle size and spacing:
+
+```javascript
+const circleDiameter = 6;   // Circle size
+const circleMargin = 3;     // Space between circles
+const perRow = 16;          // Workers per row
+```
+
+### Add Worker Click Actions
+
+Handle worker clicks:
+
+```javascript
+.on("click", function (event, d) {
+    console.log(`Clicked worker: ${d} on node: ${nodeName}`);
+    // Add custom action here
+});
+```
+
+### Filter Nodes
+
+Show only specific nodes:
+
+```python
+async def list_workers(node):
+    # Get only nodes matching specific filter
+    runners = await Zone.nodes(node, filter="runner")
+    # ... rest of function
+```
+
+## Best Practices
+
+✅ **Do:**
+- Poll at reasonable intervals (200-1000ms) to balance updates vs. load
+- Use D3.js data binding for smooth transitions
+- Show tooltips with full worker names for identification
+- Group workers by node for clear organization
+- Handle API errors gracefully in the frontend
+- Use color coding derived from worker names for consistency
+
+❌ **Don't:**
+- Don't poll too frequently (<100ms) - unnecessary load
+- Don't block the UI while fetching data
+- Don't assume nodes or workers persist - handle dynamic changes
+- Don't forget error handling in async functions
+- Don't hard-code node names - discover dynamically
+
+## Use Cases
+
+This visualization pattern is useful for:
+
+**Development and Debugging:**
+- Monitor worker lifecycle during development
+- Verify workers start on correct nodes
+- Debug worker distribution issues
+- Track worker count over time
+
+**Production Monitoring:**
+- Real-time operational visibility
+- Capacity planning (workers per node)
+- Load distribution verification
+- Health monitoring
+
+**Demonstrations:**
+- Show distributed system behavior
+- Visualize parallel processing
+- Demonstrate scalability
+- Educational purposes
+
+## Related Guides
+
+- [How to use workers and messaging](https://autonomy.computer/docs/_for-coding-agents/workers.md)
+- [How to create custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
+- [How to create custom UIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-ui.md)
