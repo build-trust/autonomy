@@ -1,11 +1,9 @@
 import json
-import logging
 import os
 import threading
-from typing import List, Optional, Dict, Any, AsyncGenerator
+from typing import List, Optional, Dict, Any
 from copy import deepcopy
 import asyncio
-import time
 
 import boto3
 from botocore.exceptions import ClientError
@@ -168,15 +166,20 @@ class BedrockClient(InfoContext, DebugContext):
     self.original_name = name
     self.max_input_tokens = max_input_tokens
     self.kwargs = kwargs
+    # Store kwargs as instance attributes for easier access
+    for key, value in kwargs.items():
+      setattr(self, key, value)
 
     # Resolve model name
     if name in BEDROCK_MODELS:
       self.model_id = BEDROCK_MODELS[name]
-    else:
-      # Assume it's already a full model ID
+    elif "." in name or name.startswith("arn:"):
+      # Looks like a valid model ID or ARN
       self.model_id = name
+    else:
+      raise ValueError(f"Model '{name}' is not supported")
 
-    self.name = f"bedrock/{self.model_id}"
+    self.name = self.model_id
 
     # Set up AWS clients
     self.region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
@@ -184,7 +187,7 @@ class BedrockClient(InfoContext, DebugContext):
       session = boto3.Session()
       self.region = session.region_name
 
-    self.bedrock_runtime = boto3.client("bedrock-runtime", region_name=self.region)
+    self.bedrock_client = boto3.client("bedrock-runtime", region_name=self.region)
     self.bedrock = boto3.client("bedrock", region_name=self.region)
 
     # Handle inference profiles
@@ -227,12 +230,15 @@ class BedrockClient(InfoContext, DebugContext):
         total_chars += len(content)
 
     # Rough estimation: 1 token ≈ 4 characters for most models
-    return max(1, total_chars // 4)
+    return total_chars // 4
 
   def support_tools(self) -> bool:
     """Check if the model supports tool/function calling."""
-    # Most Bedrock models support tools except some older ones
-    return not ("deepseek" in self.model_id.lower())
+    # Models that don't support tools
+    if any(x in self.model_id.lower() for x in ["deepseek", "titan-text"]):
+      return False
+    # Claude, Llama, Nova support tools
+    return any(x in self.model_id.lower() for x in ["anthropic", "meta.llama", "amazon.nova"])
 
   def support_forced_assistant_answer(self) -> bool:
     """Bedrock generally doesn't support forced assistant answers."""
@@ -244,16 +250,18 @@ class BedrockClient(InfoContext, DebugContext):
     """Normalize messages to Bedrock format."""
     messages = deepcopy(messages)
 
-    # Convert ConversationMessage objects to dict
-    if messages and not isinstance(messages[0], dict):
-      converted_messages = []
-      for message in messages:
+    # Convert all ConversationMessage objects to dict
+    converted_messages = []
+    for message in messages:
+      if isinstance(message, dict):
+        converted_messages.append(message)
+      else:
         msg_dict = {
           "role": message.role.value,
           "content": message.content.text if hasattr(message.content, "text") else str(message.content),
         }
         converted_messages.append(msg_dict)
-      messages = converted_messages
+    messages = converted_messages
 
     # Clean up messages
     cleaned_messages = []
@@ -281,6 +289,117 @@ class BedrockClient(InfoContext, DebugContext):
         last_message["content"] = "<think>" + last_message["content"]
 
     return cleaned_messages
+
+  # Wrapper methods for backward compatibility with tests
+  def _prepare_claude_messages(self, messages: List[dict]) -> tuple:
+    """Prepare messages for Claude models - returns (messages, system_prompt)."""
+    system_messages = [msg for msg in messages if msg["role"] == "system"]
+    conversation_messages = [msg for msg in messages if msg["role"] != "system"]
+
+    # Convert tool calls and tool results to Claude format
+    processed_messages = []
+    for msg in conversation_messages:
+      if msg.get("role") == "assistant" and msg.get("tool_calls"):
+        # Convert tool calls to Claude format
+        content = []
+        if msg.get("content"):
+          content.append({"type": "text", "text": msg["content"]})
+
+        for tool_call in msg["tool_calls"]:
+          func = tool_call.get("function", {})
+          content.append(
+            {
+              "type": "toolUse",
+              "toolUseId": tool_call.get("id"),
+              "name": func.get("name"),
+              "input": json.loads(func.get("arguments", "{}")),
+            }
+          )
+
+        processed_messages.append({"role": "assistant", "content": content})
+      elif msg.get("role") == "tool":
+        # Convert tool results to Claude format
+        processed_messages.append(
+          {
+            "role": "user",
+            "content": [{"type": "toolResult", "toolUseId": msg.get("tool_call_id"), "content": msg.get("content")}],
+          }
+        )
+      else:
+        processed_messages.append(msg)
+
+    system_prompt = system_messages[0]["content"] if system_messages else None
+    return (processed_messages, system_prompt)
+
+  def _prepare_llama_messages(self, messages: List[dict]) -> List[dict]:
+    """Prepare messages for Llama models."""
+    return messages  # Llama uses messages as-is
+
+  def _prepare_nova_messages(self, messages: List[dict]) -> List[dict]:
+    """Prepare messages for Nova models."""
+    return messages  # Nova uses messages as-is
+
+  def _convert_tools_to_claude_format(self, tools: List[dict]) -> List[dict]:
+    """Convert tools to Claude format."""
+    if not tools:
+      return []
+
+    claude_tools = []
+    for tool in tools:
+      if tool.get("type") == "function":
+        func = tool.get("function", {})
+        claude_tool = {
+          "toolSpec": {
+            "name": func.get("name"),
+            "description": func.get("description", ""),
+            "inputSchema": {"json": func.get("parameters", {})},
+          }
+        }
+        claude_tools.append(claude_tool)
+    return claude_tools
+
+  def _convert_tools_to_nova_format(self, tools: List[dict]) -> List[dict]:
+    """Convert tools to Nova format."""
+    if not tools:
+      return []
+
+    nova_tools = []
+    for tool in tools:
+      if tool.get("type") == "function":
+        func = tool.get("function", {})
+        nova_tool = {
+          "toolSpec": {
+            "name": func.get("name"),
+            "description": func.get("description", ""),
+            "inputSchema": {"json": func.get("parameters", {})},
+          }
+        }
+        nova_tools.append(nova_tool)
+    return nova_tools
+
+  async def _invoke_model(self, payload: dict) -> dict:
+    """Invoke the Bedrock model - wrapper for backward compatibility."""
+    response = await asyncio.get_event_loop().run_in_executor(
+      None,
+      lambda: self.bedrock_client.invoke_model(
+        modelId=self.final_model_id,
+        body=json.dumps(payload),
+        contentType="application/json",
+      ),
+    )
+    return json.loads(response["body"].read())
+
+  async def _invoke_model_streaming(self, payload: dict):
+    """Invoke the Bedrock model with streaming - wrapper for backward compatibility."""
+    response = await asyncio.get_event_loop().run_in_executor(
+      None,
+      lambda: self.bedrock_client.invoke_model_with_response_stream(
+        modelId=self.final_model_id,
+        body=json.dumps(payload),
+        contentType="application/json",
+      ),
+    )
+    return response
 
   def _prepare_bedrock_payload(self, messages: List[dict], stream: bool = False, **kwargs) -> Dict[str, Any]:
     """Prepare the payload for Bedrock API call."""
@@ -408,7 +527,7 @@ class BedrockClient(InfoContext, DebugContext):
     try:
       response = await asyncio.get_event_loop().run_in_executor(
         None,
-        lambda: self.bedrock_runtime.invoke_model(
+        lambda: self.bedrock_client.invoke_model(
           modelId=self.final_model_id,
           body=json.dumps(payload),
           contentType="application/json",
@@ -475,7 +594,7 @@ class BedrockClient(InfoContext, DebugContext):
         # Claude streaming uses invoke_model_with_response_stream
         response = await asyncio.get_event_loop().run_in_executor(
           None,
-          lambda: self.bedrock_runtime.invoke_model_with_response_stream(
+          lambda: self.bedrock_client.invoke_model_with_response_stream(
             modelId=self.final_model_id,
             body=json.dumps(payload),
             contentType="application/json",
@@ -620,7 +739,7 @@ class BedrockClient(InfoContext, DebugContext):
   async def embeddings(self, text: List[str], **kwargs) -> List[List[float]]:
     """Generate embeddings using Bedrock embedding models."""
     if "embed" not in self.model_id:
-      raise ValueError(f"Model {self.model_id} is not an embedding model")
+      raise ValueError(f"Model {self.model_id} does not support embeddings")
 
     embeddings = []
 
@@ -638,7 +757,7 @@ class BedrockClient(InfoContext, DebugContext):
 
         response = await asyncio.get_event_loop().run_in_executor(
           None,
-          lambda: self.bedrock_runtime.invoke_model(
+          lambda: self.bedrock_client.invoke_model(
             modelId=self.final_model_id,
             body=json.dumps(payload),
             contentType="application/json",
