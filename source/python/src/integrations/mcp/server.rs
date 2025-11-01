@@ -10,7 +10,7 @@ use rmcp::model::{
 use rmcp::serde_json::{Value, json};
 use rmcp::service::RequestContext;
 use rmcp::transport::sse_server::{SseServer, SseServerConfig};
-use rmcp::{Error, Peer, RoleServer, ServerHandler};
+use rmcp::{ErrorData, Peer, RoleServer, ServerHandler};
 
 use std::net::AddrParseError;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -98,7 +98,7 @@ impl ExposedWorkers {
         json_object.insert("name".to_string(), Value::String(tool.name.to_string()));
         json_object.insert(
             "description".to_string(),
-            Value::String(tool.description.to_string()),
+            Value::String(tool.description.unwrap_or_default().to_string()),
         );
         json_object.insert(
             "input_schema".to_string(),
@@ -130,7 +130,7 @@ impl ServerHandler for SseEntrypoint {
         &self,
         _request: InitializeRequestParam,
         context: RequestContext<RoleServer>,
-    ) -> Result<InitializeResult, Error> {
+    ) -> Result<InitializeResult, ErrorData> {
         {
             // store the peer in the active sessions list so we can send notifications later
             let mut guard = self.active_sessions.lock().unwrap();
@@ -143,9 +143,9 @@ impl ServerHandler for SseEntrypoint {
         &self,
         request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, Error> {
+    ) -> Result<CallToolResult, ErrorData> {
         if !self.exposed_workers.is_present(&request.name) {
-            return Err(Error::new(
+            return Err(ErrorData::new(
                 ErrorCode::INVALID_PARAMS,
                 format!("Tool {} not found", request.name),
                 None,
@@ -160,14 +160,14 @@ impl ServerHandler for SseEntrypoint {
                     prompt.to_string()
                 }
             } else {
-                return Err(Error::new(
+                return Err(ErrorData::new(
                     ErrorCode::INVALID_PARAMS,
                     "Missing 'message' argument".to_string(),
                     None,
                 ));
             }
         } else {
-            return Err(Error::new(
+            return Err(ErrorData::new(
                 ErrorCode::INVALID_PARAMS,
                 "Tool arguments are required".to_string(),
                 None,
@@ -195,7 +195,7 @@ impl ServerHandler for SseEntrypoint {
             .send_and_receive_extended::<String, String>(route![address], message, options)
             .await
             .map_err(|_err| {
-                Error::new(
+                ErrorData::new(
                     ErrorCode::INTERNAL_ERROR,
                     "Failed to send message".to_string(),
                     None,
@@ -203,7 +203,7 @@ impl ServerHandler for SseEntrypoint {
             })?
             .into_body()
             .map_err(|_err| {
-                Error::new(
+                ErrorData::new(
                     ErrorCode::INTERNAL_ERROR,
                     "Failed to decode message".to_string(),
                     None,
@@ -215,9 +215,9 @@ impl ServerHandler for SseEntrypoint {
 
     async fn list_tools(
         &self,
-        _request: PaginatedRequestParam,
+        _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, Error> {
+    ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult {
             next_cursor: None,
             tools: self.exposed_workers.tools(),
@@ -233,6 +233,9 @@ impl ServerHandler for SseEntrypoint {
             server_info: Implementation {
                 name: "Ockam".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                title: None,
+                website_url: None,
+                icons: None,
             },
             instructions: None,
         }
@@ -251,6 +254,7 @@ pub(crate) async fn start_server(
         sse_path: "/sse".to_string(),
         post_path: "/message".to_string(),
         ct: CancellationToken::new(),
+        sse_keep_alive: None,
     })
     .await
     .map_err(|e| miette::miette!(e))?;

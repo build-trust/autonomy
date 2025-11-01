@@ -3,14 +3,17 @@ use crate::nodes::PyNode;
 
 use ockam::compat::sync::Arc;
 use ockam::{Address, Context, MessageSendReceiveOptions, Routed, Worker, route};
-use rmcp::model::{
-    CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation,
-    InitializeRequestParam, ListToolsResult,
+use rmcp::{
+    RoleClient, ServiceExt,
+    model::{
+        CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation,
+        InitializeRequestParam, ListToolsResult,
+    },
+    serde_json,
+    serde_json::Value,
+    service::RunningService,
+    transport::SseClientTransport,
 };
-use rmcp::serde_json::Value;
-use rmcp::service::RunningService;
-use rmcp::transport::SseTransport;
-use rmcp::{RoleClient, ServiceExt, serde_json};
 
 use pyo3::prelude::*;
 
@@ -126,11 +129,12 @@ impl ClientsWorker {
         let mut clients = Vec::with_capacity(servers.len());
 
         for (name, address) in servers {
-            let transport = SseTransport::start(address.as_str())
+            let transport = SseClientTransport::start(address.clone())
                 .await
                 .map_err(ockam_error)?;
 
-            let connection = Client::info().serve(transport).await.map_err(ockam_error)?;
+            let client_info = Client::info();
+            let connection = client_info.serve(transport).await.map_err(ockam_error)?;
             clients.push(Client {
                 name,
                 address,
@@ -176,6 +180,9 @@ impl Client {
             client_info: Implementation {
                 name: "Ockam MCP Client".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                title: None,
+                website_url: None,
+                icons: None,
             },
         }
     }
