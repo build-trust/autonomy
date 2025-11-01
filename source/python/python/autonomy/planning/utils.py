@@ -6,7 +6,7 @@ from ..nodes.message import Phase, UserMessage
 async def complete_think_chat(model: Model, step_messages: List, stream: bool):
   thinking = False
   if stream:
-    async for chunk in await model.complete_chat(
+    async for chunk in model.complete_chat(
       messages=step_messages,
       is_thinking=True,
       temperature=0,

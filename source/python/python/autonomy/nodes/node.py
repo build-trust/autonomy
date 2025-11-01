@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 from os import getenv, environ
 from re import fullmatch
 from secrets import token_hex
@@ -11,6 +12,31 @@ from ..autonomy_in_rust_for_python import Node as RustNode, Mailbox as RustMailb
 from ..logs import get_logger
 
 logger = get_logger("node.local")
+
+# Global cleanup registry for resource management
+_cleanup_functions = []
+_cleanup_registered = False
+
+
+def register_cleanup_function(cleanup_fn):
+  """Register a cleanup function to be called when the process exits."""
+  global _cleanup_functions, _cleanup_registered
+  _cleanup_functions.append(cleanup_fn)
+
+  # Register atexit handler only once
+  if not _cleanup_registered:
+    atexit.register(_run_cleanup_functions)
+    _cleanup_registered = True
+
+
+def _run_cleanup_functions():
+  """Run all registered cleanup functions."""
+  for cleanup_fn in _cleanup_functions:
+    try:
+      cleanup_fn()
+    except Exception:
+      # Ignore exceptions during cleanup to avoid disrupting shutdown
+      pass
 
 
 class Node:
@@ -33,12 +59,20 @@ class Node:
       ticket = _pick_ticket(ticket)
       allow = _pick_access_policy(allow, cluster_name)
 
-      if use_local_db:
+      if use_local_db or getenv("AUTONOMY_USE_IN_MEMORY_DATABASE"):
         environ.pop("OCKAM_DATABASE_INSTANCE", None)
         environ["OCKAM_SQLITE_IN_MEMORY"] = "true"
         environ["OCKAM_TELEMETRY_EXPORT"] = "false"
 
-      if wait_until_interrupted or main is None:
+      # Check environment variable for wait_until_interrupted
+      env_wait = getenv("AUTONOMY_WAIT_UNTIL_INTERRUPTED")
+      logger.debug(f"Got AUTONOMY_WAIT_UNTIL_INTERRUPTED={env_wait} from the environment")
+      should_wait = wait_until_interrupted
+      if env_wait is not None:
+        should_wait = env_wait.lower() in ("true", "1", "yes", "on")
+        logger.debug(f"Environment variable overriding wait_until_interrupted: {should_wait}")
+
+      if should_wait or main is None:
         main = _wait_until_interrupted_decorator(main)
 
       async def start_node(rust_node):
@@ -73,6 +107,8 @@ class Node:
       logger.error(f"Exception: {e}")
       raise e
     finally:
+      # Run cleanup functions before node stops
+      _run_cleanup_functions()
       logger.debug(f"Stopped node '{node_name}'")
 
   def __init__(self, rust_node):
@@ -180,7 +216,7 @@ def _wait_until_interrupted_decorator(func=None):
     if func is not None:
       await func(*args, **kwargs)
 
-    logger.debug(f"Waiting until interrupted")
+    logger.debug("Waiting until interrupted")
     await node.interrupted()
 
   return wrapper
