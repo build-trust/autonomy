@@ -1,5 +1,4 @@
 import secrets
-import re
 
 from .operation import FlowOperation, END
 from .flow_state import FlowState, FlowEdge, vertex_to_id
@@ -17,24 +16,7 @@ from ..nodes.message import (
   StreamedConversationSnippet,
   TextContent,
 )
-
-
-def validate_name(name: str) -> None:
-  """
-  Validate that a name contains only alphanumeric characters, hyphens, and underscores.
-
-  Args:
-      name: The name to validate
-
-  Raises:
-      ValueError: If the name contains invalid characters
-  """
-  if not name:
-    raise ValueError("Name cannot be empty")
-
-  # Allow alphanumeric characters, hyphens, and underscores
-  if not re.match(r"^[a-zA-Z0-9_-]+$", name):
-    raise ValueError(f"Invalid name '{name}'. Name must contain only alphanumeric characters, hyphens, and underscores")
+from ..helpers.validate_address import validate_address
 
 
 class Flow:
@@ -48,7 +30,7 @@ class Flow:
     if name is None:
       name = secrets.token_hex(12)
     else:
-      validate_name(name)
+      validate_address(name)
 
     self.logger = Flow.class_logger()
     self.name = name
