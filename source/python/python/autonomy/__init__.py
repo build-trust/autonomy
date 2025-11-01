@@ -1,4 +1,4 @@
-from .agents import Agent, AgentReference, HttpServer, NodeDep, Repl, ConversationResponse, validate_name
+from .agents import Agent, AgentReference, HttpServer, NodeDep, Repl, ConversationResponse
 from .evals import Eval, Metric, TestCase, TestOk, TestError
 from .logs import (
   info,
@@ -59,6 +59,13 @@ warnings.filterwarnings(
   category=DeprecationWarning,
 )
 
+# Specifically ignore Pydantic class-based config deprecation warnings
+warnings.filterwarnings(
+  "ignore",
+  message="Support for class-based `config` is deprecated",
+  category=DeprecationWarning,
+)
+
 # We can remove this setting when this issue is fixed: https://github.com/BerriAI/litellm/issues/11657
 warnings.filterwarnings(
   "ignore",
@@ -75,7 +82,6 @@ __all__ = [
   "NodeDep",
   "Repl",
   "ConversationResponse",
-  "validate_name",
   # from .autonomy_in_rust_for_python
   "RustMailbox",
   "McpClient",

@@ -225,9 +225,9 @@ class RemoteNode:
     policy: Optional[str] = None,
     exposed_as: Optional[str] = None,
   ):
-    from ..agents import validate_name
+    from ..helpers.validate_address import validate_address
 
-    validate_name(name)
+    validate_address(name)
     await self.send_generic_request("start_worker", name, worker, policy=policy, exposed_as=exposed_as)
 
   async def stop_worker(self, name: str):

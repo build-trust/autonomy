@@ -1,6 +1,7 @@
 import json
 import inspect
 import re
+import traceback
 
 from typing import get_type_hints, Optional
 from functools import wraps
@@ -40,16 +41,78 @@ class Tool(InvokableTool, InfoContext):
     with self.info(f"Invoke tool: '{self.name}'", f"invoked tool: '{self.name}'"):
       self.logger.debug(f"The tool arguments are: {json_argument}")
       try:
-        if json_argument is None or json_argument == "":
-          args = {}
-        else:
-          args = json.loads(json_argument)
+        args = self._parse_and_validate_arguments(json_argument)
         tool_response = str(await self.func(**args))
         self.logger.debug(f"The tool call succeeded: {tool_response}")
       except Exception as e:
-        tool_response = f"The tool call failed with error: {e}"
-        self.logger.error(tool_response)
+        # Preserve full exception context for debugging
+        error_details = {
+          "error_type": type(e).__name__,
+          "error_message": str(e),
+          "tool_name": self.name,
+          "arguments": json_argument,
+          "traceback": traceback.format_exc(),
+        }
+
+        # Log detailed error information for debugging
+        self.logger.error(
+          f"Tool '{self.name}' execution failed: {error_details['error_type']}: {error_details['error_message']}"
+        )
+        self.logger.debug(f"Full error context: {error_details}")
+
+        # Return user-friendly error message while preserving key details
+        tool_response = f"Tool execution failed: {error_details['error_type']}: {error_details['error_message']}"
       return tool_response
+
+  def _parse_and_validate_arguments(self, json_argument: Optional[str]) -> dict:
+    """Parse and validate JSON arguments with proper error handling and size limits."""
+
+    # Handle empty/null arguments
+    if json_argument is None or json_argument.strip() == "":
+      return {}
+
+    # Check payload size limit (default 1MB)
+    MAX_JSON_SIZE = 1024 * 1024  # 1MB
+    if len(json_argument) > MAX_JSON_SIZE:
+      raise ValueError(f"JSON argument too large: {len(json_argument):,} bytes (max: {MAX_JSON_SIZE:,})")
+
+    # Parse JSON with proper error handling
+    try:
+      args = json.loads(json_argument)
+    except json.JSONDecodeError as e:
+      raise ValueError(f"Invalid JSON format: {str(e)}")
+
+    # Validate that args is a dictionary
+    if not isinstance(args, dict):
+      raise ValueError(f"JSON argument must be an object, got {type(args).__name__}")
+
+    # Get function signature for validation
+    signature = inspect.signature(self.func)
+
+    # Validate arguments against function signature
+    self._validate_arguments_against_signature(args, signature)
+
+    return args
+
+  def _validate_arguments_against_signature(self, args: dict, signature: inspect.Signature) -> None:
+    """Validate arguments against the function signature."""
+
+    param_names = set(signature.parameters.keys())
+    provided_args = set(args.keys())
+
+    # Check for unexpected arguments
+    extra_args = provided_args - param_names
+    if extra_args:
+      raise ValueError(f"Unexpected arguments: {', '.join(sorted(extra_args))}")
+
+    # Check for missing required arguments
+    missing_required = set()
+    for param_name, param in signature.parameters.items():
+      if param.default == inspect.Parameter.empty and param_name not in args:
+        missing_required.add(param_name)
+
+    if missing_required:
+      raise ValueError(f"Missing required arguments: {', '.join(sorted(missing_required))}")
 
 
 def wrap(f) -> callable:
@@ -89,7 +152,10 @@ def parameters_spec(f):
     p_type = to_json_schema_type(p_type)
 
     f_parameters["properties"][p_name] = {"type": p_type, "description": f"parameter {p_name}"}
-    f_parameters["required"].append(p_name)
+
+    # Only add to required list if parameter has no default value
+    if p.default == inspect.Parameter.empty:
+      f_parameters["required"].append(p_name)
 
   return f_parameters
 
