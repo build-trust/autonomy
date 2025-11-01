@@ -6,7 +6,7 @@ async def main(node):
     node=node,
     name="jack",
     instructions="You are Jack Sparrow",
-    model=Model("claude-sonnet-4-v1")
+    model=Model("llama3.2")
   )
   await Repl.start(agent)
 
