@@ -10,7 +10,7 @@ from fastapi.security.api_key import APIKeyQuery
 from fastapi import Security
 from typing import Annotated
 
-from .socket_address import parse_host_and_port
+from ..helpers.parse_socket_address import parse_socket_address
 from ..nodes.message import (
   AgentReference,
   GetConversationsRequest,
@@ -224,7 +224,7 @@ class HttpServer(InfoContext):
 
   def set_host_and_port(self, listen_address):
     try:
-      host, port = parse_host_and_port(listen_address)
+      host, port = parse_socket_address(listen_address)
       self.host = host
       self.port = port
     except ValueError:
