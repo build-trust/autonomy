@@ -5,7 +5,8 @@ help:
 	@echo "Available targets:"
 	@echo "  default                  - Run build"
 	@echo "  build                    - Build this project"
-	@echo "  test                     - Run tests"
+	@echo "  test                     - Run tests with proper resource limits"
+	@echo "  test-agents              - Run agent tests specifically"
 	@echo "  format (fmt)             - Format code using cargo fmt and ruff format"
 	@echo "  clean                    - Delete all build artifacts"
 	@echo "  images                   - Build and push all AMD64 images"
@@ -23,7 +24,22 @@ format:
 	ruff format
 
 test:
-	uv run --active pytest
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest
+
+test-models:
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest -vv tests/models/test_models.py
+
+test-agents:
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest -vv tests/agents/test_agents.py
+
+test-tools:
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest -vv tests/tools/test_tools.py
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest -vv tests/tools/test_mcp_tools.py
 
 build-images-amd64:
 	docker run --rm -v "$(shell pwd)":/io \
@@ -70,5 +86,5 @@ clean:
 	rm -rf target
 	rm -rf python/autonomy/*.abi3.so
 
-.PHONY: default help fmt format build test clean
+.PHONY: default help fmt format build test test-agents clean
 .PHONY: build-images-amd64 push-images-amd64-latest push-images-amd64-hash images

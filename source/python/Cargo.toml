@@ -19,8 +19,9 @@ pyo3-async-runtimes = { git = "https://github.com/davide-baldo/pyo3-async-runtim
   "attributes",
   "tokio-runtime",
 ] }
-rmcp = { version = "0.1.5", features = [
-  "transport-sse",
+rmcp = { version = "0.6.4", features = [
+  "transport-sse-client",
+  "transport-sse-client-reqwest",
   "client",
   "transport-sse-server",
   "server",
