@@ -1,4 +1,3 @@
-import logging
 import os
 import json
 import hashlib
@@ -118,6 +117,84 @@ for model_name in ALL_PROVIDER_ALLOWED_FULL_NAMES:
   model_list.append({"model_name": model_name, "litellm_params": {"model": model_name}})
 
 router = Router(model_list=model_list, default_max_parallel_requests=400)
+
+
+# Register cleanup function to properly close HTTP client sessions
+def _cleanup_litellm_sessions():
+  """Clean up LiteLLM HTTP client sessions to prevent asyncio warnings."""
+  import asyncio
+
+  async def async_cleanup():
+    try:
+      # Close the router's cache connections
+      if hasattr(router, "cache") and hasattr(router.cache, "disconnect"):
+        try:
+          await router.cache.disconnect()
+        except Exception:
+          pass
+
+      # Close module-level HTTP clients
+      if hasattr(litellm, "module_level_aclient") and litellm.module_level_aclient:
+        try:
+          if hasattr(litellm.module_level_aclient, "close"):
+            await litellm.module_level_aclient.close()
+        except Exception:
+          pass
+
+      if hasattr(litellm, "client_session") and litellm.client_session:
+        try:
+          if hasattr(litellm.client_session, "close"):
+            await litellm.client_session.close()
+        except Exception:
+          pass
+
+      if hasattr(litellm, "aclient_session") and litellm.aclient_session:
+        try:
+          if hasattr(litellm.aclient_session, "close"):
+            await litellm.aclient_session.close()
+        except Exception:
+          pass
+
+      # Clear the in-memory client cache
+      if hasattr(litellm, "in_memory_llm_clients_cache"):
+        try:
+          litellm.in_memory_llm_clients_cache.flush_cache()
+        except Exception:
+          pass
+    except Exception:
+      # Ignore any exceptions during cleanup to avoid disrupting shutdown
+      pass
+
+  try:
+    # Try to run async cleanup in the current event loop
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+      # If loop is running, schedule the cleanup
+      asyncio.create_task(async_cleanup())
+    else:
+      # If no loop is running, run it synchronously
+      loop.run_until_complete(async_cleanup())
+  except RuntimeError:
+    # If no event loop exists, create a new one
+    try:
+      asyncio.run(async_cleanup())
+    except Exception:
+      pass
+  except Exception:
+    # Ignore any exceptions during cleanup to avoid disrupting shutdown
+    pass
+
+
+# Register with the Node's cleanup system
+try:
+  from ...nodes.node import register_cleanup_function
+
+  register_cleanup_function(_cleanup_litellm_sessions)
+except ImportError:
+  # Fallback to atexit if Node cleanup system is not available
+  import atexit
+
+  atexit.register(_cleanup_litellm_sessions)
 
 
 def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional[str]:
@@ -385,6 +462,7 @@ class LiteLLMClient(InfoContext, DebugContext):
       if is_thinking:
         chunk.choices[0].delta.reasoning_content = chunk.choices[0].delta.content
         chunk.choices[0].delta.content = None
+
       yield chunk
 
   async def _complete_chat(self, messages: List[dict], **kwargs):

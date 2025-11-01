@@ -1,10 +1,10 @@
 import pytest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from .model import Model
 from .clients.litellm_client import PROVIDER_ALIASES, normalize_messages
-from ..nodes.message import UserMessage, SystemMessage, AssistantMessage, ConversationRole
+from ..nodes.message import UserMessage, AssistantMessage
 
 
 class TestModel:
@@ -63,7 +63,7 @@ class TestModel:
     # Mock the router response
     mock_response = MagicMock()
     mock_response.choices[0].message.content = "Hello! How can I help you?"
-    mock_router.acompletion.return_value = mock_response
+    mock_router.acompletion = AsyncMock(return_value=mock_response)
 
     model = Model("claude-3-5-sonnet-v2")
     messages = [{"role": "user", "content": "Hello"}]
@@ -181,11 +181,13 @@ class TestMessageNormalization:
     ]
 
     normalized = normalize_messages(messages, False, False, True)
-    # Tool message should be converted to assistant
+    # Tool message should be converted to assistant and compacted with the next assistant message
     # Tool calls should be removed
-    assert len(normalized) == 3
-    assert normalized[1]["role"] == "assistant"  # was tool
-    assert "tool_calls" not in normalized[2]
+    assert len(normalized) == 2
+    assert normalized[0]["role"] == "user"
+    assert normalized[1]["role"] == "assistant"
+    assert normalized[1]["content"] == "Tool responseResponse"  # compacted
+    assert "tool_calls" not in normalized[1]
 
   def test_normalize_forced_assistant_answer_disabled(self):
     """Test message normalization when forced assistant answers are not supported."""
