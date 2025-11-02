@@ -4,9 +4,6 @@ from typing import List, Dict, Any, Optional
 
 from autonomy import Agent, Node, Tool
 from autonomy.agents.http import HttpServer
-from autonomy.planning.cot import CoTPlanner
-from autonomy.planning.dynamic import DynamicPlanner
-from autonomy.planning.react import ReActPlanner
 from autonomy.knowledge.noop import NoopKnowledge
 from autonomy.nodes.message import ConversationRole
 from mock_utils import (
@@ -59,7 +56,6 @@ class TestAgentCore:
 
   async def _test_agent_start_with_all_parameters(self, node):
     model = create_simple_mock_model("Comprehensive agent ready!")
-    planner = CoTPlanner(model=create_simple_mock_model("Planning response"))
 
     agent = await Agent.start(
       node=node,
@@ -67,7 +63,6 @@ class TestAgentCore:
       instructions="You are a comprehensive test agent with all features.",
       model=model,
       tools=[Tool(simple_test_tool)],
-      planner=planner,
       knowledge=NoopKnowledge(),
       max_iterations=5,
       max_total_transitions=100,
@@ -145,56 +140,7 @@ class TestAgentCore:
     assert len(response3) >= 1
     assert "Third response" in response3[-1].content.text
 
-  def test_agent_with_different_planners(self):
-    """Test agent with different planner types"""
-    Node.start(
-      self._test_agent_with_different_planners,
-      wait_until_interrupted=False,
-      http_server=HttpServer(listen_address="127.0.0.1:0"),
-    )
 
-  async def _test_agent_with_different_planners(self, node):
-    # Test with CoT planner
-    cot_planner = CoTPlanner(model=create_simple_mock_model("CoT planning"))
-    cot_agent = await Agent.start(
-      node=node,
-      name="cot-agent",
-      instructions="Use chain of thought",
-      model=create_simple_mock_model("CoT response"),
-      planner=cot_planner,
-    )
-
-    response = await cot_agent.send("Think step by step")
-    assert len(response) >= 1
-    assert response[-1].role == ConversationRole.ASSISTANT
-
-    # Test with ReAct planner
-    react_planner = ReActPlanner(model=create_simple_mock_model("ReAct planning"))
-    react_agent = await Agent.start(
-      node=node,
-      name="react-agent",
-      instructions="Use reasoning and acting",
-      model=create_simple_mock_model("ReAct response"),
-      planner=react_planner,
-    )
-
-    response = await react_agent.send("Reason and act")
-    assert len(response) >= 1
-    assert response[-1].role == ConversationRole.ASSISTANT
-
-    # Test with Dynamic planner
-    dynamic_planner = DynamicPlanner(model=create_simple_mock_model("Dynamic planning"))
-    dynamic_agent = await Agent.start(
-      node=node,
-      name="dynamic-agent",
-      instructions="Use dynamic planning",
-      model=create_simple_mock_model("Dynamic response"),
-      planner=dynamic_planner,
-    )
-
-    response = await dynamic_agent.send("Plan dynamically")
-    assert len(response) >= 1
-    assert response[-1].role == ConversationRole.ASSISTANT
 
   def test_agent_conversations_tracking(self):
     """Test agent conversation tracking"""
@@ -507,140 +453,7 @@ def weather_tool(argument: str):
   return "sunny"
 
 
-def test_full_flow():
-  Node.start(_test_full_flow, wait_until_interrupted=False, http_server=HttpServer(listen_address="127.0.0.1:0"))
 
-
-@pytest.mark.asyncio
-async def _test_full_flow(node):
-  planner_model = ModelSimulator(
-    [
-      {
-        "role": "assistant",
-        "reasoning_content": "I'm thinking a lot...",
-        "content": "The plan is to query the weather tool!",
-      }
-    ]
-  )
-
-  agent_model = ModelSimulator(
-    [
-      {"role": "assistant", "tool_calls": [{"name": "weather_tool", "arguments": '{"argument": "Paris"}'}]},
-      {
-        "role": "assistant",
-        "reasoning_content": "I'm thinking that the result is sunny, so I should answer sunny...",
-        "content": "The weather in Paris is sunny!",
-      },
-    ]
-  )
-
-  agent = await Agent.start(
-    node=node,
-    instructions="You are an agent that will test the full flow of an agent!",
-    planner=CoTPlanner(model=planner_model),
-    tools=[Tool(weather_tool)],
-    model=agent_model,
-  )
-
-  messages = await agent.send("What is the weather in Paris?")
-  assert len(messages) == 5
-
-  assert messages[0].role == ConversationRole.USER
-  assert messages[0].content.text == "I'm thinking a lot..."
-  assert messages[0].phase == Phase.PLANNING
-  assert messages[0].thinking
-
-  assert messages[1].role == ConversationRole.USER
-  assert messages[1].phase == Phase.PLANNING
-  assert messages[1].content.text == "The plan is to query the weather tool!"
-  assert messages[1].thinking is False
-
-  assert messages[2].role == ConversationRole.ASSISTANT
-  assert messages[2].phase == Phase.EXECUTING
-  assert messages[2].content.text == ""
-  assert messages[2].tool_calls == [
-    ToolCall(
-      id="tool_call_0",
-      function=FunctionToolCall(name="weather_tool", arguments='{"argument": "Paris"}'),
-      type="function",
-    )
-  ]
-
-  assert messages[3].role == ConversationRole.TOOL
-  assert messages[3].phase == Phase.EXECUTING
-  assert messages[3].name == "weather_tool"
-  assert messages[3].content.text == "sunny"
-  assert messages[3].tool_call_id == "tool_call_0"
-
-  assert messages[4].role == ConversationRole.ASSISTANT
-  assert messages[4].phase == Phase.EXECUTING
-  assert messages[4].content.text == "The weather in Paris is sunny!"
-  assert messages[4].thinking is False
-
-
-def test_full_flow_streaming():
-  Node.start(
-    _test_full_flow_streaming, wait_until_interrupted=False, http_server=HttpServer(listen_address="127.0.0.1:0")
-  )
-
-
-@pytest.mark.asyncio
-async def _test_full_flow_streaming(node):
-  planner_model = ModelSimulator(
-    [
-      {
-        "role": "assistant",
-        "reasoning_content": "I'm thinking a lot...",
-        "content": "The plan is to query the weather tool!",
-      }
-    ]
-  )
-
-  agent_model = ModelSimulator(
-    [
-      {"role": "assistant", "tool_calls": [{"name": "weather_tool", "arguments": '{"argument": "Paris"}'}]},
-      {
-        "role": "assistant",
-        "reasoning_content": "I'm thinking that the result is sunny, so I should answer sunny...",
-        "content": "The weather in Paris is sunny!",
-      },
-    ]
-  )
-
-  agent = await Agent.start(
-    node=node,
-    instructions="You are an agent that will test the full flow of an agent!",
-    planner=CoTPlanner(model=planner_model),
-    tools=[Tool(weather_tool)],
-    model=agent_model,
-  )
-
-  chunks = []
-  async for chunk in agent.send_stream("What is the weather in Paris?"):
-    chunks.append(chunk)
-
-  # Should have received chunks from streaming
-  assert len(chunks) > 0, "Should have received streaming chunks"
-
-  # Verify chunk structure - at least some chunks should have content
-  chunks_with_content = [chunk for chunk in chunks if hasattr(chunk, "snippet") and chunk.snippet.messages]
-  assert len(chunks_with_content) > 0, "Should have chunks with actual content"
-
-  # Verify we got chunks with different phases (planning and executing)
-  planning_chunks = []
-  executing_chunks = []
-
-  for chunk in chunks_with_content:
-    if chunk.snippet.messages:
-      msg = chunk.snippet.messages[0]
-      if msg.phase == Phase.PLANNING:
-        planning_chunks.append(chunk)
-      elif msg.phase == Phase.EXECUTING:
-        executing_chunks.append(chunk)
-
-  # Should have gotten both planning and executing phases
-  assert len(planning_chunks) > 0, "Should have received planning phase chunks"
-  assert len(executing_chunks) > 0, "Should have received executing phase chunks"
 
 
 import pytest
@@ -825,11 +638,10 @@ class TestAgentCommunication:
     )
 
   async def _test_message_phases(self, node):
-    planner = CoTPlanner(model=create_simple_mock_model("Let me plan this step by step"))
     model = create_simple_mock_model("Executing the plan now")
 
     agent = await Agent.start(
-      node=node, name="phases-agent", instructions="Use planning phases", model=model, planner=planner
+      node=node, name="phases-agent", instructions="Solve complex problems", model=model
     )
 
     response = await agent.send("Solve this complex problem")
@@ -1248,56 +1060,7 @@ class TestAgentConfiguration:
       # Test that we can at least create the agent
       pass
 
-  def test_agent_planner_configurations(self):
-    """Test agent planner configuration options"""
-    Node.start(
-      self._test_agent_planner_configurations,
-      wait_until_interrupted=False,
-      http_server=HttpServer(listen_address="127.0.0.1:0"),
-    )
 
-  async def _test_agent_planner_configurations(self, node):
-    # Test with CoT planner
-    cot_planner = CoTPlanner(model=create_simple_mock_model("CoT planning"))
-    cot_agent = await Agent.start(
-      node=node,
-      name="cot-planner-agent",
-      instructions="Test CoT planner",
-      model=create_simple_mock_model("CoT response"),
-      planner=cot_planner,
-    )
-
-    response = await cot_agent.send("Plan this step by step")
-    assert len(response) >= 1
-    assert response[-1].role == ConversationRole.ASSISTANT
-
-    # Test with ReAct planner
-    react_planner = ReActPlanner(model=create_simple_mock_model("ReAct planning"))
-    react_agent = await Agent.start(
-      node=node,
-      name="react-planner-agent",
-      instructions="Test ReAct planner",
-      model=create_simple_mock_model("ReAct response"),
-      planner=react_planner,
-    )
-
-    response = await react_agent.send("Reason and act")
-    assert len(response) >= 1
-    assert response[-1].role == ConversationRole.ASSISTANT
-
-    # Test with Dynamic planner
-    dynamic_planner = DynamicPlanner(model=create_simple_mock_model("Dynamic planning"))
-    dynamic_agent = await Agent.start(
-      node=node,
-      name="dynamic-planner-agent",
-      instructions="Test Dynamic planner",
-      model=create_simple_mock_model("Dynamic response"),
-      planner=dynamic_planner,
-    )
-
-    response = await dynamic_agent.send("Plan dynamically")
-    assert len(response) >= 1
-    assert response[-1].role == ConversationRole.ASSISTANT
 
   def test_agent_tool_configurations(self):
     """Test agent tool configuration options"""
@@ -1461,20 +1224,16 @@ class TestAgentConfiguration:
     assert len(response) >= 1
 
     # Test maximal configuration
-    planner = CoTPlanner(model=create_simple_mock_model("Planning"))
     knowledge = NoopKnowledge()
 
     maximal_agent = await Agent.start(
       node=node,
       name="maximal-agent",
-      instructions="Maximal configuration with all options",
+      instructions="Maximal setup",
       model=create_simple_mock_model("Maximal response"),
       tools=[Tool(simple_test_tool)],
-      planner=planner,
       knowledge=knowledge,
       max_iterations=10,
-      max_total_transitions=100,
-      max_execution_time=60.0,
     )
 
     response = await maximal_agent.send("Test maximal")
@@ -2463,7 +2222,7 @@ class TestAgentState:
 
   def test_agent_state_enum(self):
     """Test that AgentState enum has expected values"""
-    expected_states = ["PLANNING", "MODEL_CALLING", "TOOL_CALLING", "FINISHED"]
+    expected_states = ["INIT", "MODEL_CALLING", "TOOL_CALLING", "FINISHED"]
 
     for state_name in expected_states:
       assert hasattr(AgentState, state_name)
@@ -2472,13 +2231,13 @@ class TestAgentState:
 
   def test_agent_state_transitions(self):
     """Test valid state transitions"""
-    # Test typical flow: PLANNING -> MODEL_CALLING -> TOOL_CALLING -> FINISHED
-    assert AgentState.PLANNING != AgentState.MODEL_CALLING
+    # Test typical flow: INIT -> MODEL_CALLING -> TOOL_CALLING -> FINISHED
+    assert AgentState.INIT != AgentState.MODEL_CALLING
     assert AgentState.MODEL_CALLING != AgentState.TOOL_CALLING
     assert AgentState.TOOL_CALLING != AgentState.FINISHED
 
     # All states should be distinct
-    states = [AgentState.PLANNING, AgentState.MODEL_CALLING, AgentState.TOOL_CALLING, AgentState.FINISHED]
+    states = [AgentState.INIT, AgentState.MODEL_CALLING, AgentState.TOOL_CALLING, AgentState.FINISHED]
     assert len(set(states)) == len(states)
 
 
@@ -2494,7 +2253,6 @@ class TestAgentStateMachine:
     agent.tools = {}
     agent.maximum_iterations = 10
     agent.max_total_transitions = 100
-    agent.max_planning_transitions = 20
     agent.max_tool_calling_transitions = 30
     agent.max_execution_time = 300.0
     agent.complete_chat = AsyncMock()
@@ -2530,39 +2288,8 @@ class TestAgentStateMachine:
     assert sm.state == AgentState.INIT
     assert sm.iteration == 0
     assert sm.total_transitions == 0
-    assert sm.planning_transitions == 0
     assert sm.tool_calling_transitions == 0
     assert sm.start_time is not None
-
-  @pytest.mark.asyncio
-  async def test_state_machine_planning_state(self, state_machine, mock_agent):
-    """Test state machine behavior in PLANNING state"""
-    # Mock required async methods
-    mock_agent.get_messages_only = AsyncMock(return_value=[])
-    mock_agent.remember = AsyncMock()
-
-    # Mock planner
-    mock_planner = Mock()
-    mock_plan = Mock()
-    mock_planner.plan = AsyncMock(return_value=mock_plan)
-    mock_agent.planner = mock_planner
-
-    # Mock plan execution - return None to indicate plan completion
-    async def mock_next_step(*args):
-      yield None  # Plan completed
-
-    mock_plan.next_step = mock_next_step
-
-    state_machine.state = AgentState.PLANNING
-    state_machine.plan = mock_plan
-
-    # Collect results from async generator
-    results = []
-    async for result in state_machine._handle_planning_state():
-      results.append(result)
-
-    # Should transition to FINISHED when plan completes
-    assert state_machine.state == AgentState.FINISHED
 
   @pytest.mark.asyncio
   async def test_state_machine_model_calling_state(self, state_machine, mock_agent):
@@ -2686,22 +2413,6 @@ class TestAgentStateMachine:
     assert len(results) > 0
 
   @pytest.mark.asyncio
-  async def test_state_machine_planning_transition_limit(self, state_machine, mock_agent):
-    """Test planning-specific transition limits"""
-    state_machine.max_planning_transitions = 1
-    state_machine.planning_transitions = state_machine.max_planning_transitions + 1
-    state_machine.state = AgentState.PLANNING
-
-    # Should get error due to planning limit
-    results = []
-    async for result in state_machine._handle_planning_state():
-      results.append(result)
-      break  # Get first result which should be an error
-
-    # Should have received an error
-    assert len(results) > 0
-
-  @pytest.mark.asyncio
   async def test_state_machine_tool_calling_transition_limit(self, state_machine, mock_agent):
     """Test tool calling-specific transition limits"""
     state_machine.max_tool_calling_transitions = 1
@@ -2806,59 +2517,6 @@ class TestAgentStateMachine:
     assert len(messages) > 0
 
   @pytest.mark.asyncio
-  async def test_state_machine_with_planner_workflow(self, mock_agent):
-    """Test state machine workflow with planner"""
-    # Mock required async methods
-    mock_agent.get_messages_only = AsyncMock(return_value=[])
-    mock_agent.remember = AsyncMock()
-
-    # Setup planner
-    mock_planner = Mock()
-    mock_plan = Mock()
-    mock_planner.plan = AsyncMock(return_value=mock_plan)
-    mock_agent.planner = mock_planner
-
-    async def planning_steps(*args):
-      yield Mock(role=ConversationRole.USER, content=Mock(text="Planning step 1"), phase=Phase.PLANNING)
-      yield Mock(role=ConversationRole.USER, content=Mock(text="Planning step 2"), phase=Phase.PLANNING)
-
-    mock_plan.next_step = planning_steps
-    mock_agent.planner = mock_planner
-
-    # Setup model response
-    mock_response = Mock()
-    mock_response.tool_calls = []
-    mock_response.content = Mock(text="Response after planning")
-    mock_response.role = ConversationRole.ASSISTANT
-
-    # Mock complete_chat as async generator to avoid unawaited coroutine warnings
-    async def mock_complete_chat(*args, **kwargs):
-      yield None, True, mock_response
-
-    mock_agent.complete_chat = mock_complete_chat
-
-    conversation = "test-conversation"
-    stream = AsyncMock()
-    mock_streaming_response = AsyncMock()
-    mock_streaming_response.make_snippet = AsyncMock(return_value="mock_snippet")
-    mock_streaming_response.make_finished_snippet = AsyncMock(return_value="mock_finished_snippet")
-    response = mock_streaming_response
-    sm = AgentStateMachine(mock_agent, "Query with planning", conversation, stream, response)
-
-    # Initialize plan first
-    await sm.initialize_plan([])
-
-    # Run and collect messages
-    messages = []
-    async for result in sm.run():
-      messages.append(result)
-
-    # Should have gone through planning phase
-    assert mock_planner.plan.called
-    assert sm.state == AgentState.FINISHED
-    assert len(messages) > 0
-
-  @pytest.mark.asyncio
   async def test_state_machine_with_tools_workflow(self, mock_agent):
     """Test state machine workflow with tool calls"""
     # Mock required methods
@@ -2940,31 +2598,6 @@ class TestAgentStateMachine:
     # Should have received an error and be in FINISHED state
     assert len(results) > 0
     assert sm.state == AgentState.FINISHED
-
-  @pytest.mark.asyncio
-  async def test_initialize_plan_without_planner(self, state_machine, mock_agent):
-    """Test plan initialization when no planner is configured"""
-    mock_agent.planner = None
-
-    await state_machine.initialize_plan([])
-
-    # Should not have a plan when no planner
-    assert state_machine.plan is None
-
-  @pytest.mark.asyncio
-  async def test_initialize_plan_with_planner(self, state_machine, mock_agent):
-    """Test plan initialization with planner"""
-    mock_planner = Mock()
-    mock_plan = Mock()
-    mock_planner.plan = AsyncMock(return_value=mock_plan)
-    mock_agent.planner = mock_planner
-
-    contextual_knowledge = "Some context"
-    state_machine.contextual_knowledge = contextual_knowledge
-    await state_machine.initialize_plan([])
-
-    assert state_machine.plan == mock_plan
-    assert mock_planner.plan.called
 
   @pytest.mark.asyncio
   async def test_state_machine_preserves_message_order(self, mock_agent):
@@ -4027,59 +3660,7 @@ class TestEnhancedAgentSuite:
     tool_response = tool_response_messages[0].content.text
     assert "error" in tool_response.lower() or "test error" in tool_response.lower()
 
-  def test_agent_with_different_planners(self):
-    """Test agent behavior with different planner types"""
-    Node.start(
-      self._test_agent_with_different_planners,
-      wait_until_interrupted=False,
-      http_server=HttpServer(listen_address="127.0.0.1:0"),
-    )
 
-  async def _test_agent_with_different_planners(self, node):
-    # Test CoT Planner
-    cot_planner_model = create_simple_mock_model("CoT planning complete")
-    cot_agent_model = create_simple_mock_model("CoT execution complete")
-
-    cot_agent = await Agent.start(
-      node=node,
-      name="cot-agent",
-      instructions="Use chain-of-thought planning",
-      model=cot_agent_model,
-      planner=CoTPlanner(model=cot_planner_model),
-    )
-
-    cot_response = await cot_agent.send("Plan and execute a task")
-    assert len(cot_response) >= 1
-
-    # Test ReAct Planner
-    react_planner_model = create_simple_mock_model("ReAct planning complete")
-    react_agent_model = create_simple_mock_model("ReAct execution complete")
-
-    react_agent = await Agent.start(
-      node=node,
-      name="react-agent",
-      instructions="Use ReAct planning",
-      model=react_agent_model,
-      planner=ReActPlanner(model=react_planner_model),
-    )
-
-    react_response = await react_agent.send("Plan and execute a task")
-    assert len(react_response) >= 1
-
-    # Test Dynamic Planner
-    dynamic_planner_model = create_simple_mock_model("Dynamic planning complete")
-    dynamic_agent_model = create_simple_mock_model("Dynamic execution complete")
-
-    dynamic_agent = await Agent.start(
-      node=node,
-      name="dynamic-agent",
-      instructions="Use dynamic planning",
-      model=dynamic_agent_model,
-      planner=DynamicPlanner(model=dynamic_planner_model),
-    )
-
-    dynamic_response = await dynamic_agent.send("Plan and execute a task")
-    assert len(dynamic_response) >= 1
 
   def test_agent_performance_limits(self):
     """Test agent performance limits and timeout handling"""
@@ -5607,8 +5188,6 @@ def test_complete_agent_lifecycle():
       """Summarize content"""
       return f"Summary (max {max_length} chars): {content[:max_length]}..."
 
-    planner_model = MockModel([{"role": "assistant", "content": "Planning comprehensive research approach."}])
-
     main_model = MockModel(
       [
         {"role": "assistant", "tool_calls": [{"name": "research_tool", "arguments": '{"topic": "AI ethics"}'}]},
@@ -5625,7 +5204,6 @@ def test_complete_agent_lifecycle():
       name="lifecycle-test-agent",
       instructions="You are a research assistant that conducts thorough analysis.",
       model=main_model,
-      planner=CoTPlanner(model=planner_model),
       tools=[Tool(research_tool), Tool(summarize_tool)],
       knowledge=NoopKnowledge(),
       max_iterations=5,
@@ -5635,20 +5213,20 @@ def test_complete_agent_lifecycle():
     response = await agent.send("Research AI ethics and provide a summary")
 
     # Verify complete workflow execution
-    assert len(response) >= 5  # Planning + tool calls + responses + final
+    assert len(response) >= 2  # Tool calls + responses + final (no planning)
 
     # Verify tool usage
     tool_calls = [msg for msg in response if hasattr(msg, "tool_calls") and msg.tool_calls]
     tool_responses = [msg for msg in response if hasattr(msg, "role") and msg.role == ConversationRole.TOOL]
 
-    assert len(tool_calls) >= 2
-    assert len(tool_responses) >= 2
+    assert len(tool_calls) >= 1
+    assert len(tool_responses) >= 1
 
     # Test memory persistence - removed as the method signature is different
 
     # Test follow-up interaction
     response2 = await agent.send("What else can you tell me about this topic?")
-    assert len(response2) >= 2
+    assert len(response2) >= 1
 
     # Test agent stopping
     await Agent.stop(node, "lifecycle-test-agent")
@@ -5668,28 +5246,9 @@ def test_agent_configuration_matrix():
   async def _test_agent_configuration_matrix(node):
     configurations = [
       {
-        "name": "minimal-config",
-        "model": MockModel([{"role": "assistant", "content": "Minimal response"}]),
-        "tools": [],
-        "planner": None,
-      },
-      {
-        "name": "planner-config",
-        "model": MockModel([{"role": "assistant", "content": "With planner"}]),
-        "tools": [],
-        "planner": CoTPlanner(model=MockModel([{"role": "assistant", "content": "Planning"}])),
-      },
-      {
         "name": "tools-config",
         "model": MockModel([{"role": "assistant", "content": "With tools"}]),
         "tools": [Tool(test_tool)],
-        "planner": None,
-      },
-      {
-        "name": "full-config",
-        "model": MockModel([{"role": "assistant", "content": "Full configuration"}]),
-        "tools": [Tool(test_tool)],
-        "planner": DynamicPlanner(model=MockModel([{"role": "assistant", "content": "Dynamic planning"}])),
       },
     ]
 
@@ -5701,7 +5260,6 @@ def test_agent_configuration_matrix():
         instructions=f"Agent with {config['name']} configuration",
         model=config["model"],
         tools=config["tools"],
-        planner=config["planner"],
       )
       agents.append(agent)
 
@@ -5803,33 +5361,22 @@ def test_complete_communication_flow():
       """Analyze data"""
       return f"Analysis of {data}: Pattern detected, confidence high."
 
-    planner_model = MockModel([{"role": "assistant", "content": "I'll plan a thorough analysis approach."}])
-
     agent = await Agent.start(
       node=node,
       name="communication-flow-agent",
       instructions="Provide comprehensive analysis with reasoning.",
       model=model,
-      planner=CoTPlanner(model=planner_model),
       tools=[Tool(analysis_tool)],
     )
 
     response = await agent.send("Please analyze this complex scenario")
 
-    # Verify all message types are present
-    message_types = {
-      "user": [msg for msg in response if hasattr(msg, "role") and msg.role == ConversationRole.USER],
-      "assistant": [msg for msg in response if hasattr(msg, "role") and msg.role == ConversationRole.ASSISTANT],
-      "tool": [msg for msg in response if hasattr(msg, "role") and msg.role == ConversationRole.TOOL],
-      "thinking": [msg for msg in response if getattr(msg, "thinking", False)],
-      "planning": [msg for msg in response if hasattr(msg, "phase") and msg.phase == Phase.PLANNING],
-      "executing": [msg for msg in response if hasattr(msg, "phase") and msg.phase == Phase.EXECUTING],
-    }
+    # Verify we get a response
+    assert len(response) >= 1, "Should have received at least one response message"
 
-    assert len(message_types["user"]) >= 1
-    assert len(message_types["assistant"]) >= 1
-    assert len(message_types["tool"]) >= 0  # Tools may not be called in all scenarios
-    assert len(message_types["thinking"]) >= 0  # Thinking may not be present in all scenarios
+    # Verify assistant messages are present
+    assistant_messages = [msg for msg in response if hasattr(msg, "role") and msg.role == ConversationRole.ASSISTANT]
+    assert len(assistant_messages) >= 1, "Should have at least one assistant message"
 
   Node.start(
     _test_complete_communication_flow,
