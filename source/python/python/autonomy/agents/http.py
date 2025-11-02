@@ -4,11 +4,12 @@ import os
 import uvicorn
 from dataclasses import asdict, is_dataclass
 from enum import Enum
-from fastapi import FastAPI, Depends, HTTPException, Request, status
+from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, status
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security.api_key import APIKeyQuery
 from fastapi import Security
 from typing import Annotated
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..helpers.parse_socket_address import parse_socket_address
 from ..nodes.message import (
@@ -30,6 +31,20 @@ DEFAULT_HOST = os.environ.get("DEFAULT_HOST_HTTP", "0.0.0.0")
 DEFAULT_PORT = int(os.environ.get("DEFAULT_PORT_HTTP", "8000"))
 
 
+class NodeInjectionMiddleware:
+  """Raw ASGI middleware to inject node into request state for both HTTP and WebSocket"""
+
+  def __init__(self, app: ASGIApp, http_server: "HttpServer"):
+    self.app = app
+    self.http_server = http_server
+
+  async def __call__(self, scope: Scope, receive: Receive, send: Send):
+    if scope["type"] in ("http", "websocket"):
+      scope["state"] = scope.get("state", {})
+      scope["state"]["node"] = self.http_server.node
+    await self.app(scope, receive, send)
+
+
 class HttpServer(InfoContext):
   def __init__(self, listen_address=f"{DEFAULT_HOST}:{DEFAULT_PORT}", app: FastAPI = None, api=None):
     from ..logs.logs import get_logger
@@ -45,12 +60,14 @@ class HttpServer(InfoContext):
       self.app = FastAPI(dependencies=[Depends(validate_api_key)])
     else:
       self.app = app
-    self.app.middleware("http")(self.inject_node)
+
+    # Add middleware that works for both HTTP and WebSocket
+    self.app.add_middleware(NodeInjectionMiddleware, http_server=self)
     self._setup_routes()
 
-  async def inject_node(self, request: Request, call_next):
-    request.state.node = self.node
-    return await call_next(request)
+  def get_node_from_websocket(self, websocket: WebSocket):
+    """Helper method to get node from WebSocket connection"""
+    return self.node
 
   def _setup_routes(self):
     if os.path.exists("index.html"):
@@ -213,6 +230,7 @@ class HttpServer(InfoContext):
         return find_tool(node, name)
 
   def get_node(self):
+    """Get node instance. Can be used as a dependency in routes."""
     return self.node
 
   async def serve(self):
@@ -240,13 +258,23 @@ class HttpServer(InfoContext):
     asyncio.create_task(self.serve())
 
 
-# Retrieve the node from the request state
+# Retrieve the node from the HTTP request state
 def get_node(request: Request) -> Node:
+  # The state is populated by our middleware
   return request.state.node
 
 
-# Node as a dependency
+# Retrieve the node from WebSocket state
+def get_node_ws(websocket: WebSocket) -> Node:
+  # The state is populated by our middleware
+  return websocket.state.node
+
+
+# Node as a dependency for HTTP endpoints
 NodeDep = Annotated[Node, Depends(get_node)]
+
+# Node as a dependency for WebSocket endpoints
+WebSocketNodeDep = Annotated[Node, Depends(get_node_ws)]
 
 
 def default(obj):
