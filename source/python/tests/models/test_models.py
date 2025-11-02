@@ -8,7 +8,7 @@ from autonomy.nodes.node import Node
 from autonomy.models.model import Model
 from autonomy.memory.memory import Memory
 from autonomy.knowledge import KnowledgeProvider
-from autonomy.planning import Planner
+
 
 
 class TestToolCallIdBugFixSummary:
@@ -29,7 +29,6 @@ class TestToolCallIdBugFixSummary:
     model = MagicMock(spec=Model)
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
-    planner = MagicMock(spec=Planner)
     memory.set_instructions = MagicMock()
 
     agent = Agent(
@@ -41,7 +40,6 @@ class TestToolCallIdBugFixSummary:
       memory_embeddings_model=None,
       tool_specs=[],
       tools={},
-      planner=planner,
       memory=memory,
       knowledge=knowledge,
       maximum_iterations=10,
@@ -343,7 +341,6 @@ class TestToolCallIdFixIntegration:
     model = MagicMock(spec=Model)
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
-    planner = MagicMock(spec=Planner)
     memory.set_instructions = MagicMock()
 
     # Create agent with realistic configuration
@@ -381,7 +378,6 @@ class TestToolCallIdFixIntegration:
         },
       ],
       tools={},
-      planner=planner,
       memory=memory,
       knowledge=knowledge,
       maximum_iterations=50,
@@ -637,12 +633,9 @@ class TestToolCallIdBug:
     model = MagicMock(spec=Model)
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
-    planner = MagicMock(spec=Planner)
-
     # Mock memory.set_instructions to avoid errors
     memory.set_instructions = MagicMock()
 
-    # Create agent
     agent = Agent(
       node=node,
       name="test_agent",
@@ -652,7 +645,6 @@ class TestToolCallIdBug:
       memory_embeddings_model=None,
       tool_specs=[],
       tools={},
-      planner=planner,
       memory=memory,
       knowledge=knowledge,
       maximum_iterations=10,
@@ -888,12 +880,9 @@ class TestToolCallIdBugSimple:
     model = MagicMock(spec=Model)
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
-    planner = MagicMock(spec=Planner)
-
     # Mock memory.set_instructions to avoid errors
     memory.set_instructions = MagicMock()
 
-    # Create agent
     agent = Agent(
       node=node,
       name="test_agent",
@@ -903,7 +892,6 @@ class TestToolCallIdBugSimple:
       memory_embeddings_model=None,
       tool_specs=[],
       tools={},
-      planner=planner,
       memory=memory,
       knowledge=knowledge,
       maximum_iterations=10,
@@ -1090,7 +1078,6 @@ class TestToolCallIdConceptualBug:
     model = MagicMock(spec=Model)
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
-    planner = MagicMock(spec=Planner)
     memory.set_instructions = MagicMock()
 
     agent = Agent(
@@ -1102,7 +1089,6 @@ class TestToolCallIdConceptualBug:
       memory_embeddings_model=None,
       tool_specs=[],
       tools={},
-      planner=planner,
       memory=memory,
       knowledge=knowledge,
       maximum_iterations=10,
@@ -1283,7 +1269,6 @@ class TestToolCallIdFix:
     model = MagicMock(spec=Model)
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
-    planner = MagicMock(spec=Planner)
     memory.set_instructions = MagicMock()
 
     agent = Agent(
@@ -1295,7 +1280,6 @@ class TestToolCallIdFix:
       memory_embeddings_model=None,
       tool_specs=[],
       tools={},
-      planner=planner,
       memory=memory,
       knowledge=knowledge,
       maximum_iterations=10,

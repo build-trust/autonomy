@@ -35,7 +35,6 @@ from ..nodes.message import (
   ToolCallResponseMessage,
 )
 from ..nodes.node import Node
-from ..planning import Planner
 from ..tools.protocol import InvokableTool
 from ..helpers.validate_address import validate_address
 
@@ -46,15 +45,13 @@ class AgentState(Enum):
   """
   States for the agent conversation state machine.
 
-  - INIT: Initial state where we set up the conversation and initialize planning if available
-  - PLANNING: Create the next step of the plan
+  - INIT: Initial state where we set up the conversation
   - MODEL_CALLING: Call the model to generate a response
   - TOOL_CALLING: Execute tool calls from the model response
   - FINISHED: End of the conversation
   """
 
   INIT = "init"
-  PLANNING = "planning"
   MODEL_CALLING = "model_calling"
   TOOL_CALLING = "tool_calling"
   FINISHED = "finished"
@@ -66,46 +63,38 @@ class AgentState(Enum):
 #     │         │
 #     └───┬─────┘
 #         │
-#         ├─────────────────────────┐
-#         │                         │
-#         │ [planner available]     │ [planner not available]
-#         ▼                         ▼
-#     ┌─────────┐               ┌──────────┐
-#     │         │               │          │
-#     │PLANNING │◀──────────────┤ MODEL    │◀─────┐
-#     │         ├──[execute]───▶│ CALLING  │      │
-#     └───┬─────┘               └┬────┬────┘      │
-#         │                      │    │           │
-#         │                      │    │           │
-#         │ [plan completed]     │    │           │
-#         │                      │    │           │
-#         │                      │    │           │
-#         │                      │    ▼           │
-#         │                      │  ┌────────┐    │
-#         │                      │  │        │    │
-#         │                      │  │  TOOL  │────┘
-#         │                      │  │CALLING │
-#         │                      │  └────────┘
-#         │                      │
-#         │                      │ [response complete && no tool calls && planner available]
-#         │                      │
-#         ▼                      │
-#     ┌─────────┐                │ [response complete && no tool calls && no planner]
-#     │         │                │ [error conditions]
-#     │FINISHED │◀───────────────┘ [max iterations reached]
-#     │         │
-#     └─────────┘
+#         ▼
+#     ┌──────────┐
+#     │          │
+#     │  MODEL   │◀─────┐
+#     │ CALLING  │      │
+#     └┬────┬────┘      │
+#      │    │           │
+#      │    ▼           │
+#      │  ┌────────┐    │
+#      │  │        │    │
+#      │  │  TOOL  │────┘
+#      │  │CALLING │
+#      │  └────────┘
+#      │
+#      │ [response complete && no tool calls]
+#      │ [error conditions]
+#      │ [max iterations reached]
+#      ▼
+#  ┌─────────┐
+#  │         │
+#  │FINISHED │
+#  │         │
+#  └─────────┘
 #
 # State Transition Conditions:
 #
+# INIT transitions:
+# - → MODEL_CALLING: [always]
+#
 # MODEL_CALLING transitions:
 # - → TOOL_CALLING: [response contains tool calls]
-# - → PLANNING: [response complete && no tool calls && planner available]
-# - → FINISHED: [response complete && no tool calls && no planner] OR [error conditions] OR [max iterations reached]
-#
-# PLANNING transitions:
-# - → MODEL_CALLING: [execute next step]
-# - → FINISHED: [plan completed] OR [error conditions] OR [max planning transitions]
+# - → FINISHED: [response complete && no tool calls] OR [error conditions] OR [max iterations reached]
 #
 # TOOL_CALLING transitions:
 # - → MODEL_CALLING: [after processing all tool calls] OR [error conditions] OR [max tool calling transitions]
@@ -132,7 +121,6 @@ class AgentStateMachine:
     self.streaming_response = response
     self.contextual_knowledge = contextual_knowledge
     self.state = AgentState.INIT
-    self.plan = None
     self.iteration = 0
     self.tool_calls = []
     self.whole_response = ConversationSnippet(scope, conversation, [])
@@ -140,13 +128,11 @@ class AgentStateMachine:
 
     # Enhanced loop protection
     self.total_transitions = 0
-    self.planning_transitions = 0
     self.tool_calling_transitions = 0
     self.start_time = time.time()
 
     # Configurable limits with sensible defaults
     self.max_total_transitions = getattr(agent, "max_total_transitions", 500)
-    self.max_planning_transitions = getattr(agent, "max_planning_transitions", 50)
     self.max_tool_calling_transitions = getattr(agent, "max_tool_calling_transitions", 100)
     self.max_execution_time = getattr(agent, "max_execution_time", 300.0)  # 5 minutes
 
@@ -175,60 +161,19 @@ class AgentStateMachine:
     # Log transition for debugging
     logger.debug(
       f"State transition #{self.total_transitions}: {self.state.name} "
-      f"(planning: {self.planning_transitions}, tool_calling: {self.tool_calling_transitions}, "
+      f"(tool_calling: {self.tool_calling_transitions}, "
       f"iteration: {self.iteration}, elapsed: {elapsed_time:.1f}s)"
     )
 
     match self.state:
       case AgentState.INIT:
-        if self.agent.planner is not None:
-          self.state = AgentState.PLANNING
-        else:
-          self.state = AgentState.MODEL_CALLING
-      case AgentState.PLANNING:
-        async for result in self._handle_planning_state():
-          yield result
+        self.state = AgentState.MODEL_CALLING
       case AgentState.MODEL_CALLING:
         async for result in self._handle_model_calling_state():
           yield result
       case AgentState.TOOL_CALLING:
         async for result in self._handle_tool_calling_state():
           yield result
-
-  async def _handle_planning_state(self):
-    """Handle the PLANNING state: Execute the next steps from the plan."""
-
-    # Track planning transitions and check limits
-    self.planning_transitions += 1
-
-    if self.planning_transitions > self.max_planning_transitions:
-      logger.error(f"Planning exceeded maximum transitions ({self.max_planning_transitions})")
-      yield Error(f"Planning phase exceeded maximum transitions ({self.max_planning_transitions})")
-      self.state = AgentState.FINISHED
-      return
-
-    plan_completed = True
-    next_steps = self.plan.next_step(
-      await self.agent.get_messages_only(self.conversation, self.scope), self.contextual_knowledge
-    )
-
-    async for next_step in next_steps:
-      if next_step is None:
-        break
-      plan_completed = False
-      if next_step.phase == Phase.PLANNING:
-        await self.agent.remember(self.scope, self.conversation, next_step)
-      if self.stream:
-        yield await self.streaming_response.make_snippet(next_step)
-      else:
-        self.whole_response.messages.append(next_step)
-
-    if plan_completed:
-      # We executed the whole plan
-      self.state = AgentState.FINISHED
-    else:
-      # The model will execute the next plan step
-      self.state = AgentState.MODEL_CALLING
 
   async def _handle_model_calling_state(self):
     """Handle the MODEL_CALLING state: Call the model to generate a response."""
@@ -294,12 +239,9 @@ class AgentStateMachine:
           if self.state == AgentState.TOOL_CALLING:
             logger.debug("Transitioning to TOOL_CALLING")
             return
-          elif self.agent.planner is None:
-            logger.debug("Transitioning to FINISHED (no planner)")
-            self.state = AgentState.FINISHED
           else:
-            logger.debug("Transitioning to PLANNING")
-            self.state = AgentState.PLANNING
+            logger.debug("Transitioning to FINISHED")
+            self.state = AgentState.FINISHED
           return
         else:
           # Intermediate streaming chunk
@@ -351,10 +293,7 @@ class AgentStateMachine:
 
       # Force state transition
       if self.state == AgentState.MODEL_CALLING:
-        if self.agent.planner is None:
-          self.state = AgentState.FINISHED
-        else:
-          self.state = AgentState.PLANNING
+        self.state = AgentState.FINISHED
 
     # Final safety check
     if self.state == AgentState.MODEL_CALLING:
@@ -399,14 +338,10 @@ class AgentStateMachine:
       yield self.whole_response
 
   async def initialize_plan(self, messages):
-    """Initialize the plan if a planner is available and remember messages."""
+    """Remember input messages."""
 
-    if self.agent.planner is None:
-      for message in messages:
-        await self.agent.remember(self.scope, self.conversation, message)
-    else:
-      # When a planner is provided, the input messages will be handled solely by the planner
-      self.plan = await self.agent.planner.plan(messages, self.contextual_knowledge, self.stream)
+    for message in messages:
+      await self.agent.remember(self.scope, self.conversation, message)
 
   async def run(self):
     """Run the state machine until completion."""
@@ -434,7 +369,7 @@ class AgentStateMachine:
     elapsed_time = time.time() - self.start_time
     logger.info(
       f"State machine completed: {self.total_transitions} total transitions "
-      f"(planning: {self.planning_transitions}, tool_calling: {self.tool_calling_transitions}) "
+      f"(tool_calling: {self.tool_calling_transitions}) "
       f"in {elapsed_time:.1f}s"
     )
 
@@ -453,12 +388,10 @@ class Agent:
     memory_embeddings_model: Optional[Model],
     tool_specs: List[dict],
     tools: Dict[str, InvokableTool],
-    planner: Optional[Planner],
     memory: Memory,
     knowledge: KnowledgeProvider,
     maximum_iterations: int,
     max_total_transitions: int = 500,
-    max_planning_transitions: int = 50,
     max_tool_calling_transitions: int = 100,
     max_execution_time: float = 300.0,
   ):
@@ -478,12 +411,10 @@ class Agent:
     self.memory = memory
     memory.set_instructions(system_message(instructions))
 
-    self.planner = planner
     self.maximum_iterations = maximum_iterations
 
     # Enhanced loop protection settings
     self.max_total_transitions = max_total_transitions
-    self.max_planning_transitions = max_planning_transitions
     self.max_tool_calling_transitions = max_tool_calling_transitions
     self.max_execution_time = max_execution_time
 
@@ -881,11 +812,9 @@ class Agent:
     memory_model: Optional[Model] = None,
     memory_embeddings_model: Optional[Model] = None,
     tools: Optional[List[InvokableTool]] = None,
-    planner: Optional[Planner] = None,
     knowledge: Optional[KnowledgeProvider] = None,
     max_iterations: int = 14,
     max_total_transitions: int = 500,
-    max_planning_transitions: int = 50,
     max_tool_calling_transitions: int = 100,
     max_execution_time: float = 300.0,
     exposed_as: Optional[str] = None,
@@ -911,11 +840,9 @@ class Agent:
       memory_model,
       memory_embeddings_model,
       tools,
-      planner,
       knowledge,
       max_iterations,
       max_total_transitions,
-      max_planning_transitions,
       max_tool_calling_transitions,
       max_execution_time,
       exposed_as,
@@ -935,11 +862,9 @@ class Agent:
     memory_model: Optional[Model] = None,
     memory_embeddings_model: Optional[Model] = None,
     tools: Optional[List[InvokableTool]] = None,
-    planner: Optional[Planner] = None,
     knowledge: Optional[KnowledgeProvider] = None,
     max_iterations: int = 14,
     max_total_transitions: int = 500,
-    max_planning_transitions: int = 50,
     max_tool_calling_transitions: int = 100,
     max_execution_time: float = 300.0,
   ):
@@ -962,11 +887,9 @@ class Agent:
         memory_model,
         memory_embeddings_model,
         tools,
-        copy.deepcopy(planner),
         copy.deepcopy(knowledge),
         max_iterations,
         max_total_transitions,
-        max_planning_transitions,
         max_tool_calling_transitions,
         max_execution_time,
         None,
@@ -984,11 +907,9 @@ class Agent:
     memory_model: Optional[Model],
     memory_embeddings_model: Optional[Model],
     tools: Optional[List[InvokableTool]],
-    planner: Optional[Planner],
     knowledge: KnowledgeProvider,
     max_iterations: int,
     max_total_transitions: int,
-    max_planning_transitions: int,
     max_tool_calling_transitions: int,
     max_execution_time: float,
     exposed_as: Optional[str],
@@ -1019,12 +940,10 @@ class Agent:
         memory_embeddings_model=memory_embeddings_model,
         tool_specs=tool_specs,
         tools=tools_dict,
-        planner=planner,
         memory=memory,
         knowledge=knowledge,
         maximum_iterations=max_iterations,
         max_total_transitions=max_total_transitions,
-        max_planning_transitions=max_planning_transitions,
         max_tool_calling_transitions=max_tool_calling_transitions,
         max_execution_time=max_execution_time,
       )
