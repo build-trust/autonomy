@@ -1,6 +1,6 @@
 from .agent import Agent, ConversationResponse
 from .repl import Repl
-from .http import HttpServer, NodeDep
+from .http import HttpServer, NodeDep, WebSocketNodeDep
 
 from ..nodes.message import AgentReference
 
@@ -11,4 +11,5 @@ __all__ = [
   "Repl",
   "HttpServer",
   "NodeDep",
+  "WebSocketNodeDep",
 ]

@@ -23,6 +23,7 @@ dependencies = [
   "psycopg[binary]>=3.2.9",
   "pylint",
   "uvicorn>=0.24.0",
+  "websockets>=13.0",
   "pypdfium2>=4.30",
   "filetype>=1.2.0",
 ]

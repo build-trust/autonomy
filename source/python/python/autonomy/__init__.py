@@ -1,4 +1,4 @@
-from .agents import Agent, AgentReference, HttpServer, NodeDep, Repl, ConversationResponse
+from .agents import Agent, AgentReference, HttpServer, NodeDep, WebSocketNodeDep, Repl, ConversationResponse
 from .evals import Eval, Metric, TestCase, TestOk, TestError
 from .logs import (
   info,
@@ -80,6 +80,7 @@ __all__ = [
   "AgentReference",
   "HttpServer",
   "NodeDep",
+  "WebSocketNodeDep",
   "Repl",
   "ConversationResponse",
   # from .autonomy_in_rust_for_python
