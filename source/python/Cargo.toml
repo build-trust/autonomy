@@ -12,7 +12,7 @@ doc = false
 [dependencies]
 miette = "7.5.0"
 ockam = { git = "https://github.com/build-trust/ockam.git", version = "^0.157.0" }
-ockam_api = { git = "https://github.com/build-trust/ockam.git", version = "^0.100.0" }
+ockam_api = { git = "https://github.com/build-trust/ockam.git", version = "^0.100.0", default-features = false, features = ["std", "rust-crypto"]}
 once_cell = "1.21.3"
 pyo3 = { version = "0.24.1", features = ["abi3-py312", "experimental-async"] }
 pyo3-async-runtimes = { git = "https://github.com/davide-baldo/pyo3-async-runtimes.git", branch = "davide-baldo/avoid-gil-in-async-threads", features = [
