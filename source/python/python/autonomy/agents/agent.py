@@ -144,10 +144,7 @@ class AgentStateMachine:
       return
 
     # Log transition for debugging
-    logger.debug(
-      f"State transition: {self.state.name} "
-      f"(iteration: {self.iteration}, elapsed: {elapsed_time:.1f}s)"
-    )
+    logger.debug(f"State transition: {self.state.name} (iteration: {self.iteration}, elapsed: {elapsed_time:.1f}s)")
 
     match self.state:
       case AgentState.READY:
@@ -337,10 +334,7 @@ class AgentStateMachine:
 
     # Log final statistics
     elapsed_time = time.time() - self.start_time
-    logger.info(
-      f"State machine completed: {self.iteration} iterations "
-      f"in {elapsed_time:.1f}s"
-    )
+    logger.info(f"State machine completed: {self.iteration} iterations in {elapsed_time:.1f}s")
 
 
 class Agent:
@@ -360,7 +354,7 @@ class Agent:
     memory: Memory,
     knowledge: KnowledgeProvider,
     max_iterations: int = 1000,
-    max_execution_time: float = 600.0, # 10 minutes
+    max_execution_time: float = 600.0,  # 10 minutes
   ):
     logger.info(f"Starting agent '{name}'")
     self.node = node
