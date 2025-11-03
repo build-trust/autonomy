@@ -27,7 +27,6 @@ from .nodes.remote import RemoteNode, NodeController, NodeRequest, NodeResponse
 from .flows import Flow, FlowOperation, START, END
 from .clusters import Cluster, Zone
 from .memory import Memory
-from .squads import Squad
 from .tools import McpTool, Tool
 from .gather import gather
 from .knowledge import (
@@ -128,8 +127,6 @@ __all__ = [
   "Zone",
   # from .memory
   "Memory",
-  # from .squads
-  "Squad",
   # from .tools
   "McpTool",
   "Tool",
