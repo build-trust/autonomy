@@ -8,3 +8,4 @@ pods:
     portals:
       outlets:
         - to: localhost:7000
+          inlet_from: localhost:32102
