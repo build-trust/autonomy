@@ -28,7 +28,6 @@ from .flows import Flow, FlowOperation, START, END
 from .clusters import Cluster, Zone
 from .memory import Memory
 from .tools import McpTool, Tool
-from .gather import gather
 from .knowledge import (
   Knowledge,
   KnowledgeProvider,
@@ -130,8 +129,6 @@ __all__ = [
   # from .tools
   "McpTool",
   "Tool",
-  # from .gather
-  "gather",
   # from .knowledge
   "Knowledge",
   "KnowledgeProvider",
