@@ -65,7 +65,6 @@ class TestAgentCore:
       tools=[Tool(simple_test_tool)],
       knowledge=NoopKnowledge(),
       max_iterations=5,
-      max_total_transitions=100,
       max_execution_time=60.0,
     )
 
@@ -242,7 +241,6 @@ class TestAgentCore:
       instructions="Agent with iteration limits",
       model=model,
       max_iterations=3,
-      max_total_transitions=10,
     )
 
     # Test that agent respects limits
@@ -1136,7 +1134,6 @@ class TestAgentConfiguration:
       instructions="Agent with limits",
       model=model,
       max_iterations=3,
-      max_total_transitions=50,
       max_execution_time=30.0,
     )
 
@@ -1152,7 +1149,6 @@ class TestAgentConfiguration:
         instructions="Agent with restrictive limits",
         model=model,
         max_iterations=2,  # Slightly less restrictive
-        max_total_transitions=10,  # Allow more transitions
         max_execution_time=10.0,
       )
 
@@ -1161,7 +1157,7 @@ class TestAgentConfiguration:
       assert response[-1].role == ConversationRole.ASSISTANT
     except Exception as e:
       # Very restrictive limits may cause the agent to hit limits
-      assert "maximum_iterations" in str(e) or "transitions" in str(e)
+      assert "max_iterations" in str(e) or "execution time" in str(e).lower()
 
   def test_agent_instruction_variations(self):
     """Test agent with different instruction formats"""
@@ -1258,7 +1254,6 @@ class TestAgentConfiguration:
         instructions="Edge case testing",
         model=model,
         max_iterations=2,  # Slightly higher to avoid immediate failure
-        max_total_transitions=5,
         max_execution_time=5.0,
       )
 
@@ -1266,7 +1261,7 @@ class TestAgentConfiguration:
       assert len(response) >= 1
     except Exception as e:
       # Very low limits may cause the agent to hit limits
-      assert "maximum_iterations" in str(e) or "transitions" in str(e)
+      assert "max_iterations" in str(e) or "execution time" in str(e).lower()
 
     # Test with very high limits
     high_limit_agent = await Agent.start(
@@ -1275,7 +1270,6 @@ class TestAgentConfiguration:
       instructions="High limit testing",
       model=model,
       max_iterations=1000,
-      max_total_transitions=10000,
       max_execution_time=3600.0,
     )
 
@@ -1334,7 +1328,6 @@ class TestAgentConfiguration:
       instructions="Parameter type testing",
       model=model,
       max_iterations=int(5),
-      max_total_transitions=int(100),
       max_execution_time=float(30.0),
     )
 
@@ -2222,7 +2215,7 @@ class TestAgentState:
 
   def test_agent_state_enum(self):
     """Test that AgentState enum has expected values"""
-    expected_states = ["INIT", "MODEL_CALLING", "TOOL_CALLING", "FINISHED"]
+    expected_states = ["READY", "THINKING", "ACTING", "DONE"]
 
     for state_name in expected_states:
       assert hasattr(AgentState, state_name)
@@ -2231,13 +2224,13 @@ class TestAgentState:
 
   def test_agent_state_transitions(self):
     """Test valid state transitions"""
-    # Test typical flow: INIT -> MODEL_CALLING -> TOOL_CALLING -> FINISHED
-    assert AgentState.INIT != AgentState.MODEL_CALLING
-    assert AgentState.MODEL_CALLING != AgentState.TOOL_CALLING
-    assert AgentState.TOOL_CALLING != AgentState.FINISHED
+    # Test typical flow: READY -> THINKING -> ACTING -> DONE
+    assert AgentState.READY != AgentState.THINKING
+    assert AgentState.THINKING != AgentState.ACTING
+    assert AgentState.ACTING != AgentState.DONE
 
     # All states should be distinct
-    states = [AgentState.INIT, AgentState.MODEL_CALLING, AgentState.TOOL_CALLING, AgentState.FINISHED]
+    states = [AgentState.READY, AgentState.THINKING, AgentState.ACTING, AgentState.DONE]
     assert len(set(states)) == len(states)
 
 
@@ -2251,9 +2244,7 @@ class TestAgentStateMachine:
     agent.model = MockModel()
     agent.planner = None
     agent.tools = {}
-    agent.maximum_iterations = 10
-    agent.max_total_transitions = 100
-    agent.max_tool_calling_transitions = 30
+    agent.max_iterations = 10
     agent.max_execution_time = 300.0
     agent.complete_chat = AsyncMock()
     agent.call_tool = AsyncMock(return_value="tool result")
@@ -2285,10 +2276,8 @@ class TestAgentStateMachine:
 
     assert sm.agent == mock_agent
     assert sm.scope == query
-    assert sm.state == AgentState.INIT
+    assert sm.state == AgentState.READY
     assert sm.iteration == 0
-    assert sm.total_transitions == 0
-    assert sm.tool_calling_transitions == 0
     assert sm.start_time is not None
 
   @pytest.mark.asyncio
@@ -2303,7 +2292,7 @@ class TestAgentStateMachine:
     mock_response.tool_calls = []  # No tool calls
     mock_response.content = Mock(text="Simple response")
 
-    state_machine.state = AgentState.MODEL_CALLING
+    state_machine.state = AgentState.THINKING
 
     # Mock the complete_chat method to return an async generator
     async def mock_complete_chat(*args, **kwargs):
@@ -2313,11 +2302,11 @@ class TestAgentStateMachine:
 
     # Collect results from async generator
     results = []
-    async for result in state_machine._handle_model_calling_state():
+    async for result in state_machine._handle_thinking_state():
       results.append(result)
 
-    # Should transition to FINISHED when no planner and no tool calls
-    assert state_machine.state == AgentState.FINISHED
+    # Should transition to DONE when no planner and no tool calls
+    assert state_machine.state == AgentState.DONE
     # Should have incremented iteration
     assert state_machine.iteration > 0
 
@@ -2339,36 +2328,36 @@ class TestAgentStateMachine:
     mock_agent.call_tool = AsyncMock(return_value=(None, mock_tool_response))
     mock_agent.tools = {"test_tool": Mock()}
 
-    state_machine.state = AgentState.TOOL_CALLING
+    state_machine.state = AgentState.ACTING
     state_machine.tool_calls = [mock_tool_call]
     state_machine.stream = False  # Non-streaming mode to avoid streaming_response calls
 
     # Collect results from async generator
     results = []
-    async for result in state_machine._handle_tool_calling_state():
+    async for result in state_machine._handle_acting_state():
       results.append(result)
 
     assert mock_agent.call_tool.called
-    # Should transition back to MODEL_CALLING after processing tools
-    assert state_machine.state == AgentState.MODEL_CALLING
+    # Should transition back to THINKING after processing tools
+    assert state_machine.state == AgentState.THINKING
 
   @pytest.mark.asyncio
   async def test_state_machine_finished_state(self, state_machine, mock_agent):
-    """Test state machine behavior in FINISHED state"""
-    state_machine.state = AgentState.FINISHED
+    """Test state machine behavior in DONE state"""
+    state_machine.state = AgentState.DONE
     state_machine.stream = False  # Non-streaming mode
 
     # Collect results from async generator
     results = []
-    async for result in state_machine._handle_finished_state():
+    async for result in state_machine._handle_done_state():
       results.append(result)
 
     # Should yield the whole response for non-streaming
     assert len(results) >= 1
 
   @pytest.mark.asyncio
-  async def test_state_machine_transition_counting(self, state_machine, mock_agent):
-    """Test that state transitions are properly counted"""
+  async def test_state_machine_iteration_counting(self, state_machine, mock_agent):
+    """Test that iterations are properly counted"""
     # Mock required methods to avoid warnings
     mock_agent.remember = AsyncMock()
     mock_agent.planner = None
@@ -2383,58 +2372,31 @@ class TestAgentStateMachine:
 
     mock_agent.complete_chat = mock_complete_chat
 
-    initial_total_count = state_machine.total_transitions
+    initial_iteration = state_machine.iteration
 
-    # Execute a transition
-    state_machine.state = AgentState.MODEL_CALLING
+    # Execute a thinking state transition (which increments iteration)
+    state_machine.state = AgentState.THINKING
 
-    # Collect results - should increment counter
+    # Collect results - should increment iteration counter
     results = []
-    async for result in state_machine.transition():
+    async for result in state_machine._handle_thinking_state():
       results.append(result)
-      break  # Just test one transition
+      break  # Just test one iteration
 
-    assert state_machine.total_transitions > initial_total_count
+    assert state_machine.iteration > initial_iteration
 
-  @pytest.mark.asyncio
-  async def test_state_machine_max_transitions_limit(self, state_machine, mock_agent):
-    """Test overall transition limits"""
-    # Set transition count to exceed limit
-    state_machine.total_transitions = state_machine.max_total_transitions + 1
-    state_machine.state = AgentState.MODEL_CALLING
+  # REMOVED: Test for max_total_transitions (no longer exists after refactoring)
+  # This limit has been consolidated into max_iterations
 
-    # Should get error due to limit
-    results = []
-    async for result in state_machine.transition():
-      results.append(result)
-      break  # Get first result which should be an error
-
-    # Should have received an error about exceeding transitions
-    assert len(results) > 0
-
-  @pytest.mark.asyncio
-  async def test_state_machine_tool_calling_transition_limit(self, state_machine, mock_agent):
-    """Test tool calling-specific transition limits"""
-    state_machine.max_tool_calling_transitions = 1
-    state_machine.tool_calling_transitions = state_machine.max_tool_calling_transitions + 1
-    state_machine.state = AgentState.TOOL_CALLING
-    state_machine.tool_calls = []  # Empty tool calls to avoid processing
-
-    # Should get error due to tool calling limit
-    results = []
-    async for result in state_machine._handle_tool_calling_state():
-      results.append(result)
-      break  # Get first result which should be an error
-
-    # Should have received an error
-    assert len(results) > 0
+  # REMOVED: Test for max_tool_calling_transitions (no longer exists after refactoring)
+  # This limit has been consolidated into max_iterations
 
   @pytest.mark.asyncio
   async def test_state_machine_execution_time_limit(self, state_machine, mock_agent):
     """Test execution time limits"""
     state_machine.max_execution_time = 0.001
     state_machine.start_time = time.time() - 0.005  # Set start time in past
-    state_machine.state = AgentState.MODEL_CALLING
+    state_machine.state = AgentState.THINKING
 
     # Should get error due to time limit
     results = []
@@ -2448,9 +2410,9 @@ class TestAgentStateMachine:
   @pytest.mark.asyncio
   async def test_state_machine_iteration_limit(self, state_machine, mock_agent):
     """Test iteration limits"""
-    mock_agent.maximum_iterations = 1
+    mock_agent.max_iterations = 1
     state_machine.iteration = 0  # Start at 0, will increment to 1 which equals limit
-    state_machine.state = AgentState.MODEL_CALLING
+    state_machine.state = AgentState.THINKING
     mock_agent.remember = AsyncMock()
 
     # Mock complete_chat - this shouldn't be called due to iteration limit
@@ -2461,14 +2423,14 @@ class TestAgentStateMachine:
 
     # Should get error due to iteration limit
     results = []
-    async for result in state_machine._handle_model_calling_state():
+    async for result in state_machine._handle_thinking_state():
       results.append(result)
       # Don't break - let it complete to ensure state changes
 
     # Should have received an error and transitioned to FINISHED
     assert len(results) > 0
-    # The state should be FINISHED after hitting iteration limit
-    assert state_machine.state == AgentState.FINISHED
+    # The state should be DONE after hitting iteration limit
+    assert state_machine.state == AgentState.DONE
 
   @pytest.mark.asyncio
   async def test_state_machine_complete_workflow(self, mock_agent):
@@ -2586,18 +2548,18 @@ class TestAgentStateMachine:
       yield  # unreachable
 
     mock_agent.complete_chat = failing_complete_chat
-    sm.state = AgentState.MODEL_CALLING
+    sm.state = AgentState.THINKING
 
     # Should handle error gracefully
     # Should get error due to exception
     results = []
-    async for result in sm._handle_model_calling_state():
+    async for result in sm._handle_thinking_state():
       results.append(result)
       # Don't break - let it complete to ensure state changes
 
-    # Should have received an error and be in FINISHED state
+    # Should have received an error and be in DONE state
     assert len(results) > 0
-    assert sm.state == AgentState.FINISHED
+    assert sm.state == AgentState.DONE
 
   @pytest.mark.asyncio
   async def test_state_machine_preserves_message_order(self, mock_agent):
@@ -2636,8 +2598,8 @@ class TestAgentStateMachine:
 
     # Should have received some messages and completed successfully
     assert len(messages) > 0
-    # Should have transitioned to FINISHED
-    assert sm.state == AgentState.FINISHED
+    # Should have transitioned to DONE
+    assert sm.state == AgentState.DONE
 
 
 import pytest
@@ -3680,7 +3642,6 @@ class TestEnhancedAgentSuite:
       instructions="Operate within strict performance limits",
       model=model,
       max_iterations=2,
-      max_total_transitions=10,
       max_execution_time=30.0,
     )
 
@@ -4549,17 +4510,17 @@ class TestSystemCore:
       """Mock state machine with loop protection"""
 
       def __init__(self, max_transitions=10):
-        self.total_transitions = 0
+        self.transition_count = 0
         self.max_transitions = max_transitions
         self.state = "RUNNING"
 
       def attempt_transition(self):
         """Attempt a state transition"""
-        if self.total_transitions >= self.max_transitions:
+        if self.transition_count >= self.max_transitions:
           self.state = "STOPPED"
           return False  # Transition blocked
 
-        self.total_transitions += 1
+        self.transition_count += 1
         return True  # Transition allowed
 
     machine = MockStateMachine(max_transitions=10)
@@ -5046,7 +5007,6 @@ class TestWorkingAgentSuite:
       instructions="Agent with custom limits",
       model=model,
       max_iterations=5,
-      max_total_transitions=100,
       max_execution_time=60.0,
     )
 
