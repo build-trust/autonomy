@@ -139,8 +139,6 @@ class TestAgentCore:
     assert len(response3) >= 1
     assert "Third response" in response3[-1].content.text
 
-
-
   def test_agent_conversations_tracking(self):
     """Test agent conversation tracking"""
     Node.start(
@@ -451,9 +449,6 @@ def weather_tool(argument: str):
   return "sunny"
 
 
-
-
-
 import pytest
 from typing import List
 
@@ -638,9 +633,7 @@ class TestAgentCommunication:
   async def _test_message_phases(self, node):
     model = create_simple_mock_model("Executing the plan now")
 
-    agent = await Agent.start(
-      node=node, name="phases-agent", instructions="Solve complex problems", model=model
-    )
+    agent = await Agent.start(node=node, name="phases-agent", instructions="Solve complex problems", model=model)
 
     response = await agent.send("Solve this complex problem")
     assert len(response) >= 1
@@ -1057,8 +1050,6 @@ class TestAgentConfiguration:
       # InMemory knowledge provider may have compatibility issues
       # Test that we can at least create the agent
       pass
-
-
 
   def test_agent_tool_configurations(self):
     """Test agent tool configuration options"""
@@ -3621,8 +3612,6 @@ class TestEnhancedAgentSuite:
     # Tool should have returned an error
     tool_response = tool_response_messages[0].content.text
     assert "error" in tool_response.lower() or "test error" in tool_response.lower()
-
-
 
   def test_agent_performance_limits(self):
     """Test agent performance limits and timeout handling"""

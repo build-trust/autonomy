@@ -195,7 +195,6 @@ ConversationMessage = Union[UserMessage, SystemMessage, AssistantMessage, ToolCa
 class ReferenceType(Enum):
   AGENT = "agent"
   FLOW = "flow"
-  SQUAD = "squad"
 
 
 @dataclass
@@ -502,16 +501,6 @@ class FlowReference(Reference):
     super().__init__(name, node, ReferenceType.FLOW)
 
 
-@dataclass
-class SquadReference(Reference):
-  def __init__(
-    self,
-    name: str,
-    node: Node,
-  ):
-    super().__init__(name, node, ReferenceType.SQUAD)
-
-
 CACHE = None
 
 
@@ -541,7 +530,6 @@ class MessageConverter:
 
     self.converter.register_unstructure_hook(AgentReference, unstructure_reference)
     self.converter.register_unstructure_hook(FlowReference, unstructure_reference)
-    self.converter.register_unstructure_hook(SquadReference, unstructure_reference)
 
     @self.converter.register_structure_hook
     def structure_reference(obj: dict, cls) -> Reference:
@@ -551,7 +539,6 @@ class MessageConverter:
       mapping = {
         "agent": AgentReference,
         "flow": FlowReference,
-        "squad": SquadReference,
       }
       reference_cls = mapping.get(typ)
       if reference_cls is None:

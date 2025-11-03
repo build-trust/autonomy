@@ -10,7 +10,6 @@ from autonomy.memory.memory import Memory
 from autonomy.knowledge import KnowledgeProvider
 
 
-
 class TestToolCallIdBugFixSummary:
   """
   Summary test that demonstrates the tool call ID cleanup bug was fixed.
@@ -42,7 +41,7 @@ class TestToolCallIdBugFixSummary:
       tools={},
       memory=memory,
       knowledge=knowledge,
-      maximum_iterations=10,
+      max_iterations=10,
     )
     return agent
 
@@ -380,7 +379,7 @@ class TestToolCallIdFixIntegration:
       tools={},
       memory=memory,
       knowledge=knowledge,
-      maximum_iterations=50,
+      max_iterations=50,
     )
     return agent
 
@@ -647,7 +646,7 @@ class TestToolCallIdBug:
       tools={},
       memory=memory,
       knowledge=knowledge,
-      maximum_iterations=10,
+      max_iterations=10,
     )
 
     return agent
@@ -894,7 +893,7 @@ class TestToolCallIdBugSimple:
       tools={},
       memory=memory,
       knowledge=knowledge,
-      maximum_iterations=10,
+      max_iterations=10,
     )
 
     return agent
@@ -1091,7 +1090,7 @@ class TestToolCallIdConceptualBug:
       tools={},
       memory=memory,
       knowledge=knowledge,
-      maximum_iterations=10,
+      max_iterations=10,
     )
     return agent
 
@@ -1282,7 +1281,7 @@ class TestToolCallIdFix:
       tools={},
       memory=memory,
       knowledge=knowledge,
-      maximum_iterations=10,
+      max_iterations=10,
     )
     return agent
 
