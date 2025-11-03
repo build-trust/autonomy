@@ -1,39 +1,57 @@
 ---
 title: "Pricing"
 icon: "tag"
-description: "Pay for only what you use."
+description: "Autonomy's pricing is simple and you'll only pay for what you use."
+mode: "wide"
 ---
 
-## It's free to get started.
+## Free trial
 
-We will give you \$50 of credit to use over your first 14 days. This should be more than enough for you to kick the tires, build some basic agents, and experience the magic of Autonomy.
+We will give you \$50 of credit to use over your first 14 days. This should be more than enough for you to kick the tires and experience the magic of Autonomy.
 
-## **Consumption Based Pricing**
+## Base Bundle
 
-We will only charge you for your consumption of the underlying infrastructure cost that you incur. These charges include the compute, network, storage, and LLM inference services that your product or application utilizes. 
+\$75 per month, includes
 
-### Compute:
+- 1 Seat licence
+- 720`Regular`compute container hours
+- 100 GBs of data transfer
+- 1 GB of Storage
+- _Note:_ All LLM useage is ala cart - see the table below.
 
-`Regular`: \$25/mo - Capacity for _thousands_ of concurrent agents and MCP servers\
-`Big`: \$250/mo - Capacity for _millions_ of concurrent agents and MCP servers
+## **Ala cart items**
 
-### Network:
+We will only charge you for your consumption of the underlying infrastructure cost that you incur. These charges include the additional compute, network, storage, LLM inference services that your product or application utilizes beyond the **Base Bundle**.
 
-Egress: \$0.10 / GB
+- **Compute:**
+  - `Regular`**:** \$25 per month per containter - Each has the capacity to run _thousands_ of concurrent agents, tools, or an MCP server. Measured per minute, rounded up to the nearest minute.
+  - `Big`**:** \$250 per month per container - When you need to run _millions_ of concurrent agents, tools, or an MCP server, add a`Big`containter to run agents with absurd cost efficiency.
+- **Network:**
+  - Public Endpoints
+    - \$0.10 / GB
+  - Private Links
+    - \$10 per service per month, plus \$0.10 / GB
+- **Storage:**
+  - \$1 / GB / month
+- **Seat Licenses:**
+  - \$25pp / month
+- **LLM Models:**
 
-### Storage:
+| Provider       | Model              | Price per 1,000 input tokens | Price per 1,000 output tokens | Ideal use case                                                                                                                          |
+| -------------- | ------------------ | ---------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Amazon**     | Titan Text Express | \$0.0008                     | \$0.0016                      | General-purpose text generation and agent workflows; good balance of cost vs performance.                                               |
+| **Amazon**     | Titan Text Lite    | \$0.0003                     | \$0.0004                      | Cost-sensitive tasks, simpler assistants, or high-volume scenarios where latency and price matter.                                      |
+| **Amazon**     | Nova Pro           | \$0.0008                     | \$0.0032                      | Higher-capability, long-context, and multimodal agent use cases where reasoning depth and quality matter.                               |
+| **Meta**       | Llama 2 Chat (13B) | \$0.00075                    | \$0.001                       | Efficient conversational agents and chatbots; cost-effective for general reasoning.                                                     |
+| **Meta**       | Llama 2 Chat (70B) | \$0.00195                    | \$0.00256                     | More complex generation or richer conversational context; advanced agent workflows.                                                     |
+| **Writer**     | Palmyra X5         | \$0.0006                     | \$0.006                       | High-throughput content generation; ideal for marketing, summarization, or bulk output where cost efficiency matters.                   |
+| **Writer**     | Palmyra X4         | \$0.0025                     | \$0.010                       | Premium content generation tasks requiring greater style, nuance and output refinement.                                                 |
+| **Anthropic**  | Claude 3 Haiku     | \$0.00025                    | \$0.00125                     | Complex reasoning, retrieval-augmented generation and multi-step agent planning where accuracy and depth matter.                        |
+| **OpenAI**     | gpt-oss-20B        | \$0.00007                    | \$0.0003                      | Lightweight open-weight model with 128K context window; suitable for specialized, cost-conscious agent workflows.                       |
+| **OpenAI**     | gpt-oss-120B       | \$0.00015                    | \$0.0006                      | Larger open-weight model with 128K context window; suited for high-reasoning, tool-enabled agents in production.                        |
+| **Mistral AI** | Mistral 7B         | \$0.00015                    | \$0.00020                     | Ultra-low-cost model; excellent for embedding, simpler assistants or as part of a larger agent-pipeline where many “cheap” tasks exist. |
 
-\$1 / GB / month
-
-### LLM Models:
-
-Refer to the [AWS Bedrock pricing page.](https://aws.amazon.com/bedrock/pricing/) This link not only has the raw price per 1,000 input tokens, but also several examples that help you understand how many tokens it might take to get a job done.
-
-## Oversharing?
-
-Autonomy, simply, passes along our AWS infrastructure costs to you. Yes, that's right...we said the quiet part outloud: there is (currently) zero gross margin in our pricing model. It’s impossible for you to ‘run it yourself’ and save on cloud infrastructure costs.
-
-How can this be?! Aren’t we a business that needs to make money? Yes we need to make money eventually, but not right now. We have a product roadmap full of features that will be packaged and priced in a way that keeps the business running, and growing.
+---
 
 ## Use Autonomy with care. It’s powerful!
 
