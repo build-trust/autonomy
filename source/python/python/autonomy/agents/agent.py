@@ -45,36 +45,36 @@ class AgentState(Enum):
   """
   States for the agent conversation state machine.
 
-  - INIT: Initial state where we set up the conversation
-  - MODEL_CALLING: Call the model to generate a response
-  - TOOL_CALLING: Execute tool calls from the model response
-  - FINISHED: End of the conversation
+  - READY: Initial state where we set up the conversation
+  - THINKING: Call the model to generate a response
+  - ACTING: Execute tool calls from the model response
+  - DONE: End of the conversation
   """
 
-  INIT = "init"
-  MODEL_CALLING = "model_calling"
-  TOOL_CALLING = "tool_calling"
-  FINISHED = "finished"
+  READY = "ready"
+  THINKING = "thinking"
+  ACTING = "acting"
+  DONE = "done"
 
 
 #     ┌─────────┐
 #     │         │
-#     │  INIT   │
+#     │  READY  │
 #     │         │
 #     └───┬─────┘
 #         │
 #         ▼
 #     ┌──────────┐
 #     │          │
-#     │  MODEL   │◀─────┐
-#     │ CALLING  │      │
+#     │ THINKING │◀─────┐
+#     │          │      │
 #     └┬────┬────┘      │
 #      │    │           │
 #      │    ▼           │
 #      │  ┌────────┐    │
 #      │  │        │    │
-#      │  │  TOOL  │────┘
-#      │  │CALLING │
+#      │  │ ACTING │────┘
+#      │  │        │
 #      │  └────────┘
 #      │
 #      │ [response complete && no tool calls]
@@ -83,21 +83,21 @@ class AgentState(Enum):
 #      ▼
 #  ┌─────────┐
 #  │         │
-#  │FINISHED │
+#  │  DONE   │
 #  │         │
 #  └─────────┘
 #
 # State Transition Conditions:
 #
-# INIT transitions:
-# - → MODEL_CALLING: [always]
+# READY transitions:
+# - → THINKING: [always]
 #
-# MODEL_CALLING transitions:
-# - → TOOL_CALLING: [response contains tool calls]
-# - → FINISHED: [response complete && no tool calls] OR [error conditions] OR [max iterations reached]
+# THINKING transitions:
+# - → ACTING: [response contains tool calls]
+# - → DONE: [response complete && no tool calls] OR [error conditions] OR [max iterations reached]
 #
-# TOOL_CALLING transitions:
-# - → MODEL_CALLING: [after processing all tool calls] OR [error conditions] OR [max tool calling transitions]
+# ACTING transitions:
+# - → THINKING: [after processing all tool calls] OR [error conditions] OR [max tool calling transitions]
 #
 # Error conditions include: model completion errors, timeout exceeded, transition limits exceeded
 #
@@ -120,68 +120,52 @@ class AgentStateMachine:
     self.stream = stream
     self.streaming_response = response
     self.contextual_knowledge = contextual_knowledge
-    self.state = AgentState.INIT
+    self.state = AgentState.READY
     self.iteration = 0
     self.tool_calls = []
     self.whole_response = ConversationSnippet(scope, conversation, [])
     self.final_content_sent = False
 
-    # Enhanced loop protection
-    self.total_transitions = 0
-    self.tool_calling_transitions = 0
+    # Execution time tracking for safety backstop
     self.start_time = time.time()
-
-    # Configurable limits with sensible defaults
-    self.max_total_transitions = getattr(agent, "max_total_transitions", 500)
-    self.max_tool_calling_transitions = getattr(agent, "max_tool_calling_transitions", 100)
-    self.max_execution_time = getattr(agent, "max_execution_time", 300.0)  # 5 minutes
+    self.max_execution_time = agent.max_execution_time
 
   async def transition(self):
     """Execute the current state and determine the next state."""
 
-    # Comprehensive loop protection
-    self.total_transitions += 1
+    # Check execution time limit
     current_time = time.time()
     elapsed_time = current_time - self.start_time
 
-    # Check total transition limit
-    if self.total_transitions > self.max_total_transitions:
-      logger.error(f"State machine exceeded maximum total transitions ({self.max_total_transitions})")
-      yield Error(f"Agent exceeded maximum state transitions ({self.max_total_transitions})")
-      self.state = AgentState.FINISHED
-      return
-
-    # Check total execution time limit
     if elapsed_time > self.max_execution_time:
       logger.error(f"State machine exceeded maximum execution time ({self.max_execution_time}s)")
       yield Error(f"Agent exceeded maximum execution time ({self.max_execution_time:.1f}s)")
-      self.state = AgentState.FINISHED
+      self.state = AgentState.DONE
       return
 
     # Log transition for debugging
     logger.debug(
-      f"State transition #{self.total_transitions}: {self.state.name} "
-      f"(tool_calling: {self.tool_calling_transitions}, "
-      f"iteration: {self.iteration}, elapsed: {elapsed_time:.1f}s)"
+      f"State transition: {self.state.name} "
+      f"(iteration: {self.iteration}, elapsed: {elapsed_time:.1f}s)"
     )
 
     match self.state:
-      case AgentState.INIT:
-        self.state = AgentState.MODEL_CALLING
-      case AgentState.MODEL_CALLING:
-        async for result in self._handle_model_calling_state():
+      case AgentState.READY:
+        self.state = AgentState.THINKING
+      case AgentState.THINKING:
+        async for result in self._handle_thinking_state():
           yield result
-      case AgentState.TOOL_CALLING:
-        async for result in self._handle_tool_calling_state():
+      case AgentState.ACTING:
+        async for result in self._handle_acting_state():
           yield result
 
-  async def _handle_model_calling_state(self):
-    """Handle the MODEL_CALLING state: Call the model to generate a response."""
+  async def _handle_thinking_state(self):
+    """Handle the THINKING state: Call the model to generate a response."""
 
     self.iteration += 1
-    if self.iteration >= self.agent.maximum_iterations:
-      yield Error(str(RuntimeError("Reached maximum_iterations")))
-      self.state = AgentState.FINISHED
+    if self.iteration >= self.agent.max_iterations:
+      yield Error(str(RuntimeError("Reached max_iterations")))
+      self.state = AgentState.DONE
       return
 
     self.tool_calls = []
@@ -203,7 +187,7 @@ class AgentStateMachine:
         if err:
           logger.error(f"Model completion error: {err}")
           yield err
-          self.state = AgentState.FINISHED
+          self.state = AgentState.DONE
           return
 
         response_received = True
@@ -218,7 +202,7 @@ class AgentStateMachine:
           else:
             self.whole_response.messages.append(model_response)
           self.tool_calls.extend(model_response.tool_calls)
-          self.state = AgentState.TOOL_CALLING
+          self.state = AgentState.ACTING
           if finished:
             finish_signal_received = True
             return
@@ -236,12 +220,12 @@ class AgentStateMachine:
             self.whole_response.messages.append(model_response)
 
           # Determine next state
-          if self.state == AgentState.TOOL_CALLING:
-            logger.debug("Transitioning to TOOL_CALLING")
+          if self.state == AgentState.ACTING:
+            logger.debug("Transitioning to ACTING")
             return
           else:
-            logger.debug("Transitioning to FINISHED")
-            self.state = AgentState.FINISHED
+            logger.debug("Transitioning to DONE")
+            self.state = AgentState.DONE
           return
         else:
           # Intermediate streaming chunk
@@ -265,7 +249,7 @@ class AgentStateMachine:
     except Exception as e:
       logger.error(f"Exception in model calling: {e}")
       yield Error(f"Model completion failed: {str(e)}")
-      self.state = AgentState.FINISHED
+      self.state = AgentState.DONE
       return
 
     # Post-processing: Handle incomplete streaming
@@ -276,7 +260,7 @@ class AgentStateMachine:
     if not response_received:
       logger.error("No response received from model")
       yield Error("No response received from model")
-      self.state = AgentState.FINISHED
+      self.state = AgentState.DONE
       return
 
     # Handle incomplete streaming (no finish signal received)
@@ -292,25 +276,16 @@ class AgentStateMachine:
         self.final_content_sent = True
 
       # Force state transition
-      if self.state == AgentState.MODEL_CALLING:
-        self.state = AgentState.FINISHED
+      if self.state == AgentState.THINKING:
+        self.state = AgentState.DONE
 
     # Final safety check
-    if self.state == AgentState.MODEL_CALLING:
-      logger.warning(f"Forcing FINISHED state after {chunks_processed} chunks")
-      self.state = AgentState.FINISHED
+    if self.state == AgentState.THINKING:
+      logger.warning(f"Forcing DONE state after {chunks_processed} chunks")
+      self.state = AgentState.DONE
 
-  async def _handle_tool_calling_state(self):
-    """Handle the TOOL_CALLING state: Process tool calls from the model response."""
-
-    # Track tool calling transitions and check limits
-    self.tool_calling_transitions += 1
-
-    if self.tool_calling_transitions > self.max_tool_calling_transitions:
-      logger.error(f"Tool calling exceeded maximum transitions ({self.max_tool_calling_transitions})")
-      yield Error(f"Tool calling phase exceeded maximum transitions ({self.max_tool_calling_transitions})")
-      self.state = AgentState.FINISHED
-      return
+  async def _handle_acting_state(self):
+    """Handle the ACTING state: Execute tool calls from the model response."""
 
     for tool_call in self.tool_calls:
       error, tool_call_response = await self.agent.call_tool(tool_call)
@@ -325,10 +300,10 @@ class AgentStateMachine:
         self.whole_response.messages.append(tool_call_response)
 
     # after processing tool calls, we need another model call
-    self.state = AgentState.MODEL_CALLING
+    self.state = AgentState.THINKING
 
-  async def _handle_finished_state(self):
-    """Handle the FINISHED state: End the conversation and return the final response."""
+  async def _handle_done_state(self):
+    """Handle the DONE state: End the conversation and return the final response."""
 
     if self.stream:
       # Only send finished snippet if we haven't already sent final content
@@ -349,16 +324,11 @@ class AgentStateMachine:
     try:
       # Add overall timeout protection for the entire state machine run
       async with asyncio.timeout(self.max_execution_time):
-        while self.state != AgentState.FINISHED:
-          # Additional safety check to prevent infinite loops
-          if self.total_transitions > self.max_total_transitions:
-            logger.error("State machine hit transition limit in run loop")
-            break
-
+        while self.state != AgentState.DONE:
           async for result in self.transition():
             yield result
 
-        async for result in self._handle_finished_state():
+        async for result in self._handle_done_state():
           yield result
 
     except asyncio.TimeoutError:
@@ -368,8 +338,7 @@ class AgentStateMachine:
     # Log final statistics
     elapsed_time = time.time() - self.start_time
     logger.info(
-      f"State machine completed: {self.total_transitions} total transitions "
-      f"(tool_calling: {self.tool_calling_transitions}) "
+      f"State machine completed: {self.iteration} iterations "
       f"in {elapsed_time:.1f}s"
     )
 
@@ -390,10 +359,8 @@ class Agent:
     tools: Dict[str, InvokableTool],
     memory: Memory,
     knowledge: KnowledgeProvider,
-    maximum_iterations: int,
-    max_total_transitions: int = 500,
-    max_tool_calling_transitions: int = 100,
-    max_execution_time: float = 300.0,
+    max_iterations: int = 1000,
+    max_execution_time: float = 600.0, # 10 minutes
   ):
     logger.info(f"Starting agent '{name}'")
     self.node = node
@@ -411,11 +378,7 @@ class Agent:
     self.memory = memory
     memory.set_instructions(system_message(instructions))
 
-    self.maximum_iterations = maximum_iterations
-
-    # Enhanced loop protection settings
-    self.max_total_transitions = max_total_transitions
-    self.max_tool_calling_transitions = max_tool_calling_transitions
+    self.max_iterations = max_iterations
     self.max_execution_time = max_execution_time
 
     self.knowledge = knowledge
@@ -813,10 +776,8 @@ class Agent:
     memory_embeddings_model: Optional[Model] = None,
     tools: Optional[List[InvokableTool]] = None,
     knowledge: Optional[KnowledgeProvider] = None,
-    max_iterations: int = 14,
-    max_total_transitions: int = 500,
-    max_tool_calling_transitions: int = 100,
-    max_execution_time: float = 300.0,
+    max_iterations: Optional[int] = None,
+    max_execution_time: Optional[float] = None,
     exposed_as: Optional[str] = None,
   ):
     """Start an agent on a node."""
@@ -827,7 +788,7 @@ class Agent:
     validate_address(name)
 
     if model is None:
-      model = Model(name="claude-3-5-sonnet-v2")
+      model = Model(name="claude-sonnet-4-v1")
 
     if knowledge is None:
       knowledge = NoopKnowledge()
@@ -842,8 +803,6 @@ class Agent:
       tools,
       knowledge,
       max_iterations,
-      max_total_transitions,
-      max_tool_calling_transitions,
       max_execution_time,
       exposed_as,
     )
@@ -863,10 +822,8 @@ class Agent:
     memory_embeddings_model: Optional[Model] = None,
     tools: Optional[List[InvokableTool]] = None,
     knowledge: Optional[KnowledgeProvider] = None,
-    max_iterations: int = 14,
-    max_total_transitions: int = 500,
-    max_tool_calling_transitions: int = 100,
-    max_execution_time: float = 300.0,
+    max_iterations: Optional[int] = None,
+    max_execution_time: Optional[float] = None,
   ):
     """Start multiple agents on a node."""
 
@@ -889,8 +846,6 @@ class Agent:
         tools,
         copy.deepcopy(knowledge),
         max_iterations,
-        max_total_transitions,
-        max_tool_calling_transitions,
         max_execution_time,
         None,
       )
@@ -908,10 +863,8 @@ class Agent:
     memory_embeddings_model: Optional[Model],
     tools: Optional[List[InvokableTool]],
     knowledge: KnowledgeProvider,
-    max_iterations: int,
-    max_total_transitions: int,
-    max_tool_calling_transitions: int,
-    max_execution_time: float,
+    max_iterations: Optional[int],
+    max_execution_time: Optional[float],
     exposed_as: Optional[str],
   ):
     """Create and start an agent implementation."""
@@ -931,22 +884,23 @@ class Agent:
 
     # Create the agent
     def agent_creator():
-      return Agent(
-        node=node,
-        name=name,
-        instructions=instructions,
-        model=model,
-        memory_model=memory_model,
-        memory_embeddings_model=memory_embeddings_model,
-        tool_specs=tool_specs,
-        tools=tools_dict,
-        memory=memory,
-        knowledge=knowledge,
-        maximum_iterations=max_iterations,
-        max_total_transitions=max_total_transitions,
-        max_tool_calling_transitions=max_tool_calling_transitions,
-        max_execution_time=max_execution_time,
-      )
+      kwargs = {
+        "node": node,
+        "name": name,
+        "instructions": instructions,
+        "model": model,
+        "memory_model": memory_model,
+        "memory_embeddings_model": memory_embeddings_model,
+        "tool_specs": tool_specs,
+        "tools": tools_dict,
+        "memory": memory,
+        "knowledge": knowledge,
+      }
+      if max_iterations is not None:
+        kwargs["max_iterations"] = max_iterations
+      if max_execution_time is not None:
+        kwargs["max_execution_time"] = max_execution_time
+      return Agent(**kwargs)
 
     await node.start_spawner(name, agent_creator, key_extractor, None, exposed_as)
 
