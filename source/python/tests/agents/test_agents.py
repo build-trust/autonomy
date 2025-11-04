@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from typing import List, Dict, Any, Optional
 
-from autonomy import Agent, Node, Tool
+from autonomy import Agent, Node, Tool, KnowledgeTool
 from autonomy.agents.http import HttpServer
 from autonomy.knowledge.noop import NoopKnowledge
 from autonomy.nodes.message import ConversationRole
@@ -62,8 +62,7 @@ class TestAgentCore:
       name="comprehensive-agent",
       instructions="You are a comprehensive test agent with all features.",
       model=model,
-      tools=[Tool(simple_test_tool)],
-      knowledge=NoopKnowledge(),
+      tools=[Tool(simple_test_tool), KnowledgeTool(NoopKnowledge())],
       max_iterations=5,
       max_execution_time=60.0,
     )
@@ -234,11 +233,7 @@ class TestAgentCore:
     model = create_simple_mock_model("Limited response")
 
     agent = await Agent.start(
-      node=node,
-      name="limited-agent",
-      instructions="Agent with iteration limits",
-      model=model,
-      max_iterations=3,
+      node=node, name="limited-agent", instructions="Agent with iteration limits", model=model, max_iterations=3
     )
 
     # Test that agent respects limits
@@ -295,7 +290,7 @@ class TestAgentCore:
       name="knowledge-agent",
       instructions="Use knowledge to answer questions",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     response = await agent.send("What do you know?")
@@ -454,10 +449,7 @@ from typing import List
 
 from autonomy import Agent, Node, Tool
 from autonomy.agents.agent import ConversationResponse
-from mock_utils import (
-  SlowMockModel,
-  create_conversation_mock_model,
-)
+from mock_utils import SlowMockModel, create_conversation_mock_model
 
 
 class TestAgentCommunication:
@@ -1025,7 +1017,7 @@ class TestAgentConfiguration:
       name="noop-knowledge-agent",
       instructions="Test with noop knowledge",
       model=model,
-      knowledge=noop_knowledge,
+      tools=[KnowledgeTool(noop_knowledge)],
     )
 
     response = await noop_agent.send("Query knowledge")
@@ -1040,7 +1032,7 @@ class TestAgentConfiguration:
         name="in-memory-knowledge-agent",
         instructions="Test with in-memory knowledge",
         model=model,
-        knowledge=in_memory_knowledge,
+        tools=[KnowledgeTool(in_memory_knowledge)],
       )
 
       response = await in_memory_agent.send("Search knowledge")
@@ -1218,8 +1210,7 @@ class TestAgentConfiguration:
       name="maximal-agent",
       instructions="Maximal setup",
       model=create_simple_mock_model("Maximal response"),
-      tools=[Tool(simple_test_tool)],
-      knowledge=knowledge,
+      tools=[Tool(simple_test_tool), KnowledgeTool(knowledge)],
       max_iterations=10,
     )
 
@@ -1487,11 +1478,7 @@ class TestAgentMemory:
     )
 
     agent = await Agent.start(
-      node=node,
-      name="memory-agent",
-      instructions="Remember information from our conversations.",
-      model=model,
-      memory_model=model,
+      node=node, name="memory-agent", instructions="Remember information from our conversations.", model=model
     )
 
     # Test basic messaging with memory
@@ -1525,11 +1512,7 @@ class TestAgentMemory:
     embeddings_model = MockModel([])
 
     agent = await Agent.start(
-      node=node,
-      name="embeddings-memory-agent",
-      instructions="Use embeddings for enhanced memory.",
-      model=main_model,
-      memory_embeddings_model=embeddings_model,
+      node=node, name="embeddings-memory-agent", instructions="Use embeddings for enhanced memory.", model=main_model
     )
 
     # Test basic functionality with embeddings model
@@ -1556,7 +1539,6 @@ class TestAgentMemory:
       name="separate-memory-agent",
       instructions="Use separate model for memory operations.",
       model=main_model,
-      memory_model=memory_model,
     )
 
     # Test basic functionality with separate memory model
@@ -1587,7 +1569,6 @@ class TestAgentMemory:
       name="persistent-memory-agent",
       instructions="Maintain persistent memory across conversations.",
       model=model,
-      memory_model=model,
     )
 
     # Store multiple pieces of information through conversation
@@ -1630,7 +1611,7 @@ class TestAgentKnowledge:
       name="noop-knowledge-agent",
       instructions="Agent with NoOp knowledge provider.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Test basic functionality with NoOp knowledge
@@ -1659,7 +1640,7 @@ class TestAgentKnowledge:
       name="memory-knowledge-agent",
       instructions="Agent with in-memory knowledge provider.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Test basic functionality with in-memory knowledge
@@ -1697,7 +1678,7 @@ class TestAgentKnowledge:
       name="knowledge-search-agent",
       instructions="Use knowledge search to answer questions.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Test knowledge search functionality
@@ -1747,7 +1728,7 @@ class TestAgentKnowledge:
       name="context-knowledge-agent",
       instructions="Use knowledge context to provide informed responses.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Test that agent can use knowledge context
@@ -1789,7 +1770,7 @@ class TestAgentKnowledge:
       name="metadata-knowledge-agent",
       instructions="Use knowledge with metadata for better responses.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Test search with metadata
@@ -1835,8 +1816,7 @@ class TestAgentMemoryKnowledgeIntegration:
       name="combined-systems-agent",
       instructions="Use both memory and knowledge to provide comprehensive responses.",
       model=model,
-      memory_model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Store user preference through conversation
@@ -1888,7 +1868,7 @@ class TestAgentMemoryKnowledgeIntegration:
       name="context-determination-agent",
       instructions="Determine context from memory and knowledge to provide relevant responses.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Build conversation context through memory
@@ -1942,8 +1922,7 @@ class TestAgentMemoryKnowledgeIntegration:
       name="tools-memory-knowledge-agent",
       instructions="Use tools with memory and knowledge systems.",
       model=model,
-      knowledge=knowledge_provider,
-      tools=[Tool(knowledge_search_tool), Tool(memory_store_tool)],
+      tools=[KnowledgeTool(knowledge_provider), Tool(knowledge_search_tool), Tool(memory_store_tool)],
     )
 
     response = await agent.send("I'm interested in machine learning")
@@ -1984,7 +1963,7 @@ class TestAgentMemoryKnowledgeIntegration:
       name="performance-agent",
       instructions="Handle large memory and knowledge datasets efficiently.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Store multiple pieces of information through conversation
@@ -2040,7 +2019,7 @@ class TestAgentMemoryKnowledgeIntegration:
       name="error-handling-agent",
       instructions="Handle memory and knowledge errors gracefully.",
       model=model,
-      knowledge=error_knowledge,
+      tools=[KnowledgeTool(error_knowledge)],
     )
 
     # Test that agent handles knowledge errors gracefully
@@ -2079,7 +2058,7 @@ class TestAgentMemoryKnowledgeIntegration:
       name="thread-safety-agent",
       instructions="Handle concurrent memory and knowledge operations.",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     # Test concurrent operations with simple sends
@@ -3384,13 +3363,7 @@ implementations and realistic test scenarios.
 import pytest
 from typing import List, Dict, Optional
 
-from mock_utils import (
-  MockModel,
-  ErrorMockModel,
-  multiply_numbers,
-  error_test_tool,
-  complex_test_tool,
-)
+from mock_utils import MockModel, ErrorMockModel, multiply_numbers, error_test_tool, complex_test_tool
 
 
 class TestEnhancedAgentSuite:
@@ -3812,7 +3785,7 @@ class TestEnhancedAgentSuite:
       name="knowledge-integration-agent",
       instructions="Use knowledge to provide informed responses",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     response = await agent.send("What do you know about this topic?")
@@ -4974,7 +4947,7 @@ class TestWorkingAgentSuite:
       name="knowledge-agent",
       instructions="Use knowledge to answer questions",
       model=model,
-      knowledge=knowledge_provider,
+      tools=[KnowledgeTool(knowledge_provider)],
     )
 
     response = await agent.send("What do you know?")
@@ -5153,8 +5126,7 @@ def test_complete_agent_lifecycle():
       name="lifecycle-test-agent",
       instructions="You are a research assistant that conducts thorough analysis.",
       model=main_model,
-      tools=[Tool(research_tool), Tool(summarize_tool)],
-      knowledge=NoopKnowledge(),
+      tools=[Tool(research_tool), Tool(summarize_tool), KnowledgeTool(NoopKnowledge())],
       max_iterations=5,
     )
 
@@ -5654,7 +5626,7 @@ def test_memory_knowledge_integration():
       name="memory-knowledge-agent",
       instructions="Test memory and knowledge integration.",
       model=model,
-      knowledge=NoopKnowledge(),  # Use NoopKnowledge instead of InMemory
+      tools=[KnowledgeTool(NoopKnowledge())],  # Use NoopKnowledge instead of InMemory
     )
 
     response = await agent.send("Test memory knowledge integration")
@@ -5678,7 +5650,7 @@ def test_knowledge_search_comprehensive():
       name="knowledge-search-agent",
       instructions="Test knowledge search capabilities.",
       model=model,
-      knowledge=NoopKnowledge(),  # Use NoopKnowledge instead of InMemory
+      tools=[KnowledgeTool(NoopKnowledge())],  # Use NoopKnowledge instead of InMemory
     )
 
     response = await agent.send("Search knowledge base")
@@ -5984,7 +5956,7 @@ class TestAgentCreation:
       name="knowledge-agent",
       instructions="Agent with knowledge provider",
       model=model,
-      knowledge=NoopKnowledge(),
+      tools=[KnowledgeTool(NoopKnowledge())],
     )
 
     assert agent.name == "knowledge-agent"

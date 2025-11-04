@@ -35,12 +35,9 @@ class TestToolCallIdBugFixSummary:
       name="bug_fix_test_agent",
       instructions="Test agent for bug fix verification",
       model=model,
-      memory_model=None,
-      memory_embeddings_model=None,
       tool_specs=[],
       tools={},
       memory=memory,
-      knowledge=knowledge,
       max_iterations=10,
     )
     return agent
@@ -348,8 +345,6 @@ class TestToolCallIdFixIntegration:
       name="integration_test_agent",
       instructions="You are a helpful assistant that uses tools frequently.",
       model=model,
-      memory_model=None,
-      memory_embeddings_model=None,
       tool_specs=[
         {
           "type": "function",
@@ -378,7 +373,6 @@ class TestToolCallIdFixIntegration:
       ],
       tools={},
       memory=memory,
-      knowledge=knowledge,
       max_iterations=50,
     )
     return agent
@@ -640,12 +634,9 @@ class TestToolCallIdBug:
       name="test_agent",
       instructions="Test instructions",
       model=model,
-      memory_model=None,
-      memory_embeddings_model=None,
       tool_specs=[],
       tools={},
       memory=memory,
-      knowledge=knowledge,
       max_iterations=10,
     )
 
@@ -887,12 +878,9 @@ class TestToolCallIdBugSimple:
       name="test_agent",
       instructions="Test instructions",
       model=model,
-      memory_model=None,
-      memory_embeddings_model=None,
       tool_specs=[],
       tools={},
       memory=memory,
-      knowledge=knowledge,
       max_iterations=10,
     )
 
@@ -1084,12 +1072,9 @@ class TestToolCallIdConceptualBug:
       name="test_agent",
       instructions="Test instructions",
       model=model,
-      memory_model=None,
-      memory_embeddings_model=None,
       tool_specs=[],
       tools={},
       memory=memory,
-      knowledge=knowledge,
       max_iterations=10,
     )
     return agent
@@ -1275,12 +1260,9 @@ class TestToolCallIdFix:
       name="test_agent",
       instructions="Test instructions",
       model=model,
-      memory_model=None,
-      memory_embeddings_model=None,
       tool_specs=[],
       tools={},
       memory=memory,
-      knowledge=knowledge,
       max_iterations=10,
     )
     return agent
