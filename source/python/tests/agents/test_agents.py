@@ -2088,7 +2088,7 @@ import pytest
 import time
 from typing import List, Dict, Optional
 
-from autonomy.agents.agent import AgentState, AgentStateMachine
+from autonomy.agents.agent import State, StateMachine
 
 
 class MockModel:
@@ -2180,31 +2180,31 @@ class MockModel:
     return [[0.1, 0.2, 0.3]] * len(text)
 
 
-class TestAgentState:
+class TestState:
   """Test agent state enumeration and validation"""
 
   def test_agent_state_enum(self):
-    """Test that AgentState enum has expected values"""
+    """Test that State enum has expected values"""
     expected_states = ["READY", "THINKING", "ACTING", "DONE"]
 
     for state_name in expected_states:
-      assert hasattr(AgentState, state_name)
-      state_value = getattr(AgentState, state_name)
-      assert isinstance(state_value, AgentState)
+      assert hasattr(State, state_name)
+      state_value = getattr(State, state_name)
+      assert isinstance(state_value, State)
 
   def test_agent_state_transitions(self):
     """Test valid state transitions"""
     # Test typical flow: READY -> THINKING -> ACTING -> DONE
-    assert AgentState.READY != AgentState.THINKING
-    assert AgentState.THINKING != AgentState.ACTING
-    assert AgentState.ACTING != AgentState.DONE
+    assert State.READY != State.THINKING
+    assert State.THINKING != State.ACTING
+    assert State.ACTING != State.DONE
 
     # All states should be distinct
-    states = [AgentState.READY, AgentState.THINKING, AgentState.ACTING, AgentState.DONE]
+    states = [State.READY, State.THINKING, State.ACTING, State.DONE]
     assert len(set(states)) == len(states)
 
 
-class TestAgentStateMachine:
+class TestStateMachine:
   """Test agent state machine behavior and transitions"""
 
   @pytest.fixture
@@ -2234,7 +2234,7 @@ class TestAgentStateMachine:
     mock_streaming_response.make_finished_snippet = AsyncMock(return_value="mock_finished_snippet")
 
     response = mock_streaming_response
-    return AgentStateMachine(mock_agent, "test-query", conversation, stream, response)
+    return StateMachine(mock_agent, "test-query", conversation, stream, response)
 
   def test_state_machine_initialization(self, mock_agent):
     """Test state machine proper initialization"""
@@ -2242,11 +2242,11 @@ class TestAgentStateMachine:
     conversation = "test-conversation"
     stream = AsyncMock()
     response = []
-    sm = AgentStateMachine(mock_agent, query, conversation, stream, response)
+    sm = StateMachine(mock_agent, query, conversation, stream, response)
 
     assert sm.agent == mock_agent
     assert sm.scope == query
-    assert sm.state == AgentState.READY
+    assert sm.state == State.READY
     assert sm.iteration == 0
     assert sm.start_time is not None
 
@@ -2262,7 +2262,7 @@ class TestAgentStateMachine:
     mock_response.tool_calls = []  # No tool calls
     mock_response.content = Mock(text="Simple response")
 
-    state_machine.state = AgentState.THINKING
+    state_machine.state = State.THINKING
 
     # Mock the complete_chat method to return an async generator
     async def mock_complete_chat(*args, **kwargs):
@@ -2276,7 +2276,7 @@ class TestAgentStateMachine:
       results.append(result)
 
     # Should transition to DONE when no planner and no tool calls
-    assert state_machine.state == AgentState.DONE
+    assert state_machine.state == State.DONE
     # Should have incremented iteration
     assert state_machine.iteration > 0
 
@@ -2298,7 +2298,7 @@ class TestAgentStateMachine:
     mock_agent.call_tool = AsyncMock(return_value=(None, mock_tool_response))
     mock_agent.tools = {"test_tool": Mock()}
 
-    state_machine.state = AgentState.ACTING
+    state_machine.state = State.ACTING
     state_machine.tool_calls = [mock_tool_call]
     state_machine.stream = False  # Non-streaming mode to avoid streaming_response calls
 
@@ -2309,12 +2309,12 @@ class TestAgentStateMachine:
 
     assert mock_agent.call_tool.called
     # Should transition back to THINKING after processing tools
-    assert state_machine.state == AgentState.THINKING
+    assert state_machine.state == State.THINKING
 
   @pytest.mark.asyncio
   async def test_state_machine_finished_state(self, state_machine, mock_agent):
     """Test state machine behavior in DONE state"""
-    state_machine.state = AgentState.DONE
+    state_machine.state = State.DONE
     state_machine.stream = False  # Non-streaming mode
 
     # Collect results from async generator
@@ -2345,7 +2345,7 @@ class TestAgentStateMachine:
     initial_iteration = state_machine.iteration
 
     # Execute a thinking state transition (which increments iteration)
-    state_machine.state = AgentState.THINKING
+    state_machine.state = State.THINKING
 
     # Collect results - should increment iteration counter
     results = []
@@ -2366,7 +2366,7 @@ class TestAgentStateMachine:
     """Test execution time limits"""
     state_machine.max_execution_time = 0.001
     state_machine.start_time = time.time() - 0.005  # Set start time in past
-    state_machine.state = AgentState.THINKING
+    state_machine.state = State.THINKING
 
     # Should get error due to time limit
     results = []
@@ -2382,7 +2382,7 @@ class TestAgentStateMachine:
     """Test iteration limits"""
     mock_agent.max_iterations = 1
     state_machine.iteration = 0  # Start at 0, will increment to 1 which equals limit
-    state_machine.state = AgentState.THINKING
+    state_machine.state = State.THINKING
     mock_agent.remember = AsyncMock()
 
     # Mock complete_chat - this shouldn't be called due to iteration limit
@@ -2400,7 +2400,7 @@ class TestAgentStateMachine:
     # Should have received an error and transitioned to FINISHED
     assert len(results) > 0
     # The state should be DONE after hitting iteration limit
-    assert state_machine.state == AgentState.DONE
+    assert state_machine.state == State.DONE
 
   @pytest.mark.asyncio
   async def test_state_machine_complete_workflow(self, mock_agent):
@@ -2431,7 +2431,7 @@ class TestAgentStateMachine:
     mock_streaming_response.make_snippet = AsyncMock(return_value="mock_snippet")
     mock_streaming_response.make_finished_snippet = AsyncMock(return_value="mock_finished_snippet")
     response = mock_streaming_response
-    sm = AgentStateMachine(mock_agent, "Simple query", conversation, stream, response)
+    sm = StateMachine(mock_agent, "Simple query", conversation, stream, response)
 
     # Initialize plan first
     await sm.initialize_plan([])
@@ -2482,7 +2482,7 @@ class TestAgentStateMachine:
     mock_streaming_response.make_snippet = AsyncMock(return_value="mock_snippet")
     mock_streaming_response.make_finished_snippet = AsyncMock(return_value="mock_finished_snippet")
     response = mock_streaming_response
-    sm = AgentStateMachine(mock_agent, "Query with tools", conversation, stream, response)
+    sm = StateMachine(mock_agent, "Query with tools", conversation, stream, response)
 
     # Initialize plan first
     await sm.initialize_plan([])
@@ -2507,7 +2507,7 @@ class TestAgentStateMachine:
     mock_streaming_response.make_snippet = AsyncMock(return_value="mock_snippet")
     mock_streaming_response.make_finished_snippet = AsyncMock(return_value="mock_finished_snippet")
     response = mock_streaming_response
-    sm = AgentStateMachine(mock_agent, "Error test", conversation, stream, response)
+    sm = StateMachine(mock_agent, "Error test", conversation, stream, response)
 
     # Mock required methods
     mock_agent.remember = AsyncMock()
@@ -2518,7 +2518,7 @@ class TestAgentStateMachine:
       yield  # unreachable
 
     mock_agent.complete_chat = failing_complete_chat
-    sm.state = AgentState.THINKING
+    sm.state = State.THINKING
 
     # Should handle error gracefully
     # Should get error due to exception
@@ -2529,7 +2529,7 @@ class TestAgentStateMachine:
 
     # Should have received an error and be in DONE state
     assert len(results) > 0
-    assert sm.state == AgentState.DONE
+    assert sm.state == State.DONE
 
   @pytest.mark.asyncio
   async def test_state_machine_preserves_message_order(self, mock_agent):
@@ -2556,7 +2556,7 @@ class TestAgentStateMachine:
     mock_streaming_response.make_snippet = AsyncMock(return_value="mock_snippet")
     mock_streaming_response.make_finished_snippet = AsyncMock(return_value="mock_finished_snippet")
     response = mock_streaming_response
-    sm = AgentStateMachine(mock_agent, "Order test", conversation, stream, response)
+    sm = StateMachine(mock_agent, "Order test", conversation, stream, response)
 
     # Initialize plan first
     await sm.initialize_plan([])
@@ -2569,7 +2569,7 @@ class TestAgentStateMachine:
     # Should have received some messages and completed successfully
     assert len(messages) > 0
     # Should have transitioned to DONE
-    assert sm.state == AgentState.DONE
+    assert sm.state == State.DONE
 
 
 import pytest
