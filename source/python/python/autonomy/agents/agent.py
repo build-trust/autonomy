@@ -265,12 +265,12 @@ class StateMachine:
     elapsed_time = current_time - self.start_time
 
     if elapsed_time > self.max_execution_time:
-      logger.error(f"State machine exceeded maximum execution time ({self.max_execution_time}s)")
+      logger.error(f"[STATE_MACHINE] Exceeded maximum execution time ({self.max_execution_time}s)")
       yield Error(f"Agent exceeded maximum execution time ({self.max_execution_time:.1f}s)")
       self.state = State.DONE
       return
 
-    logger.debug(f"State transition: {self.state.name} (iteration: {self.iteration}, elapsed: {elapsed_time:.1f}s)")
+    logger.debug(f"[STATE_MACHINE→{self.state.name}] iteration={self.iteration}, elapsed={elapsed_time:.1f}s")
 
     match self.state:
       case State.READY:
@@ -310,13 +310,14 @@ class StateMachine:
 
     # Check for interruption
     if self.interrupted:
-      logger.info("State machine interrupted during THINKING")
+      logger.info("[STATE:THINKING] State machine interrupted")
       yield Error("Agent was interrupted by new message")
       self.state = State.DONE
       return
 
     self.iteration += 1
     if self.iteration >= self.agent.max_iterations:
+      logger.warning(f"[STATE:THINKING] Reached max_iterations ({self.agent.max_iterations})")
       yield Error(str(RuntimeError("Reached max_iterations")))
       self.state = State.DONE
       return
@@ -326,7 +327,7 @@ class StateMachine:
     finish_signal_received = False
     chunks_processed = 0
 
-    logger.debug(f"Starting model completion, iteration {self.iteration}")
+    logger.debug(f"[STATE:THINKING] Starting model completion, iteration {self.iteration}")
 
     try:
       # Call the model and process response chunks
@@ -335,11 +336,11 @@ class StateMachine:
       ):
         chunks_processed += 1
         logger.debug(
-          f"Received chunk {chunks_processed}: err={err}, finished={finished}, response_type={type(model_response)}"
+          f"[STATE:THINKING] Received chunk {chunks_processed}: err={err}, finished={finished}, response_type={type(model_response)}"
         )
 
         if err:  # Propagate model error and terminate state machine
-          logger.error(f"Model completion error: {err}")
+          logger.error(f"[STATE:THINKING] Model completion error: {err}")
           yield err
           self.state = State.DONE
           return
@@ -347,10 +348,12 @@ class StateMachine:
         response_received = True
 
         # Remember the model response
+        logger.debug(f"[STATE:THINKING] Remembering model response")
         await self.agent.remember(self.scope, self.conversation, model_response)
 
         # Handle tool calls
         if len(model_response.tool_calls) > 0:
+          logger.debug(f"[STATE:THINKING] Model requested {len(model_response.tool_calls)} tool calls, transitioning to ACTING")
           if self.stream:
             yield await self.streaming_response.make_snippet(model_response)
           else:
@@ -366,7 +369,7 @@ class StateMachine:
         # Handle finished responses
         if finished:
           finish_signal_received = True
-          logger.debug(f"Processing finished response: stream={self.stream}")
+          logger.debug(f"[STATE:THINKING] Processing finished response: stream={self.stream}")
 
           if self.stream:
             if model_response.content or model_response.tool_calls:
@@ -377,10 +380,10 @@ class StateMachine:
             self.whole_response.messages.append(model_response)
 
           if self.state == State.ACTING:
-            logger.debug("Transitioning to ACTING")
+            logger.debug("[STATE:THINKING] Transitioning to ACTING")
             return
           else:
-            logger.debug("Transitioning to DONE")
+            logger.debug("[STATE:THINKING] Transitioning to DONE")
             self.state = State.DONE
           return
         else:
@@ -392,7 +395,7 @@ class StateMachine:
 
           # Prevent infinite streaming from malformed model responses
           if chunks_processed >= MAX_STREAMING_CHUNKS:
-            logger.warning(f"Streaming exceeded max chunks ({chunks_processed}), forcing finish")
+            logger.warning(f"[STATE:THINKING] Streaming exceeded max chunks ({chunks_processed}), forcing finish")
             if self.stream and not self.final_content_sent:
               # Send empty finish chunk if needed
               from ..nodes.message import AssistantMessage
@@ -403,25 +406,26 @@ class StateMachine:
             break
 
     except Exception as e:
-      logger.error(f"Exception in model calling: {e}")
+      logger.error(f"[STATE:THINKING] Exception in model calling: {e}")
+      logger.debug(f"[STATE:THINKING] Traceback: {traceback.format_exc()}")
       yield Error(f"Model completion failed: {str(e)}")
       self.state = State.DONE
       return
 
     logger.debug(
-      f"Stream complete: chunks={chunks_processed}, response_received={response_received}, "
+      f"[STATE:THINKING] Stream complete: chunks={chunks_processed}, response_received={response_received}, "
       f"finish_signal={finish_signal_received}"
     )
 
     if not response_received:
-      logger.error("No response received from model")
+      logger.error("[STATE:THINKING] No response received from model")
       yield Error("No response received from model")
       self.state = State.DONE
       return
 
     # Incomplete streaming: Network issues, model errors, or chunking problems
     if response_received and not finish_signal_received:
-      logger.warning(f"Stream incomplete - no finish signal after {chunks_processed} chunks, forcing completion")
+      logger.warning(f"[STATE:THINKING] Stream incomplete - no finish signal after {chunks_processed} chunks, forcing completion")
 
       if self.stream and not self.final_content_sent:
         # Send empty finish chunk to complete the stream
@@ -436,7 +440,7 @@ class StateMachine:
 
     # Final safety check to prevent hangs in edge cases
     if self.state == State.THINKING:
-      logger.warning(f"Forcing DONE state after {chunks_processed} chunks")
+      logger.warning(f"[STATE:THINKING] Forcing DONE state after {chunks_processed} chunks")
       self.state = State.DONE
 
   async def _handle_acting_state(self):
@@ -460,16 +464,19 @@ class StateMachine:
 
     # Check for interruption
     if self.interrupted:
-      logger.info("State machine interrupted during ACTING")
+      logger.info("[STATE:ACTING] State machine interrupted")
       yield Error("Agent was interrupted by new message")
       self.state = State.DONE
       return
+
+    logger.debug(f"[STATE:ACTING] Processing {len(self.tool_calls)} tool calls")
 
     for tool_call in self.tool_calls:
       error, tool_call_response, raw_result = await self.agent.call_tool(tool_call)
 
       if error:
         # Continue so model can see error and potentially recover
+        logger.error(f"[STATE:ACTING] Tool call failed: {error}")
         warn(f"MCP call failed: {error}")
 
       # Check if this is ask_user_for_input with waiting marker
@@ -481,7 +488,7 @@ class StateMachine:
         self.waiting_prompt = raw_result.get("prompt", "Waiting for input...")
         self.pending_tool_call_id = tool_call.id
 
-        logger.info(f"Agent requesting user input: {self.waiting_prompt}")
+        logger.info(f"[STATE:ACTING] Agent requesting user input: {self.waiting_prompt}")
 
         # Transition to waiting state
         self.state = State.WAITING_FOR_INPUT
@@ -505,6 +512,7 @@ class StateMachine:
 
       # Normal tool call - store result and continue
       # the tool_call_response contains the error message if the tool call failed
+      logger.debug(f"[STATE:ACTING] Remembering tool response")
       await self.agent.remember(self.scope, self.conversation, tool_call_response)
 
       if self.stream:
@@ -512,6 +520,7 @@ class StateMachine:
       else:
         self.whole_response.messages.append(tool_call_response)
 
+    logger.debug(f"[STATE:ACTING] All tool calls complete, transitioning to THINKING")
     self.state = State.THINKING
 
   async def _handle_waiting_for_input_state(self):
@@ -578,13 +587,15 @@ class StateMachine:
     ensuring entire run completes in time.
     """
 
+    logger.debug(f"[STATE_MACHINE] Starting run: scope={self.scope}, conversation={self.conversation}, stream={self.stream}")
+
     try:
       # Add overall timeout protection for the entire state machine run
       async with asyncio.timeout(self.max_execution_time):
         while self.state != State.DONE:
           # Check for interruption
           if self.interrupted:
-            logger.info("State machine interrupted, terminating")
+            logger.info("[STATE_MACHINE] Interrupted, terminating")
             yield Error("Agent was interrupted by new message")
             self.state = State.DONE
             break
@@ -594,7 +605,7 @@ class StateMachine:
 
           # Check if we're paused
           if self.is_paused:
-            logger.info(f"State machine paused in {self.state.name} state")
+            logger.info(f"[STATE_MACHINE] Paused in {self.state.name} state")
             # Don't transition to DONE - just stop iterating
             # Agent will keep this state machine and resume later
             return
@@ -990,6 +1001,10 @@ class Agent:
     if not isinstance(message, dict):
       message = self.converter.message_to_dict(message)
 
+    logger.debug(f"[MEMORY→WRITE] scope={scope}, conversation={conversation}, message_type={message.get('role', 'unknown')}")
+    if logger.isEnabledFor(10):  # DEBUG level
+      logger.debug(f"[MEMORY→WRITE] Full message: {json.dumps(message, indent=2)}")
+    
     await self.memory.add_message(self._memory_scope(scope), conversation, message)
 
   async def message_history(self, scope: str, conversation: str) -> list[dict]:
@@ -1003,7 +1018,9 @@ class Agent:
     Returns:
       List of message dicts in chronological order
     """
-    return await self.memory.get_messages(self._memory_scope(scope), conversation)
+    messages = await self.memory.get_messages(self._memory_scope(scope), conversation)
+    logger.debug(f"[MEMORY→READ] scope={scope}, conversation={conversation}, message_count={len(messages)}")
+    return messages
 
   async def determine_input_context(self, scope: str, conversation: str):
     """
@@ -1018,6 +1035,11 @@ class Agent:
     """
 
     raw_messages = await self.memory.get_messages(self._memory_scope(scope), conversation)
+    logger.debug(f"[MEMORY→READ] Retrieved {len(raw_messages)} messages for model context")
+    if logger.isEnabledFor(10):  # DEBUG level
+      for idx, msg in enumerate(raw_messages):
+        logger.debug(f"[MEMORY→READ] Message {idx}: role={msg.get('role', 'unknown')}")
+    
     messages = [self.converter.conversation_message_from_dict(m) for m in raw_messages]
 
     return messages
@@ -1060,6 +1082,16 @@ class Agent:
     try:
       messages = await self.determine_input_context(scope, conversation)
 
+      logger.debug(f"[MODEL→CALL] scope={scope}, conversation={conversation}, stream={stream}, message_count={len(messages)}, tools_count={len(self.tool_specs)}")
+      if logger.isEnabledFor(10):  # DEBUG level
+        logger.debug(f"[MODEL→CALL] Available tools: {[t.get('function', {}).get('name', 'unknown') for t in self.tool_specs]}")
+        for idx, msg in enumerate(messages):
+          role = getattr(msg, 'role', 'unknown')
+          content_preview = ""
+          if hasattr(msg, 'content') and msg.content:
+            content_preview = msg.content[:100] + ("..." if len(msg.content) > 100 else "")
+          logger.debug(f"[MODEL→CALL] Input message {idx}: role={role}, content_preview={repr(content_preview)}")
+
       # =========================================================================
       # STREAMING PATH: Incremental response delivery
       # =========================================================================
@@ -1071,14 +1103,17 @@ class Agent:
         max_chunks = MAX_STREAMING_CHUNKS
         timeout_seconds = STREAMING_TIMEOUT_SECONDS
 
-        logger.debug(f"Starting streaming model call with {len(messages)} messages")
+        logger.debug(f"[MODEL→STREAM] Starting streaming model call with {len(messages)} messages")
 
         try:
           # Execute streaming with timeout protection
           async with asyncio.timeout(timeout_seconds):
             async for chunk in self.model.complete_chat(messages, stream=True, tools=self.tool_specs):
               chunk_count += 1
-              logger.debug(f"Processing streaming chunk {chunk_count}")
+              logger.debug(f"[MODEL→STREAM] Processing chunk {chunk_count}")
+              if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[MODEL→STREAM] Raw chunk: {chunk}")
+              
 
               # Prevent runaway streams
               if chunk_count > max_chunks:
@@ -1094,17 +1129,17 @@ class Agent:
                 # --- Handle content chunks (text responses) ---
                 if hasattr(choice, "delta") and hasattr(choice.delta, "content"):
                   content = choice.delta.content
-                  logger.debug(f"Delta content: {repr(content)}, finished: {finished}")
+                  logger.debug(f"[MODEL←STREAM] Delta content: {repr(content)}, finished: {finished}")
 
                   if content:  # Non-empty content chunk
                     has_content = True
                     response = AssistantMessage(content=content, phase=Phase.EXECUTING)
-                    logger.debug(f"Yielding content chunk: finished={finished}")
+                    logger.debug(f"[MODEL←STREAM] Yielding content chunk: finished={finished}, content_length={len(content)}")
                     yield None, finished, response
 
                   elif finished and (content == "" or content is None):
                     # Empty content with finish_reason - termination chunk
-                    logger.debug("Received empty finish chunk - streaming complete")
+                    logger.debug("[MODEL←STREAM] Received empty finish chunk - streaming complete")
                     has_content = True
                     # Send empty response to signal completion
                     response = AssistantMessage(content="", phase=Phase.EXECUTING)
@@ -1120,6 +1155,12 @@ class Agent:
                     if not call_id:
                       call_id = await self._generate_unique_tool_call_id()
 
+
+                    tool_name = tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
+                    logger.debug(f"[MODEL←STREAM] Tool call chunk: id={call_id}, name={tool_name}, finished={finished}")
+                    if logger.isEnabledFor(10):  # DEBUG level
+                      logger.debug(f"[MODEL←STREAM] Tool call details: {tc}")
+                    
                     tool_call = ToolCall(
                       id=call_id,
                       function=tc.function if hasattr(tc, "function") else None,
@@ -1134,19 +1175,20 @@ class Agent:
                 # --- Handle legacy format (message instead of delta) ---
                 elif finished and hasattr(choice, "message") and choice.message.content:
                   # Some older model APIs use 'message' instead of 'delta'
+                  logger.debug(f"[MODEL←STREAM] Legacy format message: content_length={len(choice.message.content)}")
                   response = AssistantMessage(content=choice.message.content, phase=Phase.EXECUTING)
                   yield None, True, response
                   has_content = True
 
                 # Break on finish signal - no more chunks expected
                 if finished:
-                  logger.debug("Breaking due to finish_reason")
+                  logger.debug("[MODEL←STREAM] Breaking due to finish_reason")
                   break
               else:
                 logger.warning(f"Unexpected chunk format in streaming response: {chunk}")
 
         except asyncio.TimeoutError:
-          logger.error(f"Streaming timeout after {timeout_seconds} seconds")
+          logger.error(f"[MODEL←STREAM] Timeout after {timeout_seconds} seconds")
           response = AssistantMessage(
             content="I apologize, but the response took too long to generate.", phase=Phase.EXECUTING
           )
@@ -1154,7 +1196,8 @@ class Agent:
           return
 
         except Exception as stream_error:
-          logger.error(f"Streaming error: {stream_error}")
+          logger.error(f"[MODEL←STREAM] Error: {stream_error}")
+          logger.debug(f"[MODEL←STREAM] Error traceback: {traceback.format_exc()}")
           response = AssistantMessage(
             content="I apologize, but I encountered an error generating the response.", phase=Phase.EXECUTING
           )
@@ -1163,12 +1206,12 @@ class Agent:
 
         # --- Post-stream validation and cleanup ---
         logger.debug(
-          f"Streaming complete: chunks={chunk_count}, has_content={has_content}, last_finished={last_finished}"
+          f"[MODEL←STREAM] Complete: chunks={chunk_count}, has_content={has_content}, last_finished={last_finished}"
         )
 
         if chunk_count == 0:
           # No chunks received at all
-          logger.warning("No streaming chunks received")
+          logger.warning("[MODEL←STREAM] No streaming chunks received")
           response = AssistantMessage(
             content="I apologize, but I encountered an issue generating a response.", phase=Phase.EXECUTING
           )
@@ -1176,13 +1219,13 @@ class Agent:
 
         elif not has_content and not last_finished:
           # We got chunks but no actual content and no finish signal
-          logger.warning(f"Streaming incomplete: {chunk_count} chunks but no content or finish signal")
+          logger.warning(f"[MODEL←STREAM] Incomplete: {chunk_count} chunks but no content or finish signal")
           response = AssistantMessage(content="I apologize, but the response was incomplete.", phase=Phase.EXECUTING)
           yield None, True, response
 
         elif has_content and not last_finished:
           # We got content but no finish signal - force completion
-          logger.warning("Streaming had content but no finish signal, forcing completion")
+          logger.warning("[MODEL←STREAM] Had content but no finish signal, forcing completion")
           response = AssistantMessage(content="", phase=Phase.EXECUTING)
           yield None, True, response
 
@@ -1190,18 +1233,30 @@ class Agent:
       # NON-STREAMING PATH: Complete response delivery
       # =========================================================================
       else:
+        logger.debug("[MODEL→NON-STREAM] Calling model (non-streaming)")
         response = await self.model.complete_chat(messages, stream=False, tools=self.tool_specs)
+
+        if logger.isEnabledFor(10):  # DEBUG level
+          logger.debug(f"[MODEL←NON-STREAM] Raw response: {response}")
 
         if hasattr(response, "choices") and len(response.choices) > 0:
           message = response.choices[0].message
 
           if hasattr(message, "tool_calls") and message.tool_calls:
+            logger.debug(f"[MODEL←NON-STREAM] Received {len(message.tool_calls)} tool calls")
             tool_calls = []
             for tc in message.tool_calls:
               # Generate unique ID with collision detection (some models don't provide IDs)
               call_id = tc.id if hasattr(tc, "id") and tc.id else None
               if not call_id:
                 call_id = await self._generate_unique_tool_call_id()
+
+              tool_name = tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
+              tool_args = tc.function.arguments if hasattr(tc, "function") and hasattr(tc.function, "arguments") else ""
+              logger.debug(f"[MODEL←NON-STREAM] Tool call: id={call_id}, name={tool_name}")
+              if logger.isEnabledFor(10):  # DEBUG level
+                logger.debug(f"[MODEL←NON-STREAM] Tool arguments: {tool_args}")
+              
 
               tool_call = ToolCall(
                 id=call_id,
@@ -1214,12 +1269,17 @@ class Agent:
               content=message.content or "", tool_calls=tool_calls, phase=Phase.EXECUTING
             )
           else:
+            content_length = len(message.content) if message.content else 0
+            logger.debug(f"[MODEL←NON-STREAM] Received text response: content_length={content_length}")
+            if logger.isEnabledFor(10):  # DEBUG level
+              logger.debug(f"[MODEL←NON-STREAM] Content: {message.content}")
             assistant_message = AssistantMessage(content=message.content or "", phase=Phase.EXECUTING)
 
           yield None, True, assistant_message
 
     except Exception as e:
-      logger.error(f"Error in complete_chat: {e}")
+      logger.error(f"[MODEL←ERROR] Error in complete_chat: {e}")
+      logger.debug(f"[MODEL←ERROR] Traceback: {traceback.format_exc()}")
       error = Error(f"Model completion failed: {str(e)}")
       yield error, True, None
 
@@ -1273,17 +1333,37 @@ class Agent:
     tool_name = tool_call.function.name
     tool_args = tool_call.function.arguments
 
+    logger.debug(f"[TOOL→CALL] id={tool_call.id}, name={tool_name}")
+    if logger.isEnabledFor(10):  # DEBUG level
+      logger.debug(f"[TOOL→CALL] Arguments: {tool_args}")
+
+
     try:
       if tool_name in self.tools:
         tool = self.tools[tool_name]
+        logger.debug(f"[TOOL→CALL] Invoking tool: {tool_name}")
+
+        start_time = time.time()
         result = await tool.invoke(tool_args)
+        elapsed_time = time.time() - start_time
+
+        result_str = str(result)
+        result_length = len(result_str)
+        logger.debug(f"[TOOL←RESULT] id={tool_call.id}, name={tool_name}, elapsed={elapsed_time:.3f}s, result_length={result_length}")
+        if logger.isEnabledFor(10):  # DEBUG level
+          # Truncate very long results for logging
+          result_preview = result_str[:500] + ("..." if result_length > 500 else "")
+          logger.debug(f"[TOOL←RESULT] Result preview: {result_preview}")
+
 
         response = ToolCallResponseMessage(
-          tool_call_id=tool_call.id, name=tool_name, content=str(result), phase=Phase.EXECUTING
+          tool_call_id=tool_call.id, name=tool_name, content=result_str, phase=Phase.EXECUTING
         )
         return None, response, result
       else:
         error_msg = f"Tool '{tool_name}' not found"
+        logger.error(f"[TOOL←ERROR] {error_msg}, id={tool_call.id}")
+        logger.debug(f"[TOOL←ERROR] Available tools: {list(self.tools.keys())}")
         response = ToolCallResponseMessage(
           tool_call_id=tool_call.id, name=tool_name, content=error_msg, phase=Phase.EXECUTING
         )
@@ -1291,6 +1371,8 @@ class Agent:
 
     except Exception as e:
       error_msg = f"Tool execution failed: {str(e)}"
+      logger.error(f"[TOOL←ERROR] id={tool_call.id}, name={tool_name}, error={error_msg}")
+      logger.debug(f"[TOOL←ERROR] Traceback: {traceback.format_exc()}")
       response = ToolCallResponseMessage(
         tool_call_id=tool_call.id, name=tool_name, content=error_msg, phase=Phase.EXECUTING
       )
