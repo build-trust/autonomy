@@ -1,6 +1,6 @@
 from .unsearchable import UnsearchableKnowledge
 from .noop import NoopKnowledge
-from .mem0 import Mem0Knowledge
+
 from .aggregator import KnowledgeAggregator
 from .searchable import SearchableKnowledge
 from .protocol import KnowledgeProvider
@@ -18,7 +18,6 @@ __all__ = [
   "KnowledgeProvider",
   "KnowledgeAggregator",
   "NoopKnowledge",
-  "Mem0Knowledge",
   "SearchableKnowledge",
   "Knowledge",
   "SearchHit",
