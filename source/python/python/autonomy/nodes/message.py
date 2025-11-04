@@ -39,6 +39,7 @@ class Phase(Enum):
   SYSTEM = "system"
   PLANNING = "planning"
   EXECUTING = "executing"
+  WAITING_FOR_INPUT = "waiting_for_input"
 
 
 class MessageContentType(Enum):
