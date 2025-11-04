@@ -10,6 +10,7 @@ from .database import Database
 from .extractors import TextExtractor
 from .chunkers import Chunker, NaiveChunker
 from .knowledge import Knowledge
+from .tool import KnowledgeTool
 
 __all__ = [
   "Database",
@@ -27,4 +28,5 @@ __all__ = [
   "TextExtractor",
   "Chunker",
   "NaiveChunker",
+  "KnowledgeTool",
 ]
