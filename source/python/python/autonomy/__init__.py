@@ -29,13 +29,9 @@ from .clusters import Cluster, Zone
 from .memory import Memory
 from .tools import McpTool, Tool
 from .knowledge import (
-  Knowledge,
-  KnowledgeProvider,
-  KnowledgeAggregator,
   UnsearchableKnowledge,
   SearchableKnowledge,
   NoopKnowledge,
-  Mem0Knowledge,
   Database,
   InMemory,
   SearchHit,
@@ -136,7 +132,6 @@ __all__ = [
   "UnsearchableKnowledge",
   "SearchableKnowledge",
   "NoopKnowledge",
-  "Mem0Knowledge",
   "Database",
   "InMemory",
   "SearchHit",

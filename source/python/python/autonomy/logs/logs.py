@@ -174,11 +174,6 @@ def create_logging_config(levels: dict, log_format: str) -> dict[str, int | bool
         "level": levels.get("tool") or levels.get("default"),
         "propagate": False,
       },
-      "mem0.memory.main": {
-        "handlers": ["default"],
-        "level": levels.get("mem0.memory.main") or levels.get("default"),
-        "propagate": False,
-      },
     },
     "root": {"level": levels.get("default"), "handlers": ["default"]},
   }
