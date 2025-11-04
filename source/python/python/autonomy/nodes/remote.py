@@ -78,13 +78,11 @@ class NodeController:
     instructions,
     name,
     model,
-    memory_model,
-    memory_embeddings_model,
     tools,
-    planner,
     exposed_as,
-    knowledge,
     max_iterations,
+    max_active_messages,
+    max_active_tokens,
   ):
     from ..agents import Agent
 
@@ -93,13 +91,11 @@ class NodeController:
       instructions,
       name,
       model,
-      memory_model,
-      memory_embeddings_model,
       tools,
-      planner,
-      exposed_as,
-      knowledge,
-      max_iterations,
+      max_iterations=max_iterations,
+      exposed_as=exposed_as,
+      max_active_messages=max_active_messages,
+      max_active_tokens=max_active_tokens,
     )
     return "ok"
 
@@ -108,12 +104,10 @@ class NodeController:
     instructions,
     number_of_agents,
     model,
-    memory_model,
-    memory_embeddings_model,
     tools,
-    planner,
-    knowledge,
     max_iterations,
+    max_active_messages,
+    max_active_tokens,
   ):
     from ..agents import Agent
 
@@ -122,12 +116,10 @@ class NodeController:
       instructions,
       number_of_agents,
       model,
-      memory_model,
-      memory_embeddings_model,
       tools,
-      planner,
-      knowledge,
-      max_iterations,
+      max_iterations=max_iterations,
+      max_active_messages=max_active_messages,
+      max_active_tokens=max_active_tokens,
     )
     return [agent.name for agent in agents]
 
@@ -238,26 +230,22 @@ class RemoteNode:
     instructions: str,
     name: str,
     model,
-    memory_model,
-    memory_embeddings_model,
     tools,
-    planner,
     exposed_as,
-    knowledge,
     max_iterations,
+    max_active_messages,
+    max_active_tokens,
   ):
     await self.send_generic_request(
       "start_agent",
       instructions=instructions,
       name=name,
       model=model,
-      memory_model=memory_model,
-      memory_embeddings_model=memory_embeddings_model,
       tools=tools,
-      planner=planner,
       exposed_as=exposed_as,
-      knowledge=knowledge,
       max_iterations=max_iterations,
+      max_active_messages=max_active_messages,
+      max_active_tokens=max_active_tokens,
     )
 
   async def start_agents(
@@ -265,24 +253,20 @@ class RemoteNode:
     instructions,
     number_of_agents,
     model,
-    memory_model,
-    memory_embeddings_model,
     tools,
-    planner,
-    knowledge,
     max_iterations,
+    max_active_messages,
+    max_active_tokens,
   ):
     response = await self.send_generic_request(
       "start_agents",
       instructions=instructions,
       number_of_agents=number_of_agents,
       model=model,
-      memory_model=memory_model,
-      memory_embeddings_model=memory_embeddings_model,
       tools=tools,
-      planner=planner,
-      knowledge=knowledge,
       max_iterations=max_iterations,
+      max_active_messages=max_active_messages,
+      max_active_tokens=max_active_tokens,
     )
     return response.result
 

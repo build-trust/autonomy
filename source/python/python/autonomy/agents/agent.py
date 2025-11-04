@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import secrets
 import time
@@ -11,9 +10,6 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 from ..autonomy_in_rust_for_python import warn
-from ..knowledge import KnowledgeProvider
-from ..knowledge.mem0 import Mem0Knowledge
-from ..knowledge.noop import NoopKnowledge
 from ..logs import get_logger
 from ..memory.memory import Memory
 from ..models.model import Model
@@ -22,7 +18,6 @@ from ..nodes.message import (
   AssistantMessage,
   ConversationMessage,
   ConversationSnippet,
-  ConversationRole,
   Error,
   GetConversationsRequest,
   GetConversationsResponse,
@@ -113,13 +108,13 @@ class AgentStateMachine:
   method of the `Agent` class.
   """
 
-  def __init__(self, agent, scope, conversation, stream, response, contextual_knowledge=None):
+  def __init__(self, agent, scope, conversation, stream, response):
     self.agent = agent
     self.scope = scope
     self.conversation = conversation
     self.stream = stream
     self.streaming_response = response
-    self.contextual_knowledge = contextual_knowledge
+
     self.state = AgentState.READY
     self.iteration = 0
     self.tool_calls = []
@@ -174,7 +169,7 @@ class AgentStateMachine:
 
     try:
       async for err, finished, model_response in self.agent.complete_chat(
-        self.scope, self.conversation, self.contextual_knowledge, stream=self.stream
+        self.scope, self.conversation, stream=self.stream
       ):
         chunks_processed += 1
         logger.debug(
@@ -339,7 +334,6 @@ class AgentStateMachine:
 
 class Agent:
   tools: Dict[str, InvokableTool]
-  memory_knowledge: Optional["AgentMemoryKnowledge"]
 
   def __init__(
     self,
@@ -347,12 +341,9 @@ class Agent:
     name: str,
     instructions: str,
     model: Model,
-    memory_model: Optional[Model],
-    memory_embeddings_model: Optional[Model],
     tool_specs: List[dict],
     tools: Dict[str, InvokableTool],
     memory: Memory,
-    knowledge: KnowledgeProvider,
     max_iterations: int = 1000,
     max_execution_time: float = 600.0,  # 10 minutes
   ):
@@ -365,9 +356,6 @@ class Agent:
 
     self.name = name
     self.model = model
-    self.memory_model = memory_model
-    self.memory_embeddings_model = memory_embeddings_model
-    self.memory_knowledge = None
 
     self.memory = memory
     memory.set_instructions(system_message(instructions))
@@ -375,16 +363,24 @@ class Agent:
     self.max_iterations = max_iterations
     self.max_execution_time = max_execution_time
 
-    self.knowledge = knowledge
-
     self.converter = MessageConverter.create(node)
-
-    # Add async lock for memory synchronization
-    self._memory_lock = asyncio.Lock()
 
     # Add tool call ID tracking to prevent collisions
     self._tool_call_ids = OrderedDict()
     self._tool_call_id_lock = asyncio.Lock()
+
+  def _memory_scope(self, scope: str) -> str:
+    """
+    Create an agent-scoped memory key by prepending the agent's name to the scope.
+    This ensures memory isolation between different agents.
+
+    Args:
+      scope: The user-provided scope (e.g., "user123")
+
+    Returns:
+      Agent-scoped memory key (e.g., "henry/user123")
+    """
+    return f"{self.name}/{scope}"
 
   async def handle_message(self, context, message):
     try:
@@ -422,8 +418,8 @@ class Agent:
     return GetIdentifierResponse(message.scope, message.conversation, name_snake_case)
 
   async def handle__get_conversations_request(self, message: GetConversationsRequest) -> GetConversationsResponse:
-    async with self._memory_lock:
-      return GetConversationsResponse(self.memory.get_messages_only(message.scope, message.conversation))
+    messages = await self.memory.get_messages_only(self._memory_scope(message.scope), message.conversation)
+    return GetConversationsResponse(messages)
 
   async def handle__conversation_snippet(self, message):
     """Handle conversation snippets from users or other agents."""
@@ -436,18 +432,8 @@ class Agent:
     # create the streaming response handler
     response = ConversationResponse(scope, conversation, stream)
 
-    # if we have memory/knowledge capabilities, search for relevant information
-    contextual_knowledge = None
-    if self.memory_knowledge is None and self.memory_model is not None and self.memory_embeddings_model is not None:
-      self.memory_knowledge = await AgentMemoryKnowledge.create(self.memory_model, self.memory_embeddings_model)
-
-    if self.memory_knowledge is not None and len(messages) > 0:
-      user_message = messages[-1]
-      if user_message.role == ConversationRole.USER and hasattr(user_message.content, "text"):
-        contextual_knowledge = await self.memory_knowledge.search(scope, conversation, user_message.content.text)
-
     # create the state machine to handle the conversation
-    machine = AgentStateMachine(self, scope, conversation, stream, response, contextual_knowledge)
+    machine = AgentStateMachine(self, scope, conversation, stream, response)
 
     # initialize the plan with input messages
     await machine.initialize_plan(messages)
@@ -457,81 +443,34 @@ class Agent:
       yield result
 
   async def get_messages_only(self, conversation, scope) -> list[ConversationMessage]:
-    # Synchronize memory reads to ensure consistency
-    async with self._memory_lock:
-      messages: list[dict] = self.memory.get_messages_only(scope, conversation)
-      return [self.converter.conversation_message_from_dict(m) for m in messages]
+    messages: list[dict] = await self.memory.get_messages_only(self._memory_scope(scope), conversation)
+    return [self.converter.conversation_message_from_dict(m) for m in messages]
 
   async def remember(self, scope: str, conversation: str, message: ConversationMessage):
-    # TODO: at some point memory becomes bigger than context window and we need to start pushing memories
-    # into Knowledge
-    # self.history_knowledge.add(messages=[model_response], user_id=scope)
+    # Convert message to dict format if needed
+    if not isinstance(message, dict):
+      message = self.converter.message_to_dict(message)
 
-    # Use async lock to ensure atomic operations across concurrent conversations
-    async with self._memory_lock:
-      # Convert message to dict format if needed
-      if not isinstance(message, dict):
-        message = self.converter.message_to_dict(message)
-
-      # Add to memory atomically
-      self.memory.add_message(scope, conversation, message)
+    # Add to memory
+    await self.memory.add_message(self._memory_scope(scope), conversation, message)
 
   async def message_history(self, scope: str, conversation: str) -> list[dict]:
-    # Synchronize memory reads to ensure consistency with writes
-    async with self._memory_lock:
-      return self.memory.get_messages(scope, conversation)
+    return await self.memory.get_messages(self._memory_scope(scope), conversation)
 
   async def determine_input_context(self, scope: str, conversation: str):
-    """Determine the input context for the agent based on memory and knowledge."""
+    """Determine the input context for the agent based on memory."""
 
     # Get the message history as ConversationMessage objects (not raw dicts)
-    async with self._memory_lock:
-      raw_messages = self.memory.get_messages(scope, conversation)
-      messages = [self.converter.conversation_message_from_dict(m) for m in raw_messages]
-
-    # Add contextual information from knowledge if available
-    if self.knowledge is not None and len(messages) > 0:
-      # Use the last user message to search for relevant knowledge
-      last_user_message = None
-      for msg in reversed(messages):
-        if msg.role == ConversationRole.USER:
-          last_user_message = msg
-          break
-
-      if last_user_message and hasattr(last_user_message.content, "text"):
-        contextual_knowledge = await self.knowledge.search_knowledge(
-          scope, conversation, last_user_message.content.text
-        )
-        if contextual_knowledge:
-          # Add contextual knowledge as a system message
-          from ..nodes.message import SystemMessage
-
-          context_message = SystemMessage(f"Relevant context: {contextual_knowledge}")
-          messages.append(context_message)
+    raw_messages = await self.memory.get_messages(self._memory_scope(scope), conversation)
+    messages = [self.converter.conversation_message_from_dict(m) for m in raw_messages]
 
     return messages
 
-  async def complete_chat(
-    self, scope: str, conversation: str, contextual_knowledge: Optional[str] = None, stream: bool = False
-  ):
+  async def complete_chat(self, scope: str, conversation: str, stream: bool = False):
     """Complete a chat conversation using the agent's model."""
 
     try:
       messages = await self.determine_input_context(scope, conversation)
-
-      # Add contextual knowledge if provided
-      if contextual_knowledge:
-        from ..nodes.message import SystemMessage
-
-        context_message = SystemMessage(f"Relevant context: {contextual_knowledge}")
-        # Insert before the last message, or append if messages is empty or None
-        if messages:
-          messages.insert(-1, context_message)  # Insert before the last message (usually user input)
-        else:
-          # Handle case where messages is None or empty
-          if messages is None:
-            messages = []
-          messages.append(context_message)  # Append if messages is empty
 
       # Call the model to generate a response
       if stream:
@@ -761,18 +700,22 @@ class Agent:
       return fallback_id
 
   @staticmethod
+  async def stop(node: Node, name: str):
+    """Stop an agent on a node."""
+    await node.stop_worker(name)
+
+  @staticmethod
   async def start(
     node: Node,
     instructions: str,
     name: Optional[str] = None,
     model: Optional[Model] = None,
-    memory_model: Optional[Model] = None,
-    memory_embeddings_model: Optional[Model] = None,
     tools: Optional[List[InvokableTool]] = None,
-    knowledge: Optional[KnowledgeProvider] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
     exposed_as: Optional[str] = None,
+    max_active_messages: int = 100,
+    max_active_tokens: Optional[int] = 8000,
   ):
     """Start an agent on a node."""
 
@@ -784,27 +727,18 @@ class Agent:
     if model is None:
       model = Model(name="claude-sonnet-4-v1")
 
-    if knowledge is None:
-      knowledge = NoopKnowledge()
-
     return await Agent.start_agent_impl(
       node,
       name,
       instructions,
       model,
-      memory_model,
-      memory_embeddings_model,
       tools,
-      knowledge,
       max_iterations,
       max_execution_time,
       exposed_as,
+      max_active_messages,
+      max_active_tokens,
     )
-
-  @staticmethod
-  async def stop(node: Node, name: str):
-    """Stop an agent on a node."""
-    await node.stop_worker(name)
 
   @staticmethod
   async def start_many(
@@ -812,20 +746,16 @@ class Agent:
     instructions: str,
     number_of_agents: int,
     model: Optional[Model] = None,
-    memory_model: Optional[Model] = None,
-    memory_embeddings_model: Optional[Model] = None,
     tools: Optional[List[InvokableTool]] = None,
-    knowledge: Optional[KnowledgeProvider] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
+    max_active_messages: int = 100,
+    max_active_tokens: Optional[int] = 8000,
   ):
     """Start multiple agents on a node."""
 
     if model is None:
       model = Model(name="claude-3-5-sonnet-v2")
-
-    if knowledge is None:
-      knowledge = NoopKnowledge()
 
     agents = []
     for i in range(number_of_agents):
@@ -835,13 +765,12 @@ class Agent:
         name,
         instructions,
         model,
-        memory_model,
-        memory_embeddings_model,
         tools,
-        copy.deepcopy(knowledge),
         max_iterations,
         max_execution_time,
         None,
+        max_active_messages,
+        max_active_tokens,
       )
       agents.append(agent_ref)
 
@@ -853,13 +782,12 @@ class Agent:
     name: str,
     instructions: str,
     model: Model,
-    memory_model: Optional[Model],
-    memory_embeddings_model: Optional[Model],
     tools: Optional[List[InvokableTool]],
-    knowledge: KnowledgeProvider,
     max_iterations: Optional[int],
     max_execution_time: Optional[float],
     exposed_as: Optional[str],
+    max_active_messages: int = 100,
+    max_active_tokens: Optional[int] = 8000,
   ):
     """Create and start an agent implementation."""
 
@@ -874,7 +802,12 @@ class Agent:
     # Create shared memory for the agent
     from ..memory.memory import Memory
 
-    memory = Memory()
+    memory = Memory(
+      max_active_messages=max_active_messages,
+      max_active_tokens=max_active_tokens,
+      model=model,
+    )
+    await memory.initialize_database()
 
     # Create the agent
     def agent_creator():
@@ -883,12 +816,9 @@ class Agent:
         "name": name,
         "instructions": instructions,
         "model": model,
-        "memory_model": memory_model,
-        "memory_embeddings_model": memory_embeddings_model,
         "tool_specs": tool_specs,
         "tools": tools_dict,
         "memory": memory,
-        "knowledge": knowledge,
       }
       if max_iterations is not None:
         kwargs["max_iterations"] = max_iterations
@@ -971,34 +901,3 @@ class ConversationResponse:
       self.counter += 1
       current_counter = self.counter
     return StreamedConversationSnippet(ConversationSnippet(self.scope, self.conversation, []), current_counter, True)
-
-
-class AgentMemoryKnowledge:
-  def __init__(self, mem0_knowledge: Mem0Knowledge):
-    self.mem0_knowledge = mem0_knowledge
-    self.added_messages = []
-
-  @staticmethod
-  async def create(memory_model: Model, memory_embeddings_model: Model):
-    mem0_knowledge = await Mem0Knowledge.create(memory_model, memory_embeddings_model)
-
-    return AgentMemoryKnowledge(mem0_knowledge)
-
-  async def add(self, scope: Optional[str], conversation: Optional[str], messages):
-    new_messages = messages
-
-    # for message in messages:
-    #     # FIXME: Far from perfect, messages should be assigned unique ids
-    #     if {"scope": scope, "conversation": conversation, "message": message} not in self.added_messages:
-    #         new_messages.append(message)
-
-    if not new_messages:
-      return
-
-    await self.mem0_knowledge.add(scope=scope, conversation=conversation, messages=new_messages)
-
-    for message in new_messages:
-      self.added_messages.append({"scope": scope, "conversation": conversation, "message": message})
-
-  async def search(self, scope: Optional[str], conversation: Optional[str], query: str) -> Optional[str]:
-    return await self.mem0_knowledge.search_knowledge(scope=scope, conversation=conversation, query=query)
