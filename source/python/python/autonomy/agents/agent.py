@@ -105,6 +105,7 @@ class State(Enum):
     - READY: Prepare conversation context before model interaction
     - THINKING: Agent uses LLM to understand, reason, and pick next step
     - ACTING: Agent invokes tools to gather information and take actions
+    - WAITING_FOR_INPUT: Agent has asked user for input and is paused
     - DONE: Agent finalizes and returns results
 
   Transitions are controlled by agent's autonomous decisions and tool execution results.
@@ -114,6 +115,7 @@ class State(Enum):
   READY = "ready"
   THINKING = "thinking"
   ACTING = "acting"
+  WAITING_FOR_INPUT = "waiting_for_input"
   DONE = "done"
 
 
@@ -133,10 +135,21 @@ class State(Enum):
 #      │    ▼           │
 #      │  ┌────────┐    │
 #      │  │        │    │
-#      │  │ ACTING │────┘
-#      │  │        │
-#      │  └────────┘
-#      │
+#      │  │ ACTING │────┤
+#      │  │        │    │
+#      │  └───┬────┘    │
+#      │      │         │
+#      │      ▼         │
+#      │  ┌──────────────────┐
+#      │  │                  │
+#      │  │ WAITING_FOR_     │ [paused, waits for user]
+#      │  │     INPUT        │
+#      │  │                  │
+#      │  └──────────────────┘
+#      │        │
+#      │        │ [user responds]
+#      │        └──────────────┐
+#      │                       │
 #      │ [response complete && no tool calls]
 #      │ [error conditions]
 #      │ [max iterations reached]
@@ -157,6 +170,11 @@ class State(Enum):
 # - → DONE: [response complete && no tool calls] OR [error conditions] OR [max iterations reached]
 #
 # ACTING transitions:
+# - → THINKING: [tool calls executed successfully]
+# - → WAITING_FOR_INPUT: [ask_user_for_input tool called]
+#
+# WAITING_FOR_INPUT transitions:
+# - → THINKING: [user responds with new message] (resume triggered by Agent)
 # - → THINKING: [after processing all tool calls] OR [error conditions] OR [max tool calling transitions]
 #
 # Error conditions include: model completion errors, timeout exceeded, transition limits exceeded
@@ -229,6 +247,12 @@ class StateMachine:
     self.start_time = time.time()
     self.max_execution_time = agent.max_execution_time
 
+    # Pause/resume support for human-in-the-loop functionality
+    self.is_paused = False  # True when waiting for user input
+    self.waiting_prompt = None  # The question shown to user
+    self.interrupted = False  # True when new message interrupts active state machine
+    self.pending_tool_call_id = None  # Track ask_user_for_input tool call ID for resume
+
   async def transition(self):
     """
     Execute current state and determine next state.
@@ -257,6 +281,9 @@ class StateMachine:
       case State.ACTING:
         async for result in self._handle_acting_state():
           yield result
+      case State.WAITING_FOR_INPUT:
+        async for result in self._handle_waiting_for_input_state():
+          yield result
 
   async def _handle_thinking_state(self):
     """
@@ -280,6 +307,13 @@ class StateMachine:
     Streaming vs non-streaming: Streaming provides better UX but requires careful
     handling of incomplete responses, finish signals, and timeout edge cases.
     """
+
+    # Check for interruption
+    if self.interrupted:
+      logger.info("State machine interrupted during THINKING")
+      yield Error("Agent was interrupted by new message")
+      self.state = State.DONE
+      return
 
     self.iteration += 1
     if self.iteration >= self.agent.max_iterations:
@@ -417,15 +451,59 @@ class StateMachine:
 
     Sequential execution ensures predictable ordering when tool results depend
     on each other.
+
+    Special handling for human-in-the-loop:
+      - Detects ask_user_for_input tool call
+      - Transitions to WAITING_FOR_INPUT state
+      - Pauses execution until user responds
     """
 
+    # Check for interruption
+    if self.interrupted:
+      logger.info("State machine interrupted during ACTING")
+      yield Error("Agent was interrupted by new message")
+      self.state = State.DONE
+      return
+
     for tool_call in self.tool_calls:
-      error, tool_call_response = await self.agent.call_tool(tool_call)
+      error, tool_call_response, raw_result = await self.agent.call_tool(tool_call)
 
       if error:
         # Continue so model can see error and potentially recover
         warn(f"MCP call failed: {error}")
 
+      # Check if this is ask_user_for_input with waiting marker
+      if (not error and
+          isinstance(raw_result, dict) and
+          raw_result.get("_waiting_for_input")):
+
+        # Extract prompt for user
+        self.waiting_prompt = raw_result.get("prompt", "Waiting for input...")
+        self.pending_tool_call_id = tool_call.id
+
+        logger.info(f"Agent requesting user input: {self.waiting_prompt}")
+
+        # Transition to waiting state
+        self.state = State.WAITING_FOR_INPUT
+
+        # Send the prompt to user as assistant message
+        from ..nodes.message import AssistantMessage
+        waiting_message = AssistantMessage(
+          content=self.waiting_prompt,
+          phase=Phase.WAITING_FOR_INPUT
+        )
+        await self.agent.remember(self.scope, self.conversation, waiting_message)
+
+        if self.stream:
+          yield await self.streaming_response.make_snippet(waiting_message)
+        else:
+          self.whole_response.messages.append(waiting_message)
+
+        # Mark as paused - run() will detect this
+        self.is_paused = True
+        return
+
+      # Normal tool call - store result and continue
       # the tool_call_response contains the error message if the tool call failed
       await self.agent.remember(self.scope, self.conversation, tool_call_response)
 
@@ -435,6 +513,26 @@ class StateMachine:
         self.whole_response.messages.append(tool_call_response)
 
     self.state = State.THINKING
+
+  async def _handle_waiting_for_input_state(self):
+    """
+    Handle WAITING_FOR_INPUT state.
+
+    This state indicates the agent has asked the user for input and is
+    waiting for a response. The state machine is paused here and will
+    not transition until resume is triggered by a new message.
+
+    Note: This handler is called but doesn't change state - it just
+    ensures is_paused flag is set. The actual resume happens when
+    handle__conversation_snippet receives a new message.
+    """
+    logger.debug("State machine in WAITING_FOR_INPUT state (paused)")
+
+    # Ensure paused flag is set
+    if not self.is_paused:
+      self.is_paused = True
+
+    # Do not transition state - wait for external resume
 
   async def _handle_done_state(self):
     """
@@ -466,7 +564,12 @@ class StateMachine:
 
   async def run(self):
     """
-    Run state machine until completion.
+    Run state machine until completion or pause.
+
+    Modified to support pause/resume:
+      - Checks is_paused flag after each transition
+      - Stops iterating when paused (doesn't go to DONE)
+      - Can be resumed by setting is_paused = False and calling run() again
 
     Executes main loop, transitioning between states until DONE. Includes
     timeout protection and statistics logging.
@@ -479,11 +582,27 @@ class StateMachine:
       # Add overall timeout protection for the entire state machine run
       async with asyncio.timeout(self.max_execution_time):
         while self.state != State.DONE:
+          # Check for interruption
+          if self.interrupted:
+            logger.info("State machine interrupted, terminating")
+            yield Error("Agent was interrupted by new message")
+            self.state = State.DONE
+            break
+
           async for result in self.transition():
             yield result
 
-        async for result in self._handle_done_state():
-          yield result
+          # Check if we're paused
+          if self.is_paused:
+            logger.info(f"State machine paused in {self.state.name} state")
+            # Don't transition to DONE - just stop iterating
+            # Agent will keep this state machine and resume later
+            return
+
+        # Only send done state if not paused
+        if not self.is_paused:
+          async for result in self._handle_done_state():
+            yield result
 
     except asyncio.TimeoutError:
       logger.error(f"State machine run timed out after {self.max_execution_time}s")
@@ -494,7 +613,7 @@ class StateMachine:
 
 
 # =============================================================================
-# AGENT IMPLEMENTATION
+# AGENT
 # =============================================================================
 
 
@@ -622,6 +741,11 @@ class Agent:
     self._tool_call_ids = OrderedDict()
     self._tool_call_id_lock = asyncio.Lock()
 
+    # State machine tracking for pause/resume support
+    # Since each Agent instance handles one (scope, conversation) pair,
+    # we only need to track one active state machine at a time
+    self._active_state_machine: Optional[StateMachine] = None
+
     logger.info(f"Started agent '{name}'")
 
   def _memory_scope(self, scope: str) -> str:
@@ -724,36 +848,120 @@ class Agent:
 
   async def handle__conversation_snippet(self, message):
     """
-    Handle conversation snippets from users or other agents.
+    Handle conversation snippets with support for pause/resume and interruption.
 
-    Creates a state machine to orchestrate conversation processing, including
-    model calls and tool execution. Supports streaming and non-streaming modes.
+    Flow:
+    1. Check if there's a paused state machine → resume it
+    2. Check if there's an active state machine → interrupt it
+    3. Otherwise → create new state machine
+
+    Concurrency model:
+    - This Agent instance handles ONE (scope, conversation) pair
+    - Messages are serialized by Ockam's worker model
+    - No concurrent calls to this method possible
+    - No locks needed!
 
     Args:
-      message: ConversationSnippet or StreamedConversationSnippet with user messages
+      message: ConversationSnippet or StreamedConversationSnippet
 
     Yields:
-      ConversationSnippet (non-streaming) or StreamedConversationSnippet (streaming)
+      ConversationSnippet or StreamedConversationSnippet responses
     """
 
-    # Determine streaming mode and extract conversation parameters
+    # Extract parameters from message
     stream = type(message) is StreamedConversationSnippet
     scope = message.scope if type(message) is ConversationSnippet else message.snippet.scope
     conversation = message.conversation if type(message) is ConversationSnippet else message.snippet.conversation
     messages = message.messages if type(message) is ConversationSnippet else message.snippet.messages
 
-    # Create the streaming response helper
+    # CASE 1: Resume a paused state machine
+    if self._active_state_machine and self._active_state_machine.is_paused:
+      logger.info(f"Resuming paused state machine for conversation '{conversation}'")
+
+      machine = self._active_state_machine
+
+      # Add new user messages to memory
+      for msg in messages:
+        await self.remember(scope, conversation, msg)
+
+      # Create tool result with user's response
+      user_response = "\n".join([
+        msg.content for msg in messages
+        if hasattr(msg, 'content') and msg.content
+      ])
+
+      # Complete the pending ask_user_for_input tool call
+      from ..nodes.message import ToolCallResponseMessage
+      tool_result = ToolCallResponseMessage(
+        tool_call_id=machine.pending_tool_call_id or "unknown",
+        result=user_response
+      )
+      await self.remember(scope, conversation, tool_result)
+
+      if stream:
+        yield await machine.streaming_response.make_snippet(tool_result)
+      else:
+        machine.whole_response.messages.append(tool_result)
+
+      # Resume the state machine
+      machine.is_paused = False
+      machine.state = State.THINKING  # Continue from thinking
+
+      logger.info("State machine resumed, continuing execution")
+
+      # Continue running the existing machine
+      async for result in machine.run():
+        yield result
+
+      # Clean up when done
+      if machine.state == State.DONE:
+        logger.info("Resumed state machine completed")
+        self._active_state_machine = None
+
+      return
+
+    # CASE 2: Interrupt an active (non-paused) state machine
+    if self._active_state_machine and not self._active_state_machine.is_paused:
+      logger.info(f"Interrupting active state machine for conversation '{conversation}'")
+
+      # Signal interruption
+      self._active_state_machine.interrupted = True
+
+      # Give the state machine a moment to notice the flag
+      # (it will check on next iteration)
+      await asyncio.sleep(0.05)
+
+      # Clear the reference
+      self._active_state_machine = None
+
+      logger.info("State machine interrupted, starting new conversation")
+
+    # CASE 3: Start new state machine (normal flow or after interrupt)
+    logger.debug(f"Creating new state machine for conversation '{conversation}'")
+
+    # Create streaming response helper
     response = ConversationResponse(scope, conversation, stream)
 
-    # Create the state machine to handle the conversation
+    # Create new state machine
     machine = StateMachine(self, scope, conversation, stream, response)
 
-    # Initialize the plan with input messages
+    # Initialize with input messages
     await machine.initialize_plan(messages)
 
-    # Run the state machine until completion
+    # Store as active
+    self._active_state_machine = machine
+
+    # Run until completion or pause
     async for result in machine.run():
       yield result
+
+    # Clean up if done (not paused)
+    if machine.state == State.DONE:
+      logger.info("State machine completed")
+      self._active_state_machine = None
+    elif machine.is_paused:
+      logger.info(f"State machine paused, waiting for user input: '{machine.waiting_prompt}'")
+      # Keep the reference so we can resume later
 
   async def get_messages_only(self, conversation, scope) -> list[ConversationMessage]:
     """
@@ -1056,9 +1264,10 @@ class Agent:
       tool_call: ToolCall object containing tool name, ID, and arguments
 
     Returns:
-      Tuple of (error_string, ToolCallResponseMessage):
+      Tuple of (error_string, ToolCallResponseMessage, raw_result):
         - error_string: Error description if failed, None if successful
         - ToolCallResponseMessage: Response containing tool result or error
+        - raw_result: The raw result from tool.invoke() before string conversion
     """
 
     tool_name = tool_call.function.name
@@ -1072,20 +1281,20 @@ class Agent:
         response = ToolCallResponseMessage(
           tool_call_id=tool_call.id, name=tool_name, content=str(result), phase=Phase.EXECUTING
         )
-        return None, response
+        return None, response, result
       else:
         error_msg = f"Tool '{tool_name}' not found"
         response = ToolCallResponseMessage(
           tool_call_id=tool_call.id, name=tool_name, content=error_msg, phase=Phase.EXECUTING
         )
-        return error_msg, response
+        return error_msg, response, None
 
     except Exception as e:
       error_msg = f"Tool execution failed: {str(e)}"
       response = ToolCallResponseMessage(
         tool_call_id=tool_call.id, name=tool_name, content=error_msg, phase=Phase.EXECUTING
       )
-      return error_msg, response
+      return error_msg, response, None
 
   async def _generate_unique_tool_call_id(self):
     """
@@ -1376,6 +1585,9 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
     1. tool_specs: Model-compatible JSON schemas (for model to see available tools)
     2. tools_dict: Name→tool mapping (for fast lookup during tool execution)
 
+  Automatically includes built-in tools:
+    - ask_user_for_input: Request input from user (human-in-the-loop)
+
   Args:
     tools: List of InvokableTool instances to prepare
     node: Node instance to inject into tools that need it
@@ -1385,13 +1597,21 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
       - tool_specs: List of JSON schema dicts for model consumption
       - tools_dict: Dict mapping tool names to InvokableTool instances
   """
+  from .builtin_tools import AskUserForInputTool
+
+  # Add built-in tools
+  builtin_tools = [AskUserForInputTool()]
+
   tool_specs = []
   tools_dict = {}
 
   if tools is None:
     tools = []
 
-  for tool in tools:
+  # Combine built-in tools with user-provided tools
+  all_tools = builtin_tools + tools
+
+  for tool in all_tools:
     if hasattr(tool, "node"):
       tool.node = node
 
