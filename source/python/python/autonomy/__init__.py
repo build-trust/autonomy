@@ -40,6 +40,7 @@ from .knowledge import (
   TextExtractor,
   Chunker,
   NaiveChunker,
+  KnowledgeTool,
 )
 
 from .autonomy_in_rust_for_python import Mailbox as RustMailbox, McpClient, McpServer
@@ -140,4 +141,5 @@ __all__ = [
   "TextExtractor",
   "Chunker",
   "NaiveChunker",
+  "KnowledgeTool",
 ]
