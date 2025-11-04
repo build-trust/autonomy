@@ -1,3 +1,36 @@
+"""
+Agent implementation for the Autonomy framework.
+
+Agents are intelligent actors that autonomously accomplish goals. Apps, running on the
+Autonomy Computer, can create millions of parallel collaborating agents in seconds.
+
+Each agent:
+- Has a unique identity.
+- Uses a large language model to understand, reason, and make autonomous decisions.
+- Has memory, so it can retain and recall information over time, to make better autonomous decisions.
+- Invokes tools to gather new information and take actions.
+- Makes plans that break down complex tasks into small iterative steps.
+- Can retrieve knowledge beyond the training data of its language model.
+- Collaborates with and can delegate work to other agents.
+
+Autonomy Agents are built using the actor model and have all the properties of actors.
+
+Key Components:
+- Agent: The main agent implementation (persistent identity + configuration)
+- StateMachine: Orchestrates individual conversations (ephemeral per-request)
+- State: Enum defining conversation flow states (READY/THINKING/ACTING/DONE)
+- ConversationResponse: Helper for generating streaming/non-streaming responses
+
+Architecture Pattern:
+One Agent instance handles many concurrent conversations, each with its own
+StateMachine. This enables resource efficiency while maintaining isolation.
+
+For practical guides:
+- Agent deployment: docs/_for-coding-agents/create-a-new-autonomy-app.mdx
+- Memory and scope: docs/_for-coding-agents/memory.mdx
+- Tools: docs/_for-coding-agents/tools.mdx
+"""
+
 import asyncio
 import json
 import secrets
@@ -10,9 +43,13 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 from ..autonomy_in_rust_for_python import warn
+from ..helpers.validate_address import validate_address
 from ..logs import get_logger
 from ..memory.memory import Memory
 from ..models.model import Model
+from ..nodes.node import Node
+from ..tools.protocol import InvokableTool
+
 from ..nodes.message import (
   AgentReference,
   AssistantMessage,
@@ -29,21 +66,49 @@ from ..nodes.message import (
   ToolCall,
   ToolCallResponseMessage,
 )
-from ..nodes.node import Node
-from ..tools.protocol import InvokableTool
-from ..helpers.validate_address import validate_address
 
 logger = get_logger("agent")
 
 
-class AgentState(Enum):
-  """
-  States for the agent conversation state machine.
+# =============================================================================
+# CONSTANTS - EXECUTION LIMITS AND SAFETY BACKSTOPS
+# =============================================================================
 
-  - READY: Initial state where we set up the conversation
-  - THINKING: Call the model to generate a response
-  - ACTING: Execute tool calls from the model response
-  - DONE: End of the conversation
+# Prevent infinite loops and runaway execution
+MAX_ITERATIONS_DEFAULT = 1000
+MAX_EXECUTION_TIME_DEFAULT = 600.0  # 10 minutes
+
+# Streaming safety limits
+MAX_STREAMING_CHUNKS = 1000
+STREAMING_TIMEOUT_SECONDS = 300  # 5 minutes
+
+# Tool call ID management - prevent UUID collisions
+MAX_TOOL_ID_GENERATION_ATTEMPTS = 100
+MAX_TOOL_CALL_IDS_TO_RETAIN = 1000
+TOOL_ID_CLEANUP_BATCH_SIZE = 100
+
+# Memory and context limits
+MAX_ACTIVE_MESSAGES_DEFAULT = 100
+MAX_ACTIVE_TOKENS_DEFAULT = 8000
+
+
+# =============================================================================
+# STATE MACHINE
+# =============================================================================
+
+
+class State(Enum):
+  """
+  Conversation flow states for agent's autonomous decision-making.
+
+  States:
+    - READY: Prepare conversation context before model interaction
+    - THINKING: Agent uses LLM to understand, reason, and pick next step
+    - ACTING: Agent invokes tools to gather information and take actions
+    - DONE: Agent finalizes and returns results
+
+  Transitions are controlled by agent's autonomous decisions and tool execution results.
+  See ASCII diagram below for complete transition graph.
   """
 
   READY = "ready"
@@ -98,14 +163,47 @@ class AgentState(Enum):
 #
 
 
-class AgentStateMachine:
+class StateMachine:
   """
-  State machine for managing agent conversation flow.
+  Manage agent's autonomous decision-making flow through discrete state transitions.
 
-  This class implements a state machine that manages the flow of an agent conversation.
-  It handles the transitions between different states and executes the appropriate actions
-  for each state. The state machine is designed to be used by the `handle__conversation_snippet`
-  method of the `Agent` class.
+  Manages a single conversation where the agent autonomously accomplishes goals by:
+    1. Using its LLM to understand, reason, and decide (THINKING state)
+    2. Invoking tools to gather information and take actions (ACTING state)
+    3. Making plans that break complex tasks into iterative steps
+    4. Repeating until goal accomplished (DONE state)
+
+  Capabilities:
+    - Autonomous decisions about when and how to use tools
+    - Break complex tasks into manageable steps
+    - Retrieve knowledge beyond LLM training data
+    - Retain and recall information for better decisions
+
+  Architecture (Actor Model Pattern):
+    - Agent: Persistent actor (identity, memory, model, tools) across conversations
+    - StateMachine: Ephemeral orchestrator per conversation (created per request)
+
+    This separation enables one Agent to handle multiple concurrent conversations,
+    each with independent StateMachine state.
+
+  Safety Mechanisms:
+    - Iteration limits → prevent infinite tool-calling loops
+    - Execution time limits → catch stuck model calls or slow tools
+    - Streaming limits → prevent memory exhaustion from runaway responses
+
+  Attributes:
+    agent: The Agent instance this state machine operates for
+    scope: User/tenant identifier for memory isolation
+    conversation: Conversation thread identifier
+    stream: Whether to stream responses incrementally
+    streaming_response: Helper for generating streaming chunks
+    state: Current state (READY/THINKING/ACTING/DONE)
+    iteration: State machine cycle count (increments each THINKING entry)
+    tool_calls: Tool calls from agent's autonomous decisions
+    whole_response: Accumulated response for non-streaming mode
+    final_content_sent: Prevents duplicate finish signals in streaming
+    start_time: Execution time limit enforcement timestamp
+    max_execution_time: Maximum execution time in seconds
   """
 
   def __init__(self, agent, scope, conversation, stream, response):
@@ -115,18 +213,28 @@ class AgentStateMachine:
     self.stream = stream
     self.streaming_response = response
 
-    self.state = AgentState.READY
+    # Initialize state machine at READY state - will transition to THINKING on first cycle
+    self.state = State.READY
     self.iteration = 0
     self.tool_calls = []
+
+    # For non-streaming mode, accumulate all messages before returning
     self.whole_response = ConversationSnippet(scope, conversation, [])
+
+    # Track whether we've sent the final streaming chunk to prevent duplicates
+    # Edge cases (timeouts, incomplete streams) could trigger multiple finish signals
     self.final_content_sent = False
 
-    # Execution time tracking for safety backstop
+    # Start execution timer for safety backstop
     self.start_time = time.time()
     self.max_execution_time = agent.max_execution_time
 
   async def transition(self):
-    """Execute the current state and determine the next state."""
+    """
+    Execute current state and determine next state.
+
+    Checks safety limits, then delegates to state-specific handlers.
+    """
 
     # Check execution time limit
     current_time = time.time()
@@ -135,29 +243,48 @@ class AgentStateMachine:
     if elapsed_time > self.max_execution_time:
       logger.error(f"State machine exceeded maximum execution time ({self.max_execution_time}s)")
       yield Error(f"Agent exceeded maximum execution time ({self.max_execution_time:.1f}s)")
-      self.state = AgentState.DONE
+      self.state = State.DONE
       return
 
-    # Log transition for debugging
     logger.debug(f"State transition: {self.state.name} (iteration: {self.iteration}, elapsed: {elapsed_time:.1f}s)")
 
     match self.state:
-      case AgentState.READY:
-        self.state = AgentState.THINKING
-      case AgentState.THINKING:
+      case State.READY:
+        self.state = State.THINKING
+      case State.THINKING:
         async for result in self._handle_thinking_state():
           yield result
-      case AgentState.ACTING:
+      case State.ACTING:
         async for result in self._handle_acting_state():
           yield result
 
   async def _handle_thinking_state(self):
-    """Handle the THINKING state: Call the model to generate a response."""
+    """
+    Handle THINKING state: Call model to generate response.
+
+    OUTCOMES:
+    ┌────────────────────┬─────────────┬────────────────────┐
+    │ Model Response     │ Has Tools?  │ Next State         │
+    ├────────────────────┼─────────────┼────────────────────┤
+    │ Finished           │ Yes         │ ACTING             │
+    │ Finished           │ No          │ DONE               │
+    │ Error              │ -           │ DONE               │
+    │ Max iterations     │ -           │ DONE               │
+    └────────────────────┴─────────────┴────────────────────┘
+
+    Response types:
+      - Final text response → DONE
+      - Tool call request → ACTING
+      - Streaming chunks → Process incrementally
+
+    Streaming vs non-streaming: Streaming provides better UX but requires careful
+    handling of incomplete responses, finish signals, and timeout edge cases.
+    """
 
     self.iteration += 1
     if self.iteration >= self.agent.max_iterations:
       yield Error(str(RuntimeError("Reached max_iterations")))
-      self.state = AgentState.DONE
+      self.state = State.DONE
       return
 
     self.tool_calls = []
@@ -168,6 +295,7 @@ class AgentStateMachine:
     logger.debug(f"Starting model completion, iteration {self.iteration}")
 
     try:
+      # Call the model and process response chunks
       async for err, finished, model_response in self.agent.complete_chat(
         self.scope, self.conversation, stream=self.stream
       ):
@@ -176,10 +304,10 @@ class AgentStateMachine:
           f"Received chunk {chunks_processed}: err={err}, finished={finished}, response_type={type(model_response)}"
         )
 
-        if err:
+        if err:  # Propagate model error and terminate state machine
           logger.error(f"Model completion error: {err}")
           yield err
-          self.state = AgentState.DONE
+          self.state = State.DONE
           return
 
         response_received = True
@@ -193,8 +321,10 @@ class AgentStateMachine:
             yield await self.streaming_response.make_snippet(model_response)
           else:
             self.whole_response.messages.append(model_response)
+
           self.tool_calls.extend(model_response.tool_calls)
-          self.state = AgentState.ACTING
+          self.state = State.ACTING
+
           if finished:
             finish_signal_received = True
             return
@@ -209,15 +339,15 @@ class AgentStateMachine:
               yield await self.streaming_response.make_snippet(model_response, finished=True)
             self.final_content_sent = True
           else:
+            # Accumulate final message
             self.whole_response.messages.append(model_response)
 
-          # Determine next state
-          if self.state == AgentState.ACTING:
+          if self.state == State.ACTING:
             logger.debug("Transitioning to ACTING")
             return
           else:
             logger.debug("Transitioning to DONE")
-            self.state = AgentState.DONE
+            self.state = State.DONE
           return
         else:
           # Intermediate streaming chunk
@@ -226,8 +356,8 @@ class AgentStateMachine:
           elif not self.stream:
             self.whole_response.messages.append(model_response)
 
-          # Prevent infinite streaming - max 1000 chunks
-          if chunks_processed >= 1000:
+          # Prevent infinite streaming from malformed model responses
+          if chunks_processed >= MAX_STREAMING_CHUNKS:
             logger.warning(f"Streaming exceeded max chunks ({chunks_processed}), forcing finish")
             if self.stream and not self.final_content_sent:
               # Send empty finish chunk if needed
@@ -241,21 +371,21 @@ class AgentStateMachine:
     except Exception as e:
       logger.error(f"Exception in model calling: {e}")
       yield Error(f"Model completion failed: {str(e)}")
-      self.state = AgentState.DONE
+      self.state = State.DONE
       return
 
-    # Post-processing: Handle incomplete streaming
     logger.debug(
-      f"Stream complete: chunks={chunks_processed}, response_received={response_received}, finish_signal={finish_signal_received}"
+      f"Stream complete: chunks={chunks_processed}, response_received={response_received}, "
+      f"finish_signal={finish_signal_received}"
     )
 
     if not response_received:
       logger.error("No response received from model")
       yield Error("No response received from model")
-      self.state = AgentState.DONE
+      self.state = State.DONE
       return
 
-    # Handle incomplete streaming (no finish signal received)
+    # Incomplete streaming: Network issues, model errors, or chunking problems
     if response_received and not finish_signal_received:
       logger.warning(f"Stream incomplete - no finish signal after {chunks_processed} chunks, forcing completion")
 
@@ -267,56 +397,88 @@ class AgentStateMachine:
         yield await self.streaming_response.make_snippet(empty_response, finished=True)
         self.final_content_sent = True
 
-      # Force state transition
-      if self.state == AgentState.THINKING:
-        self.state = AgentState.DONE
+      if self.state == State.THINKING:
+        self.state = State.DONE
 
-    # Final safety check
-    if self.state == AgentState.THINKING:
+    # Final safety check to prevent hangs in edge cases
+    if self.state == State.THINKING:
       logger.warning(f"Forcing DONE state after {chunks_processed} chunks")
-      self.state = AgentState.DONE
+      self.state = State.DONE
 
   async def _handle_acting_state(self):
-    """Handle the ACTING state: Execute tool calls from the model response."""
+    """
+    Handle ACTING state: Execute tool calls from model response.
+
+    Flow:
+      1. Process all tool calls from model sequentially
+      2. Execute each tool and capture result or error
+      3. Store results in memory
+      4. Transition to THINKING for model to process results
+
+    Sequential execution ensures predictable ordering when tool results depend
+    on each other.
+    """
 
     for tool_call in self.tool_calls:
       error, tool_call_response = await self.agent.call_tool(tool_call)
+
       if error:
+        # Continue so model can see error and potentially recover
         warn(f"MCP call failed: {error}")
 
       # the tool_call_response contains the error message if the tool call failed
       await self.agent.remember(self.scope, self.conversation, tool_call_response)
+
       if self.stream:
         yield await self.streaming_response.make_snippet(tool_call_response)
       else:
         self.whole_response.messages.append(tool_call_response)
 
-    # after processing tool calls, we need another model call
-    self.state = AgentState.THINKING
+    self.state = State.THINKING
 
   async def _handle_done_state(self):
-    """Handle the DONE state: End the conversation and return the final response."""
+    """
+    Handle DONE state: End conversation and return final response.
+
+    Streaming mode: Send final finish signal (if not already sent)
+    Non-streaming mode: Return complete accumulated response
+    """
 
     if self.stream:
-      # Only send finished snippet if we haven't already sent final content
       if not self.final_content_sent:
         yield await self.streaming_response.make_finished_snippet()
     else:
       yield self.whole_response
 
   async def initialize_plan(self, messages):
-    """Remember input messages."""
+    """
+    Store input messages in memory to establish conversation context.
+
+    Stores user's initial messages before starting state machine, providing
+    context for model's first response.
+
+    Args:
+      messages: List of ConversationMessage objects to store
+    """
 
     for message in messages:
       await self.agent.remember(self.scope, self.conversation, message)
 
   async def run(self):
-    """Run the state machine until completion."""
+    """
+    Run state machine until completion.
+
+    Executes main loop, transitioning between states until DONE. Includes
+    timeout protection and statistics logging.
+
+    asyncio.timeout provides additional safety beyond per-iteration checks,
+    ensuring entire run completes in time.
+    """
 
     try:
       # Add overall timeout protection for the entire state machine run
       async with asyncio.timeout(self.max_execution_time):
-        while self.state != AgentState.DONE:
+        while self.state != State.DONE:
           async for result in self.transition():
             yield result
 
@@ -327,12 +489,106 @@ class AgentStateMachine:
       logger.error(f"State machine run timed out after {self.max_execution_time}s")
       yield Error(f"Agent execution timed out after {self.max_execution_time:.1f} seconds")
 
-    # Log final statistics
     elapsed_time = time.time() - self.start_time
     logger.info(f"State machine completed: {self.iteration} iterations in {elapsed_time:.1f}s")
 
 
+# =============================================================================
+# AGENT IMPLEMENTATION
+# =============================================================================
+
+
 class Agent:
+  """
+  Intelligent actor that autonomously accomplishes goals.
+
+  Apps on Autonomy Computer can create millions of parallel collaborating agents in seconds.
+
+  Each agent:
+    - Has a unique identity
+    - Uses LLMs to understand, reason, and make autonomous decisions
+    - Has memory to retain and recall information over time
+    - Invokes tools to gather information and take actions
+    - Makes plans that break complex tasks into iterative steps
+    - Can retrieve knowledge beyond its LLM's training data
+    - Collaborates with and delegates work to other agents
+
+  Built using the actor model with all actor properties.
+
+  MODELS
+    Agents use large language models for understanding, reasoning, and autonomous
+    decision-making. The model processes natural language, understands context, and
+    determines the best course of action to accomplish goals.
+
+  MEMORY
+    Organized by scope ID and conversation ID for context retention across interactions.
+    Enables agents to build context, learn from tool results, and maintain coherent plans.
+
+    Three-level hierarchy: {agent_name}/{user_scope}/{conversation}
+      - agent_name: Unique identity (e.g., "assistant-bot")
+      - user_scope: User/tenant isolation (e.g., "user-alice")
+      - conversation: Thread separation (e.g., "chat-2024-01-15")
+
+    Example: Agent "henry" serving user "alice" in conversation "chat1"
+             → scope "henry/alice/chat1" for all memory operations
+
+  TOOLS
+    External functions (Python or MCP servers) that agents invoke to take actions
+    and gather information. Agent autonomously decides when to invoke tools based
+    on reasoning. Tool results become memory, informing subsequent decisions.
+
+  ACTOR MODEL PROPERTIES
+    - Unique identity: Distinct name and isolated state
+    - Message passing: Asynchronous message communication
+    - Concurrent execution: Multiple agents run in parallel without interference
+    - State encapsulation: Private memory and configuration
+    - Location transparency: Collaboration regardless of physical location
+
+  PLANNING AND ITERATION
+    Agents break complex tasks into iterative steps through state machine pattern:
+      - Analyze goal and determine required steps
+      - Execute actions iteratively, learning from each result
+      - Adjust plans based on new information from tools
+      - Continue until goal accomplished or limits reached
+
+  SAFETY AND LIMITS
+    - max_iterations: Prevent infinite planning loops
+    - max_execution_time: Prevent stuck/slow agents
+    - Streaming timeouts: Prevent hanging on slow responses
+    - Memory isolation: Prevent cross-user and cross-agent data leakage
+
+  USAGE
+    # Single agent
+    agent = await Agent.start(
+      node=node,
+      name="customer-support",
+      instructions="Help users with their questions",
+      model=Model(name="claude-sonnet-4-v1"),
+      tools=[search_tool, database_tool]
+    )
+
+    # Multiple collaborating agents
+    agents = await Agent.start_many(
+      node=node,
+      instructions="Analyze customer sentiment",
+      number_of_agents=10,
+      model=Model(name="claude-sonnet-4-v1")
+    )
+
+  Attributes:
+    node: Node this agent actor runs on
+    name: Unique identity
+    model: LLM for understanding, reasoning, and decisions
+    tools: Dict of tool names → InvokableTool instances
+    tool_specs: Tool specifications in model-compatible format
+    memory: Memory for retaining and recalling information
+    max_iterations: Maximum planning iterations before timeout
+    max_execution_time: Maximum execution time before timeout
+    converter: MessageConverter for serialization/deserialization
+    _tool_call_ids: OrderedDict tracking recent IDs for collision detection
+    _tool_call_id_lock: Async lock protecting concurrent ID generation
+  """
+
   tools: Dict[str, InvokableTool]
 
   def __init__(
@@ -344,16 +600,13 @@ class Agent:
     tool_specs: List[dict],
     tools: Dict[str, InvokableTool],
     memory: Memory,
-    max_iterations: int = 1000,
-    max_execution_time: float = 600.0,  # 10 minutes
+    max_iterations: int = MAX_ITERATIONS_DEFAULT,
+    max_execution_time: float = MAX_EXECUTION_TIME_DEFAULT,
   ):
     logger.info(f"Starting agent '{name}'")
     self.node = node
-
     self.tools = tools
     self.tool_specs = tool_specs
-    logger.info(f"Started agent '{name}'")
-
     self.name = name
     self.model = model
 
@@ -365,28 +618,55 @@ class Agent:
 
     self.converter = MessageConverter.create(node)
 
-    # Add tool call ID tracking to prevent collisions
+    # Tool call ID tracking prevents collisions (OrderedDict enables efficient FIFO cleanup)
     self._tool_call_ids = OrderedDict()
     self._tool_call_id_lock = asyncio.Lock()
 
+    logger.info(f"Started agent '{name}'")
+
   def _memory_scope(self, scope: str) -> str:
     """
-    Create an agent-scoped memory key by prepending the agent's name to the scope.
-    This ensures memory isolation between different agents.
+    Prevent different agents from seeing each other's memories by prepending agent name.
+
+    Format: "{agent_name}/{user_scope}" → "henry/alice" for agent "henry" serving user "alice"
+
+    This scoping strategy ensures memory isolation between different agents even when
+    they serve the same user. Without this, two different agent instances could
+    accidentally read or corrupt each other's conversation histories.
 
     Args:
-      scope: The user-provided scope (e.g., "user123")
+      scope: The user-provided scope, typically in format "user_id" or "user_id/conversation_id"
 
     Returns:
-      Agent-scoped memory key (e.g., "henry/user123")
+      Agent-scoped memory key in format "agent_name/scope"
+
+    Examples:
+      Agent "henry" with scope "alice" → "henry/alice"
+      Agent "support-bot" with scope "user123/chat1" → "support-bot/user123/chat1"
     """
     return f"{self.name}/{scope}"
 
   async def handle_message(self, context, message):
+    """
+    Handle incoming messages by routing to appropriate handler methods.
+
+    Main entry point for messages sent to this agent worker.
+
+    Flow:
+    1. Deserialize JSON message → typed message object
+    2. Route to handler based on message type
+    3. Serialize and send reply back to sender
+
+    Args:
+      context: Message context containing reply method and metadata
+      message: JSON-serialized message to handle
+    """
+
     try:
       logger.debug(f"Agent '{self.name}' received: {message}")
 
       message = self.converter.message_from_json(message)
+
       handlers = {
         ConversationSnippet: self.handle__conversation_snippet,
         StreamedConversationSnippet: self.handle__conversation_snippet,
@@ -395,6 +675,8 @@ class Agent:
       }
 
       handler = handlers.get(type(message))
+
+      # Conversation snippets yield multiple streaming replies
       if type(message) is ConversationSnippet or type(message) is StreamedConversationSnippet:
         async for reply in handler(message):
           if reply is not None:
@@ -408,80 +690,178 @@ class Agent:
 
         if reply is not None:
           await context.reply(self.converter.message_to_json(reply))
+
     except Exception as e:
       traceback.print_exc()
       error = Error(str(e))
       await context.reply(self.converter.message_to_json(error))
 
   async def handle__get_identifier_request(self, message: GetIdentifierRequest) -> GetIdentifierResponse:
+    """
+    Return the agent's unique identity for collaboration and message routing.
+
+    Args:
+      message: Request containing scope and conversation identifiers
+
+    Returns:
+      Response containing the agent's snake_case identifier
+    """
     name_snake_case = self.name.lower().replace(" ", "_")
     return GetIdentifierResponse(message.scope, message.conversation, name_snake_case)
 
   async def handle__get_conversations_request(self, message: GetConversationsRequest) -> GetConversationsResponse:
+    """
+    Retrieve all messages from a specific conversation.
+
+    Args:
+      message: Request containing scope and conversation identifiers
+
+    Returns:
+      Response containing list of conversation messages
+    """
     messages = await self.memory.get_messages_only(self._memory_scope(message.scope), message.conversation)
     return GetConversationsResponse(messages)
 
   async def handle__conversation_snippet(self, message):
-    """Handle conversation snippets from users or other agents."""
+    """
+    Handle conversation snippets from users or other agents.
 
+    Creates a state machine to orchestrate conversation processing, including
+    model calls and tool execution. Supports streaming and non-streaming modes.
+
+    Args:
+      message: ConversationSnippet or StreamedConversationSnippet with user messages
+
+    Yields:
+      ConversationSnippet (non-streaming) or StreamedConversationSnippet (streaming)
+    """
+
+    # Determine streaming mode and extract conversation parameters
     stream = type(message) is StreamedConversationSnippet
     scope = message.scope if type(message) is ConversationSnippet else message.snippet.scope
     conversation = message.conversation if type(message) is ConversationSnippet else message.snippet.conversation
     messages = message.messages if type(message) is ConversationSnippet else message.snippet.messages
 
-    # create the streaming response handler
+    # Create the streaming response helper
     response = ConversationResponse(scope, conversation, stream)
 
-    # create the state machine to handle the conversation
-    machine = AgentStateMachine(self, scope, conversation, stream, response)
+    # Create the state machine to handle the conversation
+    machine = StateMachine(self, scope, conversation, stream, response)
 
-    # initialize the plan with input messages
+    # Initialize the plan with input messages
     await machine.initialize_plan(messages)
 
-    # run the state machine until completion
+    # Run the state machine until completion
     async for result in machine.run():
       yield result
 
   async def get_messages_only(self, conversation, scope) -> list[ConversationMessage]:
+    """
+    Retrieve conversation messages as typed ConversationMessage objects.
+
+    Args:
+      conversation: Conversation identifier
+      scope: User/tenant scope identifier
+
+    Returns:
+      List of ConversationMessage objects
+    """
     messages: list[dict] = await self.memory.get_messages_only(self._memory_scope(scope), conversation)
     return [self.converter.conversation_message_from_dict(m) for m in messages]
 
   async def remember(self, scope: str, conversation: str, message: ConversationMessage):
-    # Convert message to dict format if needed
+    """
+    Store a message in conversation memory.
+
+    Args:
+      scope: User/tenant scope identifier
+      conversation: Conversation identifier
+      message: Message to store (ConversationMessage or dict)
+    """
+
     if not isinstance(message, dict):
       message = self.converter.message_to_dict(message)
 
-    # Add to memory
     await self.memory.add_message(self._memory_scope(scope), conversation, message)
 
   async def message_history(self, scope: str, conversation: str) -> list[dict]:
+    """
+    Retrieve complete message history (system, user, assistant, and tool messages).
+
+    Args:
+      scope: User/tenant scope identifier
+      conversation: Conversation identifier
+
+    Returns:
+      List of message dicts in chronological order
+    """
     return await self.memory.get_messages(self._memory_scope(scope), conversation)
 
   async def determine_input_context(self, scope: str, conversation: str):
-    """Determine the input context for the agent based on memory."""
+    """
+    Retrieve message history as typed ConversationMessage objects for model input.
 
-    # Get the message history as ConversationMessage objects (not raw dicts)
+    Args:
+      scope: User/tenant scope identifier
+      conversation: Conversation identifier
+
+    Returns:
+      List of ConversationMessage objects providing context for the model
+    """
+
     raw_messages = await self.memory.get_messages(self._memory_scope(scope), conversation)
     messages = [self.converter.conversation_message_from_dict(m) for m in raw_messages]
 
     return messages
 
   async def complete_chat(self, scope: str, conversation: str, stream: bool = False):
-    """Complete a chat conversation using the agent's model."""
+    """
+    Complete a chat conversation using the agent's model.
+
+    Flow:
+      1. Retrieve conversation history from memory
+      2. Choose streaming (incremental) vs non-streaming (atomic) path
+      3. Call model.complete_chat() with context + tools
+      4. Process response chunks or complete response
+      5. Handle errors, timeouts, and edge cases
+
+    Streaming vs Non-streaming:
+      ┌─────────────┐
+      │   stream?   │
+      └──────┬──────┘
+             ├── True  → Streaming: Better UX, lower latency to first token
+             └── False → Non-streaming: Simpler errors, atomic responses
+
+    Args:
+      scope: User/tenant identifier for memory isolation
+      conversation: Conversation thread identifier
+      stream: Whether to stream responses incrementally
+
+    Yields:
+      Tuples of (error, finished, message):
+        - error: Error object if model call failed, None otherwise
+        - finished: Boolean indicating if this is the final message
+        - message: AssistantMessage containing model response
+
+    Safety:
+      - Streaming timeout prevents hung connections
+      - Chunk limit prevents memory exhaustion
+      - Incomplete streams: Forced completion with proper finish signals
+    """
 
     try:
       messages = await self.determine_input_context(scope, conversation)
 
-      # Call the model to generate a response
+      # =========================================================================
+      # STREAMING PATH: Incremental response delivery
+      # =========================================================================
       if stream:
-        # Enhanced streaming with timeout and better error handling
-        import asyncio
-
+        # Initialize streaming state tracking
         chunk_count = 0
         has_content = False
         last_finished = False
-        max_chunks = 1000  # Prevent infinite streams
-        timeout_seconds = 300  # 5 minutes max per stream
+        max_chunks = MAX_STREAMING_CHUNKS
+        timeout_seconds = STREAMING_TIMEOUT_SECONDS
 
         logger.debug(f"Starting streaming model call with {len(messages)} messages")
 
@@ -503,18 +883,19 @@ class Agent:
                 finished = choice.finish_reason is not None if hasattr(choice, "finish_reason") else False
                 last_finished = finished
 
-                # Handle content chunks
+                # --- Handle content chunks (text responses) ---
                 if hasattr(choice, "delta") and hasattr(choice.delta, "content"):
                   content = choice.delta.content
                   logger.debug(f"Delta content: {repr(content)}, finished: {finished}")
 
-                  if content:  # Non-empty content
+                  if content:  # Non-empty content chunk
                     has_content = True
                     response = AssistantMessage(content=content, phase=Phase.EXECUTING)
                     logger.debug(f"Yielding content chunk: finished={finished}")
                     yield None, finished, response
+
                   elif finished and (content == "" or content is None):
-                    # Empty content with finish_reason - this is a termination chunk
+                    # Empty content with finish_reason - termination chunk
                     logger.debug("Received empty finish chunk - streaming complete")
                     has_content = True
                     # Send empty response to signal completion
@@ -522,11 +903,11 @@ class Agent:
                     yield None, True, response
                     break
 
-                # Handle tool call chunks
+                # --- Handle tool call chunks ---
                 elif hasattr(choice, "delta") and hasattr(choice.delta, "tool_calls") and choice.delta.tool_calls:
                   tool_calls = []
                   for tc in choice.delta.tool_calls:
-                    # Generate unique ID with collision detection
+                    # Generate unique ID with collision detection (some models don't provide IDs)
                     call_id = tc.id if hasattr(tc, "id") and tc.id else None
                     if not call_id:
                       call_id = await self._generate_unique_tool_call_id()
@@ -537,17 +918,19 @@ class Agent:
                       type="function",
                     )
                     tool_calls.append(tool_call)
+
                   response = AssistantMessage(tool_calls=tool_calls, phase=Phase.EXECUTING)
                   yield None, finished, response
                   has_content = True
 
-                # Handle legacy format - message instead of delta
+                # --- Handle legacy format (message instead of delta) ---
                 elif finished and hasattr(choice, "message") and choice.message.content:
+                  # Some older model APIs use 'message' instead of 'delta'
                   response = AssistantMessage(content=choice.message.content, phase=Phase.EXECUTING)
                   yield None, True, response
                   has_content = True
 
-                # Break on finish signal
+                # Break on finish signal - no more chunks expected
                 if finished:
                   logger.debug("Breaking due to finish_reason")
                   break
@@ -561,6 +944,7 @@ class Agent:
           )
           yield None, True, response
           return
+
         except Exception as stream_error:
           logger.error(f"Streaming error: {stream_error}")
           response = AssistantMessage(
@@ -569,7 +953,7 @@ class Agent:
           yield None, True, response
           return
 
-        # Post-stream validation and cleanup
+        # --- Post-stream validation and cleanup ---
         logger.debug(
           f"Streaming complete: chunks={chunk_count}, has_content={has_content}, last_finished={last_finished}"
         )
@@ -581,25 +965,32 @@ class Agent:
             content="I apologize, but I encountered an issue generating a response.", phase=Phase.EXECUTING
           )
           yield None, True, response
+
         elif not has_content and not last_finished:
           # We got chunks but no actual content and no finish signal
           logger.warning(f"Streaming incomplete: {chunk_count} chunks but no content or finish signal")
           response = AssistantMessage(content="I apologize, but the response was incomplete.", phase=Phase.EXECUTING)
           yield None, True, response
+
         elif has_content and not last_finished:
           # We got content but no finish signal - force completion
           logger.warning("Streaming had content but no finish signal, forcing completion")
           response = AssistantMessage(content="", phase=Phase.EXECUTING)
           yield None, True, response
+
+      # =========================================================================
+      # NON-STREAMING PATH: Complete response delivery
+      # =========================================================================
       else:
-        # Non-streaming response
         response = await self.model.complete_chat(messages, stream=False, tools=self.tool_specs)
+
         if hasattr(response, "choices") and len(response.choices) > 0:
           message = response.choices[0].message
+
           if hasattr(message, "tool_calls") and message.tool_calls:
             tool_calls = []
             for tc in message.tool_calls:
-              # Generate unique ID with collision detection
+              # Generate unique ID with collision detection (some models don't provide IDs)
               call_id = tc.id if hasattr(tc, "id") and tc.id else None
               if not call_id:
                 call_id = await self._generate_unique_tool_call_id()
@@ -610,11 +1001,13 @@ class Agent:
                 type="function",
               )
               tool_calls.append(tool_call)
+
             assistant_message = AssistantMessage(
               content=message.content or "", tool_calls=tool_calls, phase=Phase.EXECUTING
             )
           else:
             assistant_message = AssistantMessage(content=message.content or "", phase=Phase.EXECUTING)
+
           yield None, True, assistant_message
 
     except Exception as e:
@@ -623,7 +1016,18 @@ class Agent:
       yield error, True, None
 
   async def send_response(self, response, scope: str, conversation: str, stream: bool = False):
-    """Send a response back to the conversation."""
+    """
+    Send a response formatted for streaming or non-streaming mode.
+
+    Args:
+      response: Response object containing messages to send
+      scope: User/tenant scope identifier
+      conversation: Conversation identifier
+      stream: Whether to use streaming format
+
+    Yields:
+      StreamedConversationSnippet or ConversationSnippet
+    """
 
     if stream:
       # For streaming responses, yield each part
@@ -639,7 +1043,23 @@ class Agent:
       yield ConversationSnippet(scope, conversation, response.messages)
 
   async def call_tool(self, tool_call: ToolCall):
-    """Execute a tool call and return the result."""
+    """
+    Execute a tool call and return the result or error.
+
+    Flow:
+      1. Look up tool by name in self.tools dict
+      2. Invoke tool with provided arguments
+      3. Capture result or error
+      4. Return as ToolCallResponseMessage
+
+    Args:
+      tool_call: ToolCall object containing tool name, ID, and arguments
+
+    Returns:
+      Tuple of (error_string, ToolCallResponseMessage):
+        - error_string: Error description if failed, None if successful
+        - ToolCallResponseMessage: Response containing tool result or error
+    """
 
     tool_name = tool_call.function.name
     tool_args = tool_call.function.arguments
@@ -668,23 +1088,41 @@ class Agent:
       return error_msg, response
 
   async def _generate_unique_tool_call_id(self):
-    """Generate a unique tool call ID with collision detection."""
+    """
+    Generate a unique tool call ID with collision detection.
+
+    Why detect collisions when UUID4 has ~10^-36 collision probability?
+      - UUID4 collision probability: ~10^-36 per pair
+      - With concurrent calls/sec: expect first collision after 10^26 years
+      - BUT: Collision consequences are severe (wrong tool results → wrong calls)
+      - Detection cost is negligible vs debugging misrouted responses
+
+    Flow:
+      1. Generate UUID-based ID: "call_{uuid}"
+      2. Check against recent IDs for collisions
+      3. Cleanup old IDs when limit reached (prevents unbounded growth)
+      4. Fallback to timestamped ID if all retries fail (virtually impossible)
+
+    Memory management:
+      - Retain recent IDs in OrderedDict (FIFO cleanup)
+      - Covers typical conversation workloads
+      - Batch cleanup reduces lock contention
+
+    Returns:
+      Unique tool call ID: "call_{uuid}" or "call_{uuid}_{timestamp}" (fallback)
+    """
     async with self._tool_call_id_lock:
-      max_attempts = 100
+      max_attempts = MAX_TOOL_ID_GENERATION_ATTEMPTS
       attempt = 0
 
       while attempt < max_attempts:
-        # Generate UUID-based ID
         call_id = f"call_{uuid.uuid4().hex}"
 
-        # Check for collision
         if call_id not in self._tool_call_ids:
           self._tool_call_ids[call_id] = True
 
-          # Clean up old IDs to prevent memory growth (keep last 1000)
-          if len(self._tool_call_ids) > 1000:
-            # Remove oldest 100 IDs (using OrderedDict preserves insertion order)
-            old_ids = list(self._tool_call_ids.keys())[:100]
+          if len(self._tool_call_ids) > MAX_TOOL_CALL_IDS_TO_RETAIN:
+            old_ids = list(self._tool_call_ids.keys())[:TOOL_ID_CLEANUP_BATCH_SIZE]
             for old_id in old_ids:
               del self._tool_call_ids[old_id]
 
@@ -692,7 +1130,7 @@ class Agent:
 
         attempt += 1
 
-      # Fallback if somehow all UUIDs collide (extremely unlikely)
+      # Fallback: Add timestamp for guaranteed uniqueness (virtually unreachable)
       import time
 
       fallback_id = f"call_{uuid.uuid4().hex}_{int(time.time() * 1000000)}"
@@ -701,7 +1139,13 @@ class Agent:
 
   @staticmethod
   async def stop(node: Node, name: str):
-    """Stop an agent on a node."""
+    """
+    Stop an agent worker on a node.
+
+    Args:
+      node: Node instance where the agent is running
+      name: Name of the agent to stop
+    """
     await node.stop_worker(name)
 
   @staticmethod
@@ -717,7 +1161,26 @@ class Agent:
     max_active_messages: int = 100,
     max_active_tokens: Optional[int] = 8000,
   ):
-    """Start an agent on a node."""
+    """
+    Start a single agent on a node.
+
+    Factory method that handles initialization, memory setup, and registration.
+
+    Args:
+      node: Node instance where the agent will run
+      instructions: System instructions defining agent behavior
+      name: Unique agent name (auto-generated if None)
+      model: LLM to use (defaults to claude-sonnet-4-v1)
+      tools: List of tools available to the agent
+      max_iterations: Maximum state machine iterations
+      max_execution_time: Maximum execution time in seconds
+      exposed_as: Optional external name for HTTP exposure
+      max_active_messages: Maximum messages in active memory
+      max_active_tokens: Maximum tokens in active memory
+
+    Returns:
+      AgentReference for interacting with the started agent
+    """
 
     if name is None:
       name = secrets.token_hex(12)
@@ -752,7 +1215,26 @@ class Agent:
     max_active_messages: int = 100,
     max_active_tokens: Optional[int] = 8000,
   ):
-    """Start multiple agents on a node."""
+    """
+    Start multiple agents on a node for load distribution.
+
+    Creates multiple agents with identical configuration to enable concurrent
+    processing of different conversations for better throughput.
+
+    Args:
+      node: Node instance where the agents will run
+      instructions: System instructions defining agent behavior
+      number_of_agents: Number of agent instances to create
+      model: LLM to use (defaults to claude-3-5-sonnet-v2)
+      tools: List of tools available to all agents
+      max_iterations: Maximum state machine iterations
+      max_execution_time: Maximum execution time in seconds
+      max_active_messages: Maximum messages in active memory
+      max_active_tokens: Maximum tokens in active memory
+
+    Returns:
+      List of AgentReference objects for the started agents
+    """
 
     if model is None:
       model = Model(name="claude-3-5-sonnet-v2")
@@ -760,6 +1242,7 @@ class Agent:
     agents = []
     for i in range(number_of_agents):
       name = secrets.token_hex(12)
+
       agent_ref = await Agent.start_agent_impl(
         node,
         name,
@@ -768,7 +1251,7 @@ class Agent:
         tools,
         max_iterations,
         max_execution_time,
-        None,
+        None,  # exposed_as not supported for multiple agents
         max_active_messages,
         max_active_tokens,
       )
@@ -789,17 +1272,35 @@ class Agent:
     max_active_messages: int = 100,
     max_active_tokens: Optional[int] = 8000,
   ):
-    """Create and start an agent implementation."""
+    """
+    Internal implementation for agent creation and startup.
+
+    Shared by start() and start_many() to avoid code duplication. Handles
+    agent creation, memory initialization, and worker registration.
+
+    Args:
+      node: Node instance where the agent will run
+      name: Unique agent name
+      instructions: System instructions defining agent behavior
+      model: LLM to use for reasoning
+      tools: List of tools available to the agent
+      max_iterations: Maximum state machine iterations
+      max_execution_time: Maximum execution time in seconds
+      exposed_as: Optional external name for HTTP exposure
+      max_active_messages: Maximum messages in active memory
+      max_active_tokens: Maximum tokens in active memory
+
+    Returns:
+      AgentReference for interacting with the started agent
+    """
 
     validate_address(name)
 
     if tools is None:
       tools = []
 
-    # Prepare tools
     tool_specs, tools_dict = await prepare_tools(tools, node)
 
-    # Create shared memory for the agent
     from ..memory.memory import Memory
 
     memory = Memory(
@@ -809,7 +1310,6 @@ class Agent:
     )
     await memory.initialize_database()
 
-    # Create the agent
     def agent_creator():
       kwargs = {
         "node": node,
@@ -827,14 +1327,38 @@ class Agent:
       return Agent(**kwargs)
 
     await node.start_spawner(name, agent_creator, key_extractor, None, exposed_as)
-
     logger.debug(f"Successfully started agent {name}")
 
     return AgentReference(name, node, exposed_as)
 
 
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+
 def key_extractor(message):
-  """Extract the key from a message for routing."""
+  """
+  Extract routing key for conversation-based worker partitioning.
+
+  The spawner pattern allows one logical agent to have multiple worker instances
+  for parallel processing. This function routes messages to workers by extracting
+  "{scope}/{conversation}" keys.
+
+  Routing guarantees:
+    - Same conversation → same worker (maintains context)
+    - Different conversations → parallel workers (better throughput)
+    - Memory isolation preserved (workers handle distinct scope+conversation pairs)
+
+  Args:
+    message: JSON string with 'scope' and 'conversation' fields
+
+  Returns:
+    Routing key "{scope}/{conversation}" or None if fields missing
+
+  Example:
+    {"scope": "user123", "conversation": "chat1"} → "user123/chat1"
+  """
   message = json.loads(message)
   scope = message.get("scope")
   conversation = message.get("conversation")
@@ -845,8 +1369,22 @@ def key_extractor(message):
 
 
 async def prepare_tools(tools: List[InvokableTool], node: Node):
-  """Prepare tools for use by the agent."""
+  """
+  Prepare tools for agent use by configuring node references and extracting specs.
 
+  Transforms tool list into two data structures:
+    1. tool_specs: Model-compatible JSON schemas (for model to see available tools)
+    2. tools_dict: Name→tool mapping (for fast lookup during tool execution)
+
+  Args:
+    tools: List of InvokableTool instances to prepare
+    node: Node instance to inject into tools that need it
+
+  Returns:
+    Tuple of (tool_specs, tools_dict):
+      - tool_specs: List of JSON schema dicts for model consumption
+      - tools_dict: Dict mapping tool names to InvokableTool instances
+  """
   tool_specs = []
   tools_dict = {}
 
@@ -854,15 +1392,12 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
     tools = []
 
   for tool in tools:
-    # Set the node reference for tools that need it
     if hasattr(tool, "node"):
       tool.node = node
 
-    # Get the tool specification
     spec = await tool.spec()
     tool_specs.append(spec)
 
-    # Add to the tools dictionary using tool name
     tool_name = tool.name if hasattr(tool, "name") else str(tool)
     tools_dict[tool_name] = tool
 
@@ -870,25 +1405,66 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
 
 
 def system_message(message: str) -> dict:
-  """Create a system message dictionary."""
+  """
+  Create a system message dict for the memory system.
+
+  System messages establish agent instructions and behavior. They:
+    - Appear first in conversation history
+    - Set behavioral context for the agent
+    - Are not typically shown to end users
+
+  Args:
+    message: Instruction text (e.g., "You are a helpful assistant")
+
+  Returns:
+    Dict with 'role', 'content', 'phase' in memory-compatible format
+  """
   return {"role": "system", "content": {"text": message, "type": "text"}, "phase": "system"}
 
 
 class ConversationResponse:
+  """
+  Helper for generating properly sequenced conversation response snippets.
+
+  Streaming responses are delivered as numbered chunks. This class:
+    - Maintains thread-safe counter for chunk sequencing
+    - Generates StreamedConversationSnippet or ConversationSnippet objects
+    - Prevents duplicate finish signals
+
+  Thread safety: Counter protected by async lock prevents race conditions when
+  multiple coroutines concurrently process chunks for the same conversation.
+
+  Attributes:
+    scope: User/tenant identifier
+    conversation: Conversation thread identifier
+    stream: Whether to generate streaming or non-streaming snippets
+    counter: Incrementing chunk sequence number
+    _counter_lock: Async lock protecting counter increments
+  """
+
   def __init__(self, scope: str, conversation: str, stream: bool = False):
     self.scope = scope
     self.conversation = conversation
     self.stream = stream
     self.counter = 0
-    # Async lock for counter protection in async context
     self._counter_lock = asyncio.Lock()
 
   async def make_snippet(self, message: ConversationMessage, finished: bool = False):
+    """
+    Create a conversation snippet for a single message.
+
+    Args:
+      message: The message to wrap in a snippet
+      finished: Whether this is the final message in the sequence
+
+    Returns:
+      StreamedConversationSnippet (streaming) or ConversationSnippet (non-streaming)
+    """
     if self.stream:
-      # Async-safe counter increment
       async with self._counter_lock:
         self.counter += 1
         current_counter = self.counter
+
       return StreamedConversationSnippet(
         ConversationSnippet(self.scope, self.conversation, [message]), current_counter, finished
       )
@@ -896,8 +1472,17 @@ class ConversationResponse:
       return ConversationSnippet(self.scope, self.conversation, [message])
 
   async def make_finished_snippet(self):
-    # Async-safe counter increment
+    """
+    Create an empty finish snippet to signal stream completion.
+
+    Used when stream completes without a final message (e.g., after tool execution).
+    Empty snippet with finished=True signals client that stream is done.
+
+    Returns:
+      StreamedConversationSnippet with empty message list and finished=True
+    """
     async with self._counter_lock:
       self.counter += 1
       current_counter = self.counter
+
     return StreamedConversationSnippet(ConversationSnippet(self.scope, self.conversation, []), current_counter, True)
