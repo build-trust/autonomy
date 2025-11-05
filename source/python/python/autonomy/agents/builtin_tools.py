@@ -67,7 +67,7 @@ class AskUserForInputTool(InvokableTool):
       "prompt": prompt,
     }
 
-  def spec(self) -> dict:
+  async def spec(self) -> dict:
     """
     Return OpenAI-compatible tool specification.
 
@@ -81,13 +81,8 @@ class AskUserForInputTool(InvokableTool):
         "description": self.description,
         "parameters": {
           "type": "object",
-          "properties": {
-            "question": {
-              "type": "string",
-              "description": "The question to ask the user"
-            }
-          },
-          "required": ["question"]
-        }
-      }
+          "properties": {"question": {"type": "string", "description": "The question to ask the user"}},
+          "required": ["question"],
+        },
+      },
     }

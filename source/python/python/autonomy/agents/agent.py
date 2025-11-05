@@ -88,8 +88,8 @@ MAX_TOOL_CALL_IDS_TO_RETAIN = 1000
 TOOL_ID_CLEANUP_BATCH_SIZE = 100
 
 # Memory and context limits
-MAX_ACTIVE_MESSAGES_DEFAULT = 100
-MAX_ACTIVE_TOKENS_DEFAULT = 8000
+MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT = 1000
+MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT = 100000
 
 
 # =============================================================================
@@ -353,7 +353,9 @@ class StateMachine:
 
         # Handle tool calls
         if len(model_response.tool_calls) > 0:
-          logger.debug(f"[STATE:THINKING] Model requested {len(model_response.tool_calls)} tool calls, transitioning to ACTING")
+          logger.debug(
+            f"[STATE:THINKING] Model requested {len(model_response.tool_calls)} tool calls, transitioning to ACTING"
+          )
           if self.stream:
             yield await self.streaming_response.make_snippet(model_response)
           else:
@@ -425,7 +427,9 @@ class StateMachine:
 
     # Incomplete streaming: Network issues, model errors, or chunking problems
     if response_received and not finish_signal_received:
-      logger.warning(f"[STATE:THINKING] Stream incomplete - no finish signal after {chunks_processed} chunks, forcing completion")
+      logger.warning(
+        f"[STATE:THINKING] Stream incomplete - no finish signal after {chunks_processed} chunks, forcing completion"
+      )
 
       if self.stream and not self.final_content_sent:
         # Send empty finish chunk to complete the stream
@@ -480,10 +484,7 @@ class StateMachine:
         warn(f"MCP call failed: {error}")
 
       # Check if this is ask_user_for_input with waiting marker
-      if (not error and
-          isinstance(raw_result, dict) and
-          raw_result.get("_waiting_for_input")):
-
+      if not error and isinstance(raw_result, dict) and raw_result.get("_waiting_for_input"):
         # Extract prompt for user
         self.waiting_prompt = raw_result.get("prompt", "Waiting for input...")
         self.pending_tool_call_id = tool_call.id
@@ -495,10 +496,8 @@ class StateMachine:
 
         # Send the prompt to user as assistant message
         from ..nodes.message import AssistantMessage
-        waiting_message = AssistantMessage(
-          content=self.waiting_prompt,
-          phase=Phase.WAITING_FOR_INPUT
-        )
+
+        waiting_message = AssistantMessage(content=self.waiting_prompt, phase=Phase.WAITING_FOR_INPUT)
         await self.agent.remember(self.scope, self.conversation, waiting_message)
 
         if self.stream:
@@ -587,7 +586,9 @@ class StateMachine:
     ensuring entire run completes in time.
     """
 
-    logger.debug(f"[STATE_MACHINE] Starting run: scope={self.scope}, conversation={self.conversation}, stream={self.stream}")
+    logger.debug(
+      f"[STATE_MACHINE] Starting run: scope={self.scope}, conversation={self.conversation}, stream={self.stream}"
+    )
 
     try:
       # Add overall timeout protection for the entire state machine run
@@ -896,16 +897,13 @@ class Agent:
         await self.remember(scope, conversation, msg)
 
       # Create tool result with user's response
-      user_response = "\n".join([
-        msg.content for msg in messages
-        if hasattr(msg, 'content') and msg.content
-      ])
+      user_response = "\n".join([msg.content for msg in messages if hasattr(msg, "content") and msg.content])
 
       # Complete the pending ask_user_for_input tool call
       from ..nodes.message import ToolCallResponseMessage
+
       tool_result = ToolCallResponseMessage(
-        tool_call_id=machine.pending_tool_call_id or "unknown",
-        result=user_response
+        tool_call_id=machine.pending_tool_call_id or "unknown", result=user_response
       )
       await self.remember(scope, conversation, tool_result)
 
@@ -1001,10 +999,12 @@ class Agent:
     if not isinstance(message, dict):
       message = self.converter.message_to_dict(message)
 
-    logger.debug(f"[MEMORY→WRITE] scope={scope}, conversation={conversation}, message_type={message.get('role', 'unknown')}")
+    logger.debug(
+      f"[MEMORY→WRITE] scope={scope}, conversation={conversation}, message_type={message.get('role', 'unknown')}"
+    )
     if logger.isEnabledFor(10):  # DEBUG level
       logger.debug(f"[MEMORY→WRITE] Full message: {json.dumps(message, indent=2)}")
-    
+
     await self.memory.add_message(self._memory_scope(scope), conversation, message)
 
   async def message_history(self, scope: str, conversation: str) -> list[dict]:
@@ -1039,7 +1039,7 @@ class Agent:
     if logger.isEnabledFor(10):  # DEBUG level
       for idx, msg in enumerate(raw_messages):
         logger.debug(f"[MEMORY→READ] Message {idx}: role={msg.get('role', 'unknown')}")
-    
+
     messages = [self.converter.conversation_message_from_dict(m) for m in raw_messages]
 
     return messages
@@ -1082,14 +1082,19 @@ class Agent:
     try:
       messages = await self.determine_input_context(scope, conversation)
 
-      logger.debug(f"[MODEL→CALL] scope={scope}, conversation={conversation}, stream={stream}, message_count={len(messages)}, tools_count={len(self.tool_specs)}")
+      logger.debug(
+        f"[MODEL→CALL] scope={scope}, conversation={conversation}, stream={stream}, message_count={len(messages)}, tools_count={len(self.tool_specs)}"
+      )
       if logger.isEnabledFor(10):  # DEBUG level
-        logger.debug(f"[MODEL→CALL] Available tools: {[t.get('function', {}).get('name', 'unknown') for t in self.tool_specs]}")
+        logger.debug(
+          f"[MODEL→CALL] Available tools: {[t.get('function', {}).get('name', 'unknown') for t in self.tool_specs]}"
+        )
         for idx, msg in enumerate(messages):
-          role = getattr(msg, 'role', 'unknown')
+          role = getattr(msg, "role", "unknown")
           content_preview = ""
-          if hasattr(msg, 'content') and msg.content:
-            content_preview = msg.content[:100] + ("..." if len(msg.content) > 100 else "")
+          if hasattr(msg, "content") and msg.content:
+            content_str = str(msg.content)
+            content_preview = content_str[:100] + ("..." if len(content_str) > 100 else "")
           logger.debug(f"[MODEL→CALL] Input message {idx}: role={role}, content_preview={repr(content_preview)}")
 
       # =========================================================================
@@ -1113,7 +1118,6 @@ class Agent:
               logger.debug(f"[MODEL→STREAM] Processing chunk {chunk_count}")
               if logger.isEnabledFor(10):  # DEBUG level
                 logger.debug(f"[MODEL→STREAM] Raw chunk: {chunk}")
-              
 
               # Prevent runaway streams
               if chunk_count > max_chunks:
@@ -1134,7 +1138,9 @@ class Agent:
                   if content:  # Non-empty content chunk
                     has_content = True
                     response = AssistantMessage(content=content, phase=Phase.EXECUTING)
-                    logger.debug(f"[MODEL←STREAM] Yielding content chunk: finished={finished}, content_length={len(content)}")
+                    logger.debug(
+                      f"[MODEL←STREAM] Yielding content chunk: finished={finished}, content_length={len(content)}"
+                    )
                     yield None, finished, response
 
                   elif finished and (content == "" or content is None):
@@ -1155,12 +1161,13 @@ class Agent:
                     if not call_id:
                       call_id = await self._generate_unique_tool_call_id()
 
-
-                    tool_name = tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
+                    tool_name = (
+                      tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
+                    )
                     logger.debug(f"[MODEL←STREAM] Tool call chunk: id={call_id}, name={tool_name}, finished={finished}")
                     if logger.isEnabledFor(10):  # DEBUG level
                       logger.debug(f"[MODEL←STREAM] Tool call details: {tc}")
-                    
+
                     tool_call = ToolCall(
                       id=call_id,
                       function=tc.function if hasattr(tc, "function") else None,
@@ -1256,7 +1263,6 @@ class Agent:
               logger.debug(f"[MODEL←NON-STREAM] Tool call: id={call_id}, name={tool_name}")
               if logger.isEnabledFor(10):  # DEBUG level
                 logger.debug(f"[MODEL←NON-STREAM] Tool arguments: {tool_args}")
-              
 
               tool_call = ToolCall(
                 id=call_id,
@@ -1337,7 +1343,6 @@ class Agent:
     if logger.isEnabledFor(10):  # DEBUG level
       logger.debug(f"[TOOL→CALL] Arguments: {tool_args}")
 
-
     try:
       if tool_name in self.tools:
         tool = self.tools[tool_name]
@@ -1349,12 +1354,13 @@ class Agent:
 
         result_str = str(result)
         result_length = len(result_str)
-        logger.debug(f"[TOOL←RESULT] id={tool_call.id}, name={tool_name}, elapsed={elapsed_time:.3f}s, result_length={result_length}")
+        logger.debug(
+          f"[TOOL←RESULT] id={tool_call.id}, name={tool_name}, elapsed={elapsed_time:.3f}s, result_length={result_length}"
+        )
         if logger.isEnabledFor(10):  # DEBUG level
           # Truncate very long results for logging
           result_preview = result_str[:500] + ("..." if result_length > 500 else "")
           logger.debug(f"[TOOL←RESULT] Result preview: {result_preview}")
-
 
         response = ToolCallResponseMessage(
           tool_call_id=tool_call.id, name=tool_name, content=result_str, phase=Phase.EXECUTING
@@ -1449,8 +1455,9 @@ class Agent:
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
     exposed_as: Optional[str] = None,
-    max_active_messages: int = 100,
-    max_active_tokens: Optional[int] = 8000,
+    max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
+    max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
+    enable_long_term_memory: bool = False,
   ):
     """
     Start a single agent on a node.
@@ -1466,8 +1473,9 @@ class Agent:
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       exposed_as: Optional external name for HTTP exposure
-      max_active_messages: Maximum messages in active memory
-      max_active_tokens: Maximum tokens in active memory
+      max_messages_in_short_term_memory: Maximum messages in short-term memory
+      max_tokens_in_short_term_memory: Maximum tokens in short-term memory
+      enable_long_term_memory: Enable persistent long-term memory (database)
 
     Returns:
       AgentReference for interacting with the started agent
@@ -1490,8 +1498,9 @@ class Agent:
       max_iterations,
       max_execution_time,
       exposed_as,
-      max_active_messages,
-      max_active_tokens,
+      max_messages_in_short_term_memory,
+      max_tokens_in_short_term_memory,
+      enable_long_term_memory,
     )
 
   @staticmethod
@@ -1503,8 +1512,9 @@ class Agent:
     tools: Optional[List[InvokableTool]] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
-    max_active_messages: int = 100,
-    max_active_tokens: Optional[int] = 8000,
+    max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
+    max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
+    enable_long_term_memory: bool = False,
   ):
     """
     Start multiple agents on a node for load distribution.
@@ -1520,8 +1530,9 @@ class Agent:
       tools: List of tools available to all agents
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
-      max_active_messages: Maximum messages in active memory
-      max_active_tokens: Maximum tokens in active memory
+      max_messages_in_short_term_memory: Maximum messages in short-term memory
+      max_tokens_in_short_term_memory: Maximum tokens in short-term memory
+      enable_long_term_memory: Enable persistent long-term memory (database)
 
     Returns:
       List of AgentReference objects for the started agents
@@ -1543,8 +1554,9 @@ class Agent:
         max_iterations,
         max_execution_time,
         None,  # exposed_as not supported for multiple agents
-        max_active_messages,
-        max_active_tokens,
+        max_messages_in_short_term_memory,
+        max_tokens_in_short_term_memory,
+        enable_long_term_memory,
       )
       agents.append(agent_ref)
 
@@ -1560,8 +1572,9 @@ class Agent:
     max_iterations: Optional[int],
     max_execution_time: Optional[float],
     exposed_as: Optional[str],
-    max_active_messages: int = 100,
-    max_active_tokens: Optional[int] = 8000,
+    max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
+    max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
+    enable_long_term_memory: bool = False,
   ):
     """
     Internal implementation for agent creation and startup.
@@ -1578,8 +1591,9 @@ class Agent:
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       exposed_as: Optional external name for HTTP exposure
-      max_active_messages: Maximum messages in active memory
-      max_active_tokens: Maximum tokens in active memory
+      max_messages_in_short_term_memory: Maximum messages in short-term memory
+      max_tokens_in_short_term_memory: Maximum tokens in short-term memory
+      enable_long_term_memory: Enable persistent long-term memory (database)
 
     Returns:
       AgentReference for interacting with the started agent
@@ -1595,9 +1609,10 @@ class Agent:
     from ..memory.memory import Memory
 
     memory = Memory(
-      max_active_messages=max_active_messages,
-      max_active_tokens=max_active_tokens,
+      max_messages_in_short_term_memory=max_messages_in_short_term_memory,
+      max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
       model=model,
+      enable_long_term_memory=enable_long_term_memory,
     )
     await memory.initialize_database()
 
