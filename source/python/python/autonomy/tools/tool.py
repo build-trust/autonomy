@@ -3,7 +3,7 @@ import inspect
 import re
 import traceback
 
-from typing import get_type_hints, Optional
+from typing import get_type_hints, Optional, get_origin, get_args
 from functools import wraps
 from docstring_parser import parse
 
@@ -92,6 +92,9 @@ class Tool(InvokableTool, InfoContext):
     # Validate arguments against function signature
     self._validate_arguments_against_signature(args, signature)
 
+    # Coerce argument types to match function type hints
+    args = self._coerce_argument_types(args)
+
     return args
 
   def _validate_arguments_against_signature(self, args: dict, signature: inspect.Signature) -> None:
@@ -113,6 +116,118 @@ class Tool(InvokableTool, InfoContext):
 
     if missing_required:
       raise ValueError(f"Missing required arguments: {', '.join(sorted(missing_required))}")
+
+  def _coerce_argument_types(self, args: dict) -> dict:
+    """Coerce argument types to match function type hints.
+
+    JSON deserialization may produce strings where integers/floats/bools are expected.
+    This method attempts to coerce arguments to their expected types based on type hints.
+    """
+    try:
+      type_hints = get_type_hints(self.func)
+    except Exception:
+      # If we can't get type hints, return args unchanged
+      return args
+
+    coerced_args = {}
+    for arg_name, arg_value in args.items():
+      if arg_name not in type_hints:
+        # No type hint available, use as-is
+        coerced_args[arg_name] = arg_value
+        continue
+
+      expected_type = type_hints[arg_name]
+
+      # Handle Optional types (Optional[X] is Union[X, None])
+      origin = get_origin(expected_type)
+      if origin is type(None) or (hasattr(expected_type, '__class__') and expected_type.__class__.__name__ == 'UnionType'):
+        # For Optional/Union types, try to get the non-None type
+        type_args = get_args(expected_type)
+        if type_args:
+          # Get first non-None type
+          expected_type = next((t for t in type_args if t is not type(None)), expected_type)
+
+      # Try to coerce the value to the expected type
+      try:
+        coerced_value = self._coerce_value(arg_value, expected_type)
+        # Log type coercion if it occurred
+        if type(arg_value) != type(coerced_value):
+          self.logger.debug(
+            f"Coerced argument '{arg_name}': {type(arg_value).__name__}({arg_value!r}) -> "
+            f"{type(coerced_value).__name__}({coerced_value!r})"
+          )
+        coerced_args[arg_name] = coerced_value
+      except (ValueError, TypeError) as e:
+        # If coercion fails, log and raise a clear error
+        self.logger.debug(f"Failed to coerce argument '{arg_name}' from {type(arg_value).__name__} to {expected_type.__name__}: {e}")
+        raise ValueError(
+          f"Argument '{arg_name}' has invalid type: expected {expected_type.__name__}, "
+          f"got {type(arg_value).__name__} (value: {arg_value!r})"
+        )
+
+    return coerced_args
+
+  def _coerce_value(self, value, expected_type):
+    """Coerce a single value to the expected type.
+
+    Args:
+      value: The value to coerce
+      expected_type: The target type
+
+    Returns:
+      The coerced value
+
+    Raises:
+      ValueError: If coercion is not possible
+      TypeError: If types are incompatible
+    """
+    # If already the correct type, return as-is
+    if isinstance(value, expected_type):
+      return value
+
+    # Handle None values
+    if value is None:
+      return None
+
+    # Coerce to int
+    if expected_type is int:
+      if isinstance(value, str):
+        return int(value)
+      elif isinstance(value, (float, bool)):
+        return int(value)
+      else:
+        raise TypeError(f"Cannot coerce {type(value).__name__} to int")
+
+    # Coerce to float
+    elif expected_type is float:
+      if isinstance(value, (str, int)):
+        return float(value)
+      else:
+        raise TypeError(f"Cannot coerce {type(value).__name__} to float")
+
+    # Coerce to bool
+    elif expected_type is bool:
+      if isinstance(value, str):
+        # Handle common string representations of booleans
+        lower_value = value.lower()
+        if lower_value in ('true', '1', 'yes', 'on'):
+          return True
+        elif lower_value in ('false', '0', 'no', 'off'):
+          return False
+        else:
+          raise ValueError(f"Cannot coerce string '{value}' to bool")
+      elif isinstance(value, (int, float)):
+        return bool(value)
+      else:
+        raise TypeError(f"Cannot coerce {type(value).__name__} to bool")
+
+    # Coerce to str
+    elif expected_type is str:
+      return str(value)
+
+    # For complex types (list, dict, etc.), return as-is and let Python handle it
+    else:
+      return value
 
 
 def wrap(f) -> callable:
