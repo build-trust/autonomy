@@ -3,7 +3,7 @@ import inspect
 import re
 import traceback
 
-from typing import get_type_hints, Optional, get_origin, get_args
+from typing import get_type_hints, Optional, get_origin, get_args, List, Dict, Set, Tuple
 from functools import wraps
 from docstring_parser import parse
 
@@ -181,13 +181,43 @@ class Tool(InvokableTool, InfoContext):
       ValueError: If coercion is not possible
       TypeError: If types are incompatible
     """
-    # If already the correct type, return as-is
-    if isinstance(value, expected_type):
-      return value
-
     # Handle None values
     if value is None:
       return None
+
+    # Get the origin type for generic types (List, Dict, etc.)
+    origin = get_origin(expected_type)
+
+    # For generic types like List[int], Dict[str, Any], check against the origin
+    if origin is not None:
+      # List, Dict, Set, Tuple, etc.
+      if origin is list:
+        if isinstance(value, list):
+          return value
+      elif origin is dict:
+        if isinstance(value, dict):
+          return value
+      elif origin is set:
+        if isinstance(value, set):
+          return value
+      elif origin is tuple:
+        if isinstance(value, tuple):
+          return value
+      # For other generic types, try to check against the origin
+      try:
+        if isinstance(value, origin):
+          return value
+      except TypeError:
+        # origin might not be a valid type for isinstance
+        pass
+
+    # Try isinstance check for non-generic types
+    try:
+      if isinstance(value, expected_type):
+        return value
+    except TypeError:
+      # expected_type might be a generic type like List[int] which can't be used with isinstance
+      pass
 
     # Coerce to int
     if expected_type is int:
@@ -225,9 +255,16 @@ class Tool(InvokableTool, InfoContext):
     elif expected_type is str:
       return str(value)
 
-    # For complex types (list, dict, etc.), return as-is and let Python handle it
-    else:
-      return value
+    # For complex types (list, dict, etc.), check basic type compatibility
+    elif expected_type is list or expected_type is List:
+      if isinstance(value, list):
+        return value
+    elif expected_type is dict or expected_type is Dict:
+      if isinstance(value, dict):
+        return value
+
+    # For other types, return as-is and let Python handle it
+    return value
 
 
 def wrap(f) -> callable:
