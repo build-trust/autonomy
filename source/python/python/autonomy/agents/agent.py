@@ -1108,6 +1108,9 @@ class Agent:
         max_chunks = MAX_STREAMING_CHUNKS
         timeout_seconds = STREAMING_TIMEOUT_SECONDS
 
+        # Dictionary to accumulate tool calls across chunks by index
+        accumulated_tool_calls: Dict[int, ToolCall] = {}
+
         logger.debug(f"[MODEL→STREAM] Starting streaming model call with {len(messages)} messages")
 
         try:
@@ -1130,8 +1133,43 @@ class Agent:
                 finished = choice.finish_reason is not None if hasattr(choice, "finish_reason") else False
                 last_finished = finished
 
+                # --- Handle tool call chunks (check FIRST before content) ---
+                if hasattr(choice, "delta") and hasattr(choice.delta, "tool_calls") and choice.delta.tool_calls:
+                  for tc in choice.delta.tool_calls:
+                    # Get the index to accumulate tool calls properly
+                    tc_index = tc.index if hasattr(tc, "index") else 0
+
+                    if tc_index in accumulated_tool_calls:
+                      # Accumulate arguments from this chunk
+                      if hasattr(tc, "function") and hasattr(tc.function, "arguments") and tc.function.arguments:
+                        accumulated_tool_calls[tc_index].function.arguments += tc.function.arguments
+                      logger.debug(f"[MODEL←STREAM] Accumulated tool call chunk: index={tc_index}, total_args_length={len(accumulated_tool_calls[tc_index].function.arguments)}")
+                    else:
+                      # First chunk for this tool call
+                      # Generate unique ID with collision detection (some models don't provide IDs)
+                      call_id = tc.id if hasattr(tc, "id") and tc.id else None
+                      if not call_id:
+                        call_id = await self._generate_unique_tool_call_id()
+
+                      tool_name = (
+                        tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
+                      )
+                      logger.debug(f"[MODEL←STREAM] New tool call chunk: index={tc_index}, id={call_id}, name={tool_name}")
+                      if logger.isEnabledFor(10):  # DEBUG level
+                        logger.debug(f"[MODEL←STREAM] Tool call details: {tc}")
+
+                      tool_call = ToolCall(
+                        id=call_id,
+                        function=tc.function if hasattr(tc, "function") else None,
+                        type="function",
+                      )
+                      accumulated_tool_calls[tc_index] = tool_call
+
+                  # Don't yield individual chunks - wait for finish
+                  has_content = True
+
                 # --- Handle content chunks (text responses) ---
-                if hasattr(choice, "delta") and hasattr(choice.delta, "content"):
+                elif hasattr(choice, "delta") and hasattr(choice.delta, "content"):
                   content = choice.delta.content
                   logger.debug(f"[MODEL←STREAM] Delta content: {repr(content)}, finished: {finished}")
 
@@ -1147,37 +1185,13 @@ class Agent:
                     # Empty content with finish_reason - termination chunk
                     logger.debug("[MODEL←STREAM] Received empty finish chunk - streaming complete")
                     has_content = True
-                    # Send empty response to signal completion
-                    response = AssistantMessage(content="", phase=Phase.EXECUTING)
-                    yield None, True, response
-                    break
-
-                # --- Handle tool call chunks ---
-                elif hasattr(choice, "delta") and hasattr(choice.delta, "tool_calls") and choice.delta.tool_calls:
-                  tool_calls = []
-                  for tc in choice.delta.tool_calls:
-                    # Generate unique ID with collision detection (some models don't provide IDs)
-                    call_id = tc.id if hasattr(tc, "id") and tc.id else None
-                    if not call_id:
-                      call_id = await self._generate_unique_tool_call_id()
-
-                    tool_name = (
-                      tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
-                    )
-                    logger.debug(f"[MODEL←STREAM] Tool call chunk: id={call_id}, name={tool_name}, finished={finished}")
-                    if logger.isEnabledFor(10):  # DEBUG level
-                      logger.debug(f"[MODEL←STREAM] Tool call details: {tc}")
-
-                    tool_call = ToolCall(
-                      id=call_id,
-                      function=tc.function if hasattr(tc, "function") else None,
-                      type="function",
-                    )
-                    tool_calls.append(tool_call)
-
-                  response = AssistantMessage(tool_calls=tool_calls, phase=Phase.EXECUTING)
-                  yield None, finished, response
-                  has_content = True
+                    # Don't yield empty response if we have tool calls - they'll be yielded below
+                    if len(accumulated_tool_calls) == 0:
+                      # Send empty response to signal completion only if no tool calls
+                      response = AssistantMessage(content="", phase=Phase.EXECUTING)
+                      yield None, True, response
+                      break
+                    # If we have tool calls, fall through to yield them below
 
                 # --- Handle legacy format (message instead of delta) ---
                 elif finished and hasattr(choice, "message") and choice.message.content:
@@ -1187,8 +1201,12 @@ class Agent:
                   yield None, True, response
                   has_content = True
 
-                # Break on finish signal - no more chunks expected
+                # Break on finish signal - yield accumulated tool calls if any
                 if finished:
+                  if len(accumulated_tool_calls) > 0:
+                    logger.debug(f"[MODEL←STREAM] Yielding {len(accumulated_tool_calls)} accumulated tool calls")
+                    response = AssistantMessage(tool_calls=list(accumulated_tool_calls.values()), phase=Phase.EXECUTING)
+                    yield None, True, response
                   logger.debug("[MODEL←STREAM] Breaking due to finish_reason")
                   break
               else:
