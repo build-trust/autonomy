@@ -12,28 +12,29 @@ if TYPE_CHECKING:
 
 logger = get_logger("memory")
 
-DEFAULT_MAX_ACTIVE_MESSAGES = 100
-DEFAULT_MAX_ACTIVE_TOKENS = 8000
+MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT = 100
+MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT = 8000
 
 
 class Memory:
   """
   Manages conversation messages with two-tier storage:
-  - Active memory: Recent messages in memory (for fast context retrieval)
-  - Database: All messages persisted in PostgreSQL
+  - Short-term memory: Recent messages in memory (for fast context retrieval)
+  - Long-term memory: All messages persisted in PostgreSQL (optional)
   """
 
   def __init__(
     self,
-    max_active_messages: int = DEFAULT_MAX_ACTIVE_MESSAGES,
-    max_active_tokens: Optional[int] = DEFAULT_MAX_ACTIVE_TOKENS,
+    max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
+    max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     model: Optional["Model"] = None,  # For token counting
+    enable_long_term_memory: bool = False,
   ):
     # Validate configuration
-    if max_active_messages < 1:
-      raise ValueError("max_active_messages must be at least 1")
-    if max_active_tokens is not None and max_active_tokens < 100:
-      raise ValueError("max_active_tokens must be at least 100")
+    if max_messages_in_short_term_memory < 1:
+      raise ValueError("max_messages_in_short_term_memory must be at least 1")
+    if max_tokens_in_short_term_memory is not None and max_tokens_in_short_term_memory < 100:
+      raise ValueError("max_tokens_in_short_term_memory must be at least 100")
 
     self.tenant_id = None
     self.db_url = None
@@ -41,13 +42,14 @@ class Memory:
     self.lock = asyncio.Lock()
 
     # Configuration
-    self.max_active_messages = max_active_messages
-    self.max_active_tokens = max_active_tokens
+    self.max_messages_in_short_term_memory = max_messages_in_short_term_memory
+    self.max_tokens_in_short_term_memory = max_tokens_in_short_term_memory
     self.model = model
+    self.enable_long_term_memory = enable_long_term_memory
 
     # In-memory storage
     # Key: (scope, conversation), Value: list of message dicts
-    self.active_messages: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
+    self.short_term_memory: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
 
     # System instructions (prepended to all message lists)
     self.instructions = []
@@ -64,8 +66,12 @@ class Memory:
 
   async def initialize_database(self, max_retries: int = 3):
     """Initialize database connection with retry logic."""
+    if not self.enable_long_term_memory:
+      logger.info("Long-term memory disabled, running in short-term memory-only mode")
+      return
+
     if "OCKAM_DATABASE_INSTANCE" not in environ:
-      logger.info("No database configured, running in memory-only mode")
+      logger.info("No database configured, running in short-term memory-only mode")
       return
 
     db_instance = environ.get("OCKAM_DATABASE_INSTANCE")
@@ -98,11 +104,11 @@ class Memory:
       """)
       await self.connection.commit()
 
-    # Load existing messages into active memory
-    await self._load_active_memory()
+    # Load existing messages into short-term memory
+    await self._load_short_term_memory()
 
-  async def _load_active_memory(self):
-    """Load recent messages from database into active memory (optimized)."""
+  async def _load_short_term_memory(self):
+    """Load recent messages from database into short-term memory (optimized)."""
     if not self.connection:
       return
 
@@ -125,7 +131,7 @@ class Memory:
         WHERE rn <= %s
         ORDER BY scope, conversation, rn DESC
       """,
-        (self.tenant_id, self.max_active_messages),
+        (self.tenant_id, self.max_messages_in_short_term_memory),
       )
 
       rows = await cur.fetchall()
@@ -143,7 +149,7 @@ class Memory:
 
       # Reverse each conversation's messages (oldest first)
       for key, messages in conversations.items():
-        self.active_messages[key] = list(reversed(messages))
+        self.short_term_memory[key] = list(reversed(messages))
 
       logger.info(f"Loaded {len(rows)} messages from {len(conversations)} conversations")
 
@@ -153,8 +159,8 @@ class Memory:
 
   async def add_message(self, scope: str, conversation: str, message: dict):
     """
-    Add a message to both active memory and database.
-    Automatically trims active memory if needed.
+    Add a message to short-term memory and optionally to long-term memory (database).
+    Automatically trims short-term memory if needed.
     Adds timestamp if not present.
     """
     import time
@@ -164,12 +170,12 @@ class Memory:
       message["timestamp"] = time.time()
 
     async with self.lock:
-      # Add to active memory
-      self.active_messages[(scope, conversation)].append(message)
+      # Add to short-term memory
+      self.short_term_memory[(scope, conversation)].append(message)
       self.metrics["messages_added"] += 1
 
-      # Persist to database
-      if self.connection:
+      # Persist to long-term memory (database) if enabled
+      if self.enable_long_term_memory and self.connection:
         import json
 
         try:
@@ -185,12 +191,12 @@ class Memory:
           # Continue even if DB write fails (memory still has it)
 
       # Trim if necessary
-      await self._trim_active_memory(scope, conversation)
+      await self._trim_short_term_memory(scope, conversation)
 
   async def add_messages(self, scope: str, conversation: str, messages: List[dict]):
     """
     Add multiple messages efficiently in a batch.
-    Automatically trims active memory if needed.
+    Automatically trims short-term memory if needed.
     """
     import time
 
@@ -200,13 +206,13 @@ class Memory:
         message["timestamp"] = time.time()
 
     async with self.lock:
-      # Add to active memory
-      self.active_messages[(scope, conversation)].extend(messages)
+      # Add to short-term memory
+      self.short_term_memory[(scope, conversation)].extend(messages)
       self.metrics["messages_added"] += len(messages)
       self.metrics["batch_operations"] += 1
 
-      # Persist to database in batch
-      if self.connection:
+      # Persist to long-term memory (database) in batch if enabled
+      if self.enable_long_term_memory and self.connection:
         import json
 
         try:
@@ -223,28 +229,29 @@ class Memory:
           # Continue even if DB write fails
 
       # Trim if necessary
-      await self._trim_active_memory(scope, conversation)
+      await self._trim_short_term_memory(scope, conversation)
 
   async def get_messages(self, scope: str, conversation: str) -> List[dict]:
     """
-    Get messages for a conversation (instructions + active memory).
+    Get messages for a conversation (instructions + short-term memory).
     This is the primary method used by agents.
     """
     async with self.lock:
-      return self.instructions + self.active_messages[(scope, conversation)]
+      return self.instructions + self.short_term_memory[(scope, conversation)]
 
   async def get_messages_only(self, scope: str, conversation: str) -> List[dict]:
-    """Get only conversation messages (no instructions) from active memory."""
+    """Get only conversation messages (no instructions) from short-term memory."""
     async with self.lock:
-      return self.active_messages[(scope, conversation)].copy()
+      return self.short_term_memory[(scope, conversation)].copy()
 
   async def get_all_messages(self, scope: str, conversation: str, limit: Optional[int] = None) -> List[dict]:
     """
-    Retrieve all messages for a conversation from the database.
+    Retrieve all messages for a conversation from long-term memory (database).
     Use this for analysis, export, or when you need all messages.
+    Falls back to short-term memory if long-term memory is not enabled.
     """
-    if not self.connection:
-      # Fallback to active memory if no database
+    if not self.enable_long_term_memory or not self.connection:
+      # Fallback to short-term memory if no long-term memory
       return await self.get_messages_only(scope, conversation)
 
     import json
@@ -265,10 +272,10 @@ class Memory:
       return [json.loads(row["message"]) for row in rows]
 
   async def get_message_count(self, scope: str, conversation: str) -> int:
-    """Get total number of messages in a conversation (from database)."""
-    if not self.connection:
+    """Get total number of messages in a conversation (from long-term memory if enabled)."""
+    if not self.enable_long_term_memory or not self.connection:
       async with self.lock:
-        return len(self.active_messages[(scope, conversation)])
+        return len(self.short_term_memory[(scope, conversation)])
 
     async with self.connection.cursor() as cur:
       await cur.execute(
@@ -285,69 +292,87 @@ class Memory:
       total_chars = sum(len(str(msg)) for msg in messages)
       return total_chars // 4
 
+    # Check if any message has structured content (dict)
+    # If so, skip model token counting to avoid warnings from litellm
+    has_structured_content = any(isinstance(msg.get('content'), dict) for msg in messages)
+
+    if has_structured_content:
+      # Use character estimate for structured content
+      total_chars = 0
+      for msg in messages:
+        if isinstance(msg.get('content'), dict):
+          # Extract text from structured content like {'text': '...', 'type': 'text'}
+          if 'text' in msg['content']:
+            total_chars += len(msg['content']['text'])
+          else:
+            total_chars += len(str(msg['content']))
+        else:
+          total_chars += len(str(msg.get('content', '')))
+      return total_chars // 4
+
     try:
-      # Use model's token counter if available
+      # Use model's token counter for plain string content
       return self.model.count_tokens(messages)
     except Exception as e:
-      logger.warning(f"Token counting failed: {e}, using character estimate")
+      logger.debug(f"Token counting failed: {e}, using character estimate")
       total_chars = sum(len(str(msg)) for msg in messages)
       return total_chars // 4
 
-  async def _should_trim_active_memory(self, scope: str, conversation: str) -> bool:
-    """Check if active memory needs trimming."""
-    messages = self.active_messages[(scope, conversation)]
+  async def _should_trim_short_term_memory(self, scope: str, conversation: str) -> bool:
+    """Check if short-term memory needs trimming."""
+    messages = self.short_term_memory[(scope, conversation)]
 
     # Check message count limit
-    if len(messages) > self.max_active_messages:
+    if len(messages) > self.max_messages_in_short_term_memory:
       return True
 
     # Check token limit (if configured and model available)
-    if self.max_active_tokens:
+    if self.max_tokens_in_short_term_memory:
       token_count = await self._estimate_tokens(messages)
-      if token_count > self.max_active_tokens:
+      if token_count > self.max_tokens_in_short_term_memory:
         return True
 
     return False
 
-  async def _trim_active_memory(self, scope: str, conversation: str):
+  async def _trim_short_term_memory(self, scope: str, conversation: str):
     """
-    Trim active memory to stay within configured limits.
+    Trim short-term memory to stay within configured limits.
     Removes oldest messages first (FIFO).
     """
-    messages = self.active_messages[(scope, conversation)]
+    messages = self.short_term_memory[(scope, conversation)]
     initial_count = len(messages)
 
-    if self.max_active_tokens and len(messages) > 1:
+    if self.max_tokens_in_short_term_memory and len(messages) > 1:
       # Token-aware trimming
-      while await self._estimate_tokens(messages) > self.max_active_tokens and len(messages) > 1:
+      while await self._estimate_tokens(messages) > self.max_tokens_in_short_term_memory and len(messages) > 1:
         messages.pop(0)  # Remove oldest
         self.metrics["messages_trimmed"] += 1
-        logger.debug(f"Trimmed message from active memory (token limit) for {scope}/{conversation}")
+        logger.debug(f"Trimmed message from short-term memory (token limit) for {scope}/{conversation}")
 
     # Count-based trimming
-    while len(messages) > self.max_active_messages and len(messages) > 1:
+    while len(messages) > self.max_messages_in_short_term_memory and len(messages) > 1:
       messages.pop(0)  # Remove oldest
       self.metrics["messages_trimmed"] += 1
-      logger.debug(f"Trimmed message from active memory (count limit) for {scope}/{conversation}")
+      logger.debug(f"Trimmed message from short-term memory (count limit) for {scope}/{conversation}")
 
     if len(messages) < initial_count:
       logger.debug(f"Trimmed {initial_count - len(messages)} messages from {scope}/{conversation}")
 
-  async def clear_active_memory(self, scope: str, conversation: str):
-    """Clear active memory for a conversation (messages remain in database)."""
+  async def clear_short_term_memory(self, scope: str, conversation: str):
+    """Clear short-term memory for a conversation (messages remain in long-term memory if enabled)."""
     async with self.lock:
-      self.active_messages[(scope, conversation)].clear()
-      logger.info(f"Cleared active memory for {scope}/{conversation}")
+      self.short_term_memory[(scope, conversation)].clear()
+      logger.info(f"Cleared short-term memory for {scope}/{conversation}")
 
   async def delete_conversation(self, scope: str, conversation: str):
-    """Delete all messages for a conversation from both memory and database."""
+    """Delete all messages for a conversation from both short-term and long-term memory."""
     async with self.lock:
-      # Clear from active memory
-      if (scope, conversation) in self.active_messages:
-        del self.active_messages[(scope, conversation)]
+      # Clear from short-term memory
+      if (scope, conversation) in self.short_term_memory:
+        del self.short_term_memory[(scope, conversation)]
 
-      # Delete from database
-      if self.connection:
+      # Delete from long-term memory (database) if enabled
+      if self.enable_long_term_memory and self.connection:
         async with self.connection.cursor() as cur:
           await cur.execute(
             "DELETE FROM conversation WHERE tenant_id = %s AND scope = %s AND conversation = %s",
@@ -359,18 +384,18 @@ class Memory:
   async def get_metrics(self) -> dict:
     """Return memory system metrics for monitoring."""
     async with self.lock:
-      total_messages = sum(len(msgs) for msgs in self.active_messages.values())
+      total_messages = sum(len(msgs) for msgs in self.short_term_memory.values())
       return {
         **self.metrics,
-        "active_conversations": len(self.active_messages),
+        "active_conversations": len(self.short_term_memory),
         "total_active_messages": total_messages,
-        "avg_messages_per_conversation": total_messages / len(self.active_messages) if self.active_messages else 0,
+        "avg_messages_per_conversation": total_messages / len(self.short_term_memory) if self.short_term_memory else 0,
       }
 
   async def health_check(self) -> bool:
     """Check if database connection is healthy."""
-    if not self.connection:
-      return True  # Memory-only mode is always "healthy"
+    if not self.enable_long_term_memory or not self.connection:
+      return True  # Short-term memory-only mode is always "healthy"
 
     try:
       async with self.connection.cursor() as cur:

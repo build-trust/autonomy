@@ -2295,7 +2295,7 @@ class TestStateMachine:
     mock_tool_response = Mock()
     mock_tool_response.role = ConversationRole.TOOL
     mock_tool_response.content = Mock(text="Tool result")
-    mock_agent.call_tool = AsyncMock(return_value=(None, mock_tool_response))
+    mock_agent.call_tool = AsyncMock(return_value=(None, mock_tool_response, {"result": "value"}))
     mock_agent.tools = {"test_tool": Mock()}
 
     state_machine.state = State.ACTING
@@ -2474,7 +2474,7 @@ class TestStateMachine:
     mock_tool_response = Mock()
     mock_tool_response.role = ConversationRole.TOOL
     mock_tool_response.content = Mock(text="tool result")
-    mock_agent.call_tool = AsyncMock(return_value=(None, mock_tool_response))
+    mock_agent.call_tool = AsyncMock(return_value=(None, mock_tool_response, {"result": "value"}))
 
     conversation = "test-conversation"
     stream = AsyncMock()
