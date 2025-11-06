@@ -132,9 +132,7 @@ class FilesystemTools:
     # Validate visibility level
     valid_levels = ["all", "agent", "scope", "conversation"]
     if visibility not in valid_levels:
-      raise ValueError(
-        f"Invalid visibility '{visibility}'. Must be one of: {', '.join(valid_levels)}"
-      )
+      raise ValueError(f"Invalid visibility '{visibility}'. Must be one of: {', '.join(valid_levels)}")
 
     self.visibility = visibility
     self.base_dir = base_dir
@@ -149,20 +147,18 @@ class FilesystemTools:
       factory_mode = False
     elif visibility == "agent":
       # Need agent_name
-      factory_mode = (agent_name is None)
+      factory_mode = agent_name is None
     elif visibility == "scope":
       # Need agent_name and scope
-      factory_mode = (agent_name is None or scope is None)
+      factory_mode = agent_name is None or scope is None
     elif visibility == "conversation":
       # Need agent_name, scope, and conversation
-      factory_mode = (agent_name is None or scope is None or conversation is None)
+      factory_mode = agent_name is None or scope is None or conversation is None
 
     if factory_mode:
       # Factory mode - will compute scope_root in create_tools()
       self.scope_root = None
-      logger.debug(
-        f"Initialized FilesystemTools in factory mode: visibility='{visibility}', base_dir='{base_dir}'"
-      )
+      logger.debug(f"Initialized FilesystemTools in factory mode: visibility='{visibility}', base_dir='{base_dir}'")
       return
 
     # Direct mode - validate and set up scope_root immediately
@@ -213,9 +209,7 @@ class FilesystemTools:
     elif self.visibility == "scope":
       self.scope_root = os.path.join(self.base_dir, self.agent_name, self.scope)
     elif self.visibility == "conversation":
-      self.scope_root = os.path.join(
-        self.base_dir, self.agent_name, self.scope, self.conversation
-      )
+      self.scope_root = os.path.join(self.base_dir, self.agent_name, self.scope, self.conversation)
 
     # Create scope directory if it doesn't exist
     try:
@@ -289,9 +283,9 @@ class FilesystemTools:
 
     Args:
       scope: Scope identifier (e.g., "user-alice", "tenant-123").
-             If None, uses "default" for scope/conversation visibility.
+            If None, uses "default" for scope/conversation visibility.
       conversation: Conversation identifier (e.g., "chat-1", "session-abc").
-                   If None, uses "default" for conversation visibility.
+                  If None, uses "default" for conversation visibility.
       agent_name: Agent name. If None, extracted from context or uses "default".
 
     Returns:
@@ -399,7 +393,9 @@ class FilesystemTools:
       - Check if directories exist before writing files
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       physical_path = self._resolve_path(path)
@@ -510,7 +506,9 @@ class FilesystemTools:
       loading the entire file into memory.
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       physical_path = self._resolve_path(path)
@@ -551,8 +549,7 @@ class FilesystemTools:
 
           content = "".join(lines)
           logger.debug(
-            f"read_file: Read lines {start_line or 1}-{end_line or 'end'} "
-            f"({len(content)} bytes) from '{path}'"
+            f"read_file: Read lines {start_line or 1}-{end_line or 'end'} ({len(content)} bytes) from '{path}'"
           )
           return content
 
@@ -584,7 +581,7 @@ class FilesystemTools:
             Examples: "config.yaml", "docs/readme.md", "src/new_file.py"
 
       content: Complete content to write to the file.
-               The file will contain exactly this content after the operation.
+              The file will contain exactly this content after the operation.
 
     Returns:
       Success message showing bytes written, or error message.
@@ -631,7 +628,9 @@ class FilesystemTools:
       You cannot write outside your visibility boundary.
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       physical_path = self._resolve_path(path)
@@ -696,7 +695,9 @@ class FilesystemTools:
       deleting the correct file before calling this tool.
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       physical_path = self._resolve_path(path)
@@ -731,9 +732,9 @@ class FilesystemTools:
             Examples: "old_folder", "temp/cache", "build/output"
 
       recursive: If False (default), only deletes empty directories (safety feature).
-                 If True, deletes directory and ALL its contents recursively.
-                 WARNING: recursive=True will permanently delete all files and
-                 subdirectories inside the target directory.
+                If True, deletes directory and ALL its contents recursively.
+                WARNING: recursive=True will permanently delete all files and
+                subdirectories inside the target directory.
 
     Returns:
       Success message, or error message if:
@@ -791,7 +792,9 @@ class FilesystemTools:
       - Test on non-critical directories first
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       physical_path = self._resolve_path(path)
@@ -855,8 +858,8 @@ class FilesystemTools:
                   Must be different from old_string.
 
       replace_all: If False (default), requires old_string to be unique - fails if found
-                   multiple times. This is a safety feature to prevent unintended changes.
-                   If True, replaces all occurrences of old_string in the file.
+                  multiple times. This is a safety feature to prevent unintended changes.
+                  If True, replaces all occurrences of old_string in the file.
 
     Returns:
       Success message showing number of replacements made, or error message if:
@@ -879,11 +882,7 @@ class FilesystemTools:
         Successfully replaced 1 occurrence in 'readme.md'
 
       Multi-line replacement:
-        >>> edit_file(
-        ...   "code.py",
-        ...   "def old():\n    return 1",
-        ...   "def new():\n    return 2"
-        ... )
+        >>> edit_file("code.py", "def old():\n    return 1", "def new():\n    return 2")
         Successfully replaced 1 occurrence in 'code.py'
 
       Update configuration value:
@@ -935,7 +934,9 @@ class FilesystemTools:
       - For complex transformations: read_file(), process in Python, then write_file()
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       # Validate inputs
@@ -1002,13 +1003,13 @@ class FilesystemTools:
 
     Args:
       pattern: Glob pattern to match files against. Supports:
-               - * : matches any characters in a filename
-               - ** : matches any files/directories recursively
-               - ? : matches a single character
-               - [seq] : matches any character in seq
-               - [!seq] : matches any character not in seq
+              - * : matches any characters in a filename
+              - ** : matches any files/directories recursively
+              - ? : matches a single character
+              - [seq] : matches any character in seq
+              - [!seq] : matches any character not in seq
 
-               Examples: "*.txt", "**/*.py", "test_*.py", "docs/**/*.md"
+              Examples: "*.txt", "**/*.py", "test_*.py", "docs/**/*.md"
 
     Returns:
       Formatted list of matching files with their sizes, or message if no matches found.
@@ -1081,7 +1082,9 @@ class FilesystemTools:
       - Hidden files (starting with .) are included in results
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       # Remove leading slash from pattern
@@ -1136,8 +1139,8 @@ class FilesystemTools:
 
     Args:
       pattern: Regular expression pattern to search for.
-               Supports full Python regex syntax.
-               Examples: "TODO", "function.*main", "class \\w+", "import (os|sys)"
+              Supports full Python regex syntax.
+              Examples: "TODO", "function.*main", "class \\w+", "import (os|sys)"
 
       path: Directory or file to search in, relative to visibility root.
             Default is "." (search entire visibility root).
@@ -1147,15 +1150,15 @@ class FilesystemTools:
                       If False, search ignores case (finds "TODO", "todo", "Todo", etc.)
 
       context_lines: Number of lines to show before and after each match.
-                     Default is None (show only matching line).
-                     Examples: 1, 2, 3 for surrounding context
+                    Default is None (show only matching line).
+                    Examples: 1, 2, 3 for surrounding context
 
       show_line_numbers: If True (default), include line numbers in output.
-                         If False, show only file paths and matched content.
+                        If False, show only file paths and matched content.
 
       max_results: Maximum number of matches to return (default 100).
-                   Prevents overwhelming output for common patterns.
-                   If exceeded, shows count of additional matches.
+                  Prevents overwhelming output for common patterns.
+                  If exceeded, shows count of additional matches.
 
     Returns:
       Formatted list of matches showing:
@@ -1265,7 +1268,9 @@ class FilesystemTools:
       - Results limited to max_results to prevent overwhelming output
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       physical_path = self._resolve_path(path)
@@ -1380,10 +1385,10 @@ class FilesystemTools:
               Examples: "data.json", "src/utils", "docs/readme.md"
 
       destination: Destination path, relative to visibility root.
-                   Examples: "backup/data.json", "lib/utils", "archive/readme.md"
+                  Examples: "backup/data.json", "lib/utils", "archive/readme.md"
 
       recursive: Required for copying directories. If False (default), only copies files.
-                 If True, copies directories and all their contents recursively.
+                If True, copies directories and all their contents recursively.
 
     Returns:
       Success message, or error message if operation fails.
@@ -1420,7 +1425,9 @@ class FilesystemTools:
       Parent directories in the destination path are created automatically.
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       source_physical = self._resolve_path(source)
@@ -1467,7 +1474,7 @@ class FilesystemTools:
               Examples: "draft.txt", "old_name.py", "temp_folder"
 
       destination: Destination path, relative to visibility root.
-                   Examples: "final.txt", "new_name.py", "archive/temp_folder"
+                  Examples: "final.txt", "new_name.py", "archive/temp_folder"
 
     Returns:
       Success message, or error message if operation fails.
@@ -1507,7 +1514,9 @@ class FilesystemTools:
       - On same filesystem, this is an atomic operation
     """
     if self.scope_root is None:
-      return "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      return (
+        "Error: FilesystemTools is in factory mode. Use with Agent.start() to create visibility-specific instances."
+      )
 
     try:
       source_physical = self._resolve_path(source)

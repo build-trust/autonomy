@@ -159,7 +159,7 @@ async def test_optional_parameter_with_default():
   tool = Tool(func_with_optional)
 
   # Call without parameter - should use default
-  result = await tool.invoke('{}')
+  result = await tool.invoke("{}")
   assert "value=10" in result
   assert "type=int" in result
 
@@ -173,7 +173,7 @@ async def test_optional_parameter_with_default():
 async def test_empty_arguments():
   """Test that empty arguments work correctly."""
   tool = Tool(func_with_optional)
-  result = await tool.invoke('')
+  result = await tool.invoke("")
   assert "value=10" in result  # Should use default
 
 

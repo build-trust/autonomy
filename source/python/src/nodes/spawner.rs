@@ -143,8 +143,10 @@ impl Spawner {
                 Python::with_gil(|py| {
                     py_debug(
                         py,
-                        format!("create a new worker for agent '{}' with scope={:?}, conversation={:?}",
-                                agent_name, scope, conversation),
+                        format!(
+                            "create a new worker for agent '{}' with scope={:?}, conversation={:?}",
+                            agent_name, scope, conversation
+                        ),
                     )?;
 
                     // Call worker_constructor with scope and conversation parameters.
@@ -184,10 +186,12 @@ impl Spawner {
 fn extract_scope_and_conversation(message: &str) -> (Option<String>, Option<String>) {
     match serde_json::from_str::<Value>(message) {
         Ok(json) => {
-            let scope = json.get("scope")
+            let scope = json
+                .get("scope")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let conversation = json.get("conversation")
+            let conversation = json
+                .get("conversation")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             (scope, conversation)

@@ -140,7 +140,9 @@ class Tool(InvokableTool, InfoContext):
 
       # Handle Optional types (Optional[X] is Union[X, None])
       origin = get_origin(expected_type)
-      if origin is type(None) or (hasattr(expected_type, '__class__') and expected_type.__class__.__name__ == 'UnionType'):
+      if origin is type(None) or (
+        hasattr(expected_type, "__class__") and expected_type.__class__.__name__ == "UnionType"
+      ):
         # For Optional/Union types, try to get the non-None type
         type_args = get_args(expected_type)
         if type_args:
@@ -159,7 +161,9 @@ class Tool(InvokableTool, InfoContext):
         coerced_args[arg_name] = coerced_value
       except (ValueError, TypeError) as e:
         # If coercion fails, log and raise a clear error
-        self.logger.debug(f"Failed to coerce argument '{arg_name}' from {type(arg_value).__name__} to {expected_type.__name__}: {e}")
+        self.logger.debug(
+          f"Failed to coerce argument '{arg_name}' from {type(arg_value).__name__} to {expected_type.__name__}: {e}"
+        )
         raise ValueError(
           f"Argument '{arg_name}' has invalid type: expected {expected_type.__name__}, "
           f"got {type(arg_value).__name__} (value: {arg_value!r})"
@@ -240,9 +244,9 @@ class Tool(InvokableTool, InfoContext):
       if isinstance(value, str):
         # Handle common string representations of booleans
         lower_value = value.lower()
-        if lower_value in ('true', '1', 'yes', 'on'):
+        if lower_value in ("true", "1", "yes", "on"):
           return True
-        elif lower_value in ('false', '0', 'no', 'off'):
+        elif lower_value in ("false", "0", "no", "off"):
           return False
         else:
           raise ValueError(f"Cannot coerce string '{value}' to bool")

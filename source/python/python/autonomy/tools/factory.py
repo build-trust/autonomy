@@ -123,11 +123,11 @@ class ToolFactory(Protocol):
 
     Args:
       scope: Scope identifier (e.g., "user-alice", "tenant-123")
-             None if no scope was provided in the message
-             Defaults to "default" if None
+            None if no scope was provided in the message
+            Defaults to "default" if None
       conversation: Conversation identifier (e.g., "chat-1", "session-abc")
-                   None if no conversation was provided in the message
-                   Defaults to "default" if None
+                  None if no conversation was provided in the message
+                  Defaults to "default" if None
       agent_name: Agent name (e.g., "assistant", "support-bot")
                   Provided by the agent framework
                   Defaults to "default" if None
