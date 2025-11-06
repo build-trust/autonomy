@@ -27,7 +27,7 @@ from .nodes.remote import RemoteNode, NodeController, NodeRequest, NodeResponse
 from .flows import Flow, FlowOperation, START, END
 from .clusters import Cluster, Zone
 from .memory import Memory
-from .tools import McpTool, Tool
+from .tools import McpTool, Tool, FilesystemTools, ToolFactory
 from .knowledge import (
   UnsearchableKnowledge,
   SearchableKnowledge,
@@ -126,6 +126,8 @@ __all__ = [
   # from .tools
   "McpTool",
   "Tool",
+  "FilesystemTools",
+  "ToolFactory",
   # from .knowledge
   "Knowledge",
   "KnowledgeProvider",
