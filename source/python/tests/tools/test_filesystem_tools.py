@@ -19,12 +19,7 @@ class TestFilesystemToolsInitialization:
   def test_basic_initialization(self):
     """Test basic initialization with valid scope."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test-user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test-user", base_dir=tmpdir)
       assert fs.scope == "test-user"
       assert fs.base_dir == tmpdir
       assert fs.scope_root == os.path.join(tmpdir, "test-agent", "test-user")
@@ -36,12 +31,7 @@ class TestFilesystemToolsInitialization:
       scope_path = os.path.join(tmpdir, "test-agent", "new-scope")
       assert not os.path.exists(scope_path)
 
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="new-scope",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="new-scope", base_dir=tmpdir)
       assert os.path.exists(scope_path)
       assert os.path.isdir(scope_path)
 
@@ -49,20 +39,10 @@ class TestFilesystemToolsInitialization:
     """Test that empty scope raises ValueError."""
     with tempfile.TemporaryDirectory() as tmpdir:
       with pytest.raises(ValueError, match="scope is required"):
-        FilesystemTools(
-          visibility="scope",
-          agent_name="test-agent",
-          scope="",
-          base_dir=tmpdir
-        )
+        FilesystemTools(visibility="scope", agent_name="test-agent", scope="", base_dir=tmpdir)
 
       with pytest.raises(ValueError, match="scope is required"):
-        FilesystemTools(
-          visibility="scope",
-          agent_name="test-agent",
-          scope="   ",
-          base_dir=tmpdir
-        )
+        FilesystemTools(visibility="scope", agent_name="test-agent", scope="   ", base_dir=tmpdir)
 
   def test_invalid_scope_characters(self):
     """Test that scope with path traversal characters raises ValueError."""
@@ -78,24 +58,14 @@ class TestFilesystemToolsInitialization:
 
       for invalid_scope in invalid_scopes:
         with pytest.raises(ValueError, match="Invalid scope"):
-          FilesystemTools(
-            visibility="scope",
-            agent_name="test-agent",
-            scope=invalid_scope,
-            base_dir=tmpdir
-          )
+          FilesystemTools(visibility="scope", agent_name="test-agent", scope=invalid_scope, base_dir=tmpdir)
 
   def test_default_base_dir(self):
     """Test that default base_dir is /tmp/agent-files."""
     # Note: This test just validates the default, doesn't create actual directory
     # in /tmp as that might fail in some environments
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
       # Just verify the parameter is accepted and used
       assert tmpdir in fs.scope_root
 
@@ -106,12 +76,7 @@ class TestPathResolution:
   def test_resolve_simple_path(self):
     """Test resolving simple file path."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       resolved = fs._resolve_path("test.txt")
       expected = os.path.join(tmpdir, "test-agent", "user", "test.txt")
       assert resolved == expected
@@ -119,12 +84,7 @@ class TestPathResolution:
   def test_resolve_path_with_leading_slash(self):
     """Test that leading slash is removed and path is resolved correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       resolved = fs._resolve_path("/test.txt")
       expected = os.path.join(tmpdir, "test-agent", "user", "test.txt")
       assert resolved == expected
@@ -132,12 +92,7 @@ class TestPathResolution:
   def test_resolve_nested_path(self):
     """Test resolving nested directory path."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       resolved = fs._resolve_path("docs/2024/notes.md")
       expected = os.path.join(tmpdir, "test-agent", "user", "docs", "2024", "notes.md")
       assert resolved == expected
@@ -145,12 +100,7 @@ class TestPathResolution:
   def test_resolve_current_directory(self):
     """Test resolving current directory path."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       resolved = fs._resolve_path(".")
       expected = os.path.join(tmpdir, "test-agent", "user")
       assert resolved == expected
@@ -158,12 +108,7 @@ class TestPathResolution:
   def test_directory_traversal_blocked(self):
     """Test that directory traversal attacks are blocked."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Various traversal attempts
       traversal_attempts = [
@@ -180,12 +125,7 @@ class TestPathResolution:
   def test_empty_path_resolves_to_current(self):
     """Test that empty path resolves to current directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       resolved = fs._resolve_path("")
       expected = os.path.join(tmpdir, "test-agent", "user")
       assert resolved == expected
@@ -197,24 +137,14 @@ class TestListDirectory:
   def test_ls_empty_directory(self):
     """Test listing an empty directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       result = fs.list_directory(".")
       assert "Empty directory" in result
 
   def test_ls_with_files(self):
     """Test listing directory with files."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create some files
       with open(os.path.join(fs.scope_root, "file1.txt"), "w") as f:
@@ -230,12 +160,7 @@ class TestListDirectory:
   def test_ls_with_subdirectories(self):
     """Test listing directory with subdirectories."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create subdirectories
       os.makedirs(os.path.join(fs.scope_root, "docs"))
@@ -248,12 +173,7 @@ class TestListDirectory:
   def test_ls_nonexistent_path(self):
     """Test listing nonexistent directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       result = fs.list_directory("nonexistent")
       assert "Error" in result
       assert "does not exist" in result
@@ -261,12 +181,7 @@ class TestListDirectory:
   def test_ls_file_not_directory(self):
     """Test listing a file (not directory)."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create a file
       filepath = os.path.join(fs.scope_root, "test.txt")
@@ -284,12 +199,7 @@ class TestReadFile:
   def test_read_simple_file(self):
     """Test reading a simple text file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create and write file
       content = "Hello, World!"
@@ -303,12 +213,7 @@ class TestReadFile:
   def test_read_multiline_file(self):
     """Test reading file with multiple lines."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       content = "Line 1\nLine 2\nLine 3\n"
       filepath = os.path.join(fs.scope_root, "multiline.txt")
@@ -321,12 +226,7 @@ class TestReadFile:
   def test_read_nonexistent_file(self):
     """Test reading nonexistent file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
       result = fs.read_file("nonexistent.txt")
       assert "Error" in result
       assert "does not exist" in result
@@ -334,12 +234,7 @@ class TestReadFile:
   def test_read_directory_not_file(self):
     """Test reading a directory (not file)."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create directory
       os.makedirs(os.path.join(fs.scope_root, "docs"))
@@ -355,12 +250,7 @@ class TestWriteFile:
   def test_write_simple_file(self):
     """Test writing a simple file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       content = "Test content"
       result = fs.write_file("test.txt", content)
@@ -377,12 +267,7 @@ class TestWriteFile:
   def test_write_creates_parent_directories(self):
     """Test that write_file creates parent directories."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       result = fs.write_file("docs/2024/notes.md", "# Notes")
 
@@ -397,12 +282,7 @@ class TestWriteFile:
   def test_write_overwrites_existing_file(self):
     """Test that write_file overwrites existing content."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Write initial content
       fs.write_file("test.txt", "Initial content")
@@ -420,12 +300,7 @@ class TestWriteFile:
   def test_write_empty_file(self):
     """Test writing an empty file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       result = fs.write_file("empty.txt", "")
 
@@ -441,12 +316,7 @@ class TestEditFile:
   def test_edit_replaces_text(self):
     """Test that edit_file replaces text in file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create file with initial content
       fs.write_file("config.yaml", "port: 8080\nhost: localhost\n")
@@ -464,12 +334,7 @@ class TestEditFile:
   def test_edit_replaces_all_occurrences(self):
     """Test that edit_file with replace_all replaces all occurrences."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create file with repeated text
       fs.write_file("test.txt", "Hello World\nHello Universe\nHello Everyone\n")
@@ -489,12 +354,7 @@ class TestEditFile:
   def test_edit_fails_on_multiple_without_replace_all(self):
     """Test that edit_file fails when pattern appears multiple times without replace_all."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create file with repeated text
       fs.write_file("test.txt", "test\ntest\ntest\n")
@@ -509,12 +369,7 @@ class TestEditFile:
   def test_edit_creates_parent_directories(self):
     """Test that edit_file fails if file doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Try to edit non-existent file
       result = fs.edit_file("newfile.txt", "old", "new")
@@ -529,12 +384,7 @@ class TestFindFiles:
   def test_glob_simple_pattern(self):
     """Test find_files with simple wildcard pattern."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create test files
       fs.write_file("file1.txt", "content")
@@ -550,12 +400,7 @@ class TestFindFiles:
   def test_glob_recursive_pattern(self):
     """Test find_files with recursive pattern."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create nested files
       fs.write_file("readme.md", "content")
@@ -571,12 +416,7 @@ class TestFindFiles:
   def test_glob_no_matches(self):
     """Test find_files with no matches."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("test.txt", "content")
 
@@ -587,12 +427,7 @@ class TestFindFiles:
   def test_glob_specific_directory(self):
     """Test find_files in specific directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("root.txt", "content")
       fs.write_file("docs/doc1.txt", "content")
@@ -611,12 +446,7 @@ class TestSearchInFiles:
   def test_grep_simple_pattern(self):
     """Test search_in_files with simple text pattern."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("test.txt", "Line 1\nTODO: Fix this\nLine 3\n")
 
@@ -629,12 +459,7 @@ class TestSearchInFiles:
   def test_grep_regex_pattern(self):
     """Test search_in_files with regex pattern."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("code.py", "def function1():\ndef function2():\nclass MyClass:\n")
 
@@ -647,12 +472,7 @@ class TestSearchInFiles:
   def test_grep_multiple_files(self):
     """Test search_in_files across multiple files."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("file1.txt", "Error in file1\n")
       fs.write_file("file2.txt", "Everything OK\n")
@@ -667,12 +487,7 @@ class TestSearchInFiles:
   def test_grep_no_matches(self):
     """Test search_in_files with no matches."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("test.txt", "Some content\n")
 
@@ -683,12 +498,7 @@ class TestSearchInFiles:
   def test_grep_invalid_regex(self):
     """Test search_in_files with invalid regex pattern."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("test.txt", "content")
 
@@ -700,12 +510,7 @@ class TestSearchInFiles:
   def test_grep_specific_file(self):
     """Test search_in_files on specific file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       fs.write_file("target.txt", "Line 1\nMatch here\nLine 3\n")
       fs.write_file("other.txt", "No match in this file\n")
@@ -719,12 +524,7 @@ class TestSearchInFiles:
   def test_grep_nonexistent_path(self):
     """Test search_in_files on nonexistent path."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       result = fs.search_in_files("pattern", "nonexistent.txt")
 
@@ -738,18 +538,8 @@ class TestScopeIsolation:
   def test_different_scopes_isolated(self):
     """Test that different scopes cannot access each other's files."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs_alice = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user-alice",
-        base_dir=tmpdir
-      )
-      fs_bob = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user-bob",
-        base_dir=tmpdir
-      )
+      fs_alice = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user-alice", base_dir=tmpdir)
+      fs_bob = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user-bob", base_dir=tmpdir)
 
       # Alice creates a file
       fs_alice.write_file("secret.txt", "Alice's secret")
@@ -766,18 +556,8 @@ class TestScopeIsolation:
   def test_scope_root_separation(self):
     """Test that scope roots are in separate directories."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs1 = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="scope1",
-        base_dir=tmpdir
-      )
-      fs2 = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="scope2",
-        base_dir=tmpdir
-      )
+      fs1 = FilesystemTools(visibility="scope", agent_name="test-agent", scope="scope1", base_dir=tmpdir)
+      fs2 = FilesystemTools(visibility="scope", agent_name="test-agent", scope="scope2", base_dir=tmpdir)
 
       assert fs1.scope_root != fs2.scope_root
       assert os.path.exists(fs1.scope_root)
@@ -790,12 +570,7 @@ class TestEdgeCases:
   def test_unicode_content(self):
     """Test handling of unicode content."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       content = "Hello 世界 🌍"
       fs.write_file("unicode.txt", content)
@@ -806,12 +581,7 @@ class TestEdgeCases:
   def test_large_file(self):
     """Test handling of larger files."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Create a 1MB file
       content = "x" * (1024 * 1024)
@@ -825,12 +595,7 @@ class TestEdgeCases:
   def test_special_characters_in_filename(self):
     """Test files with special characters in names."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="user",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="user", base_dir=tmpdir)
 
       # Valid special characters in filenames
       filenames = ["test-file.txt", "test_file.txt", "test.2024.txt"]
@@ -842,12 +607,7 @@ class TestEdgeCases:
   def test_empty_directory_operations(self):
     """Test operations on empty scope."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="empty",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="empty", base_dir=tmpdir)
 
       # List empty directory
       assert "Empty directory" in fs.list_directory(".")
@@ -865,12 +625,7 @@ class TestRemoveFile:
   def test_delete_simple_file(self):
     """Test deleting a simple file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create a file
       fs.write_file("test.txt", "Hello")
@@ -885,12 +640,7 @@ class TestRemoveFile:
   def test_delete_file_in_subdirectory(self):
     """Test deleting a file in a subdirectory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create file in subdirectory
       fs.write_file("docs/readme.md", "# README")
@@ -905,12 +655,7 @@ class TestRemoveFile:
   def test_delete_nonexistent_file(self):
     """Test deleting a file that doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       result = fs.remove_file("nonexistent.txt")
       assert "Error: File 'nonexistent.txt' does not exist" in result
@@ -918,12 +663,7 @@ class TestRemoveFile:
   def test_delete_file_on_directory(self):
     """Test that remove_file returns error when path is a directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create a file to ensure directory exists
       fs.write_file("mydir/file.txt", "content")
@@ -935,12 +675,7 @@ class TestRemoveFile:
   def test_delete_file_with_leading_slash(self):
     """Test deleting a file with leading slash."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       fs.write_file("test.txt", "Hello")
       result = fs.remove_file("/test.txt")
@@ -949,12 +684,7 @@ class TestRemoveFile:
   def test_delete_file_prevents_traversal(self):
     """Test that remove_file prevents directory traversal."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Try to delete file outside scope
       result = fs.remove_file("../../etc/passwd")
@@ -967,12 +697,7 @@ class TestRemoveDirectory:
   def test_delete_empty_directory(self):
     """Test deleting an empty directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create empty directory
       os.makedirs(os.path.join(fs.scope_root, "emptydir"))
@@ -988,12 +713,7 @@ class TestRemoveDirectory:
   def test_delete_nonempty_directory_without_recursive(self):
     """Test that deleting non-empty directory without recursive fails."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create directory with file
       fs.write_file("mydir/file.txt", "content")
@@ -1009,12 +729,7 @@ class TestRemoveDirectory:
   def test_delete_directory_recursive(self):
     """Test deleting directory with recursive=True."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create directory with nested files
       fs.write_file("project/src/main.py", "print('hello')")
@@ -1032,12 +747,7 @@ class TestRemoveDirectory:
   def test_delete_nonexistent_directory(self):
     """Test deleting a directory that doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       result = fs.remove_directory("nonexistent")
       assert "Error: Directory 'nonexistent' does not exist" in result
@@ -1045,12 +755,7 @@ class TestRemoveDirectory:
   def test_delete_directory_on_file(self):
     """Test that remove_directory returns error when path is a file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create a file
       fs.write_file("test.txt", "content")
@@ -1062,12 +767,7 @@ class TestRemoveDirectory:
   def test_delete_root_directory_blocked(self):
     """Test that deleting the root directory is blocked."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Try to delete root
       result = fs.remove_directory(".", recursive=True)
@@ -1080,12 +780,7 @@ class TestRemoveDirectory:
   def test_delete_nested_directory_recursive(self):
     """Test deleting deeply nested directory structure."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Create deep structure
       fs.write_file("a/b/c/d/e/file.txt", "deep")
@@ -1101,12 +796,7 @@ class TestRemoveDirectory:
   def test_delete_directory_prevents_traversal(self):
     """Test that remove_directory prevents directory traversal."""
     with tempfile.TemporaryDirectory() as tmpdir:
-      fs = FilesystemTools(
-        visibility="scope",
-        agent_name="test-agent",
-        scope="test",
-        base_dir=tmpdir
-      )
+      fs = FilesystemTools(visibility="scope", agent_name="test-agent", scope="test", base_dir=tmpdir)
 
       # Try to delete directory outside scope
       result = fs.remove_directory("../../etc", recursive=True)
