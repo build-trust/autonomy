@@ -6,26 +6,17 @@ noindex: true
 ---
 
 ```
-Refer https://autonomy.computer/docs/_for-coding-agents.md
+Reference @https://autonomy.computer/docs/_for-coding-agents.md and follow its links for docs on Autonomy apps.
 
-Create a new autonomy app that news editors can use for fact
-checking news stories.
+Create an Autonomy app for news fact-checking with this workflow:
+1. Editor pastes article
+2. Agent extracts claims
+3. Parallel agents fact-check each claim via Brave Search MCP
+4. Report agent synthesizes findings
 
-The workflow is:
-- The editor pastes an article into a text box
-- An agent then breaks the article into a set of claims
-- Each claim is then assigned to a parallel fact checking agent
-- Fact checking agents research the claim on the internet using
-  the brave search MCP server
-- All the research is given to a report generating agent that creates
-  a final fact check report.
+Build a Next.js + shadcn/ui interface.
 
-Also create a very simple web UI for the app using nextjs and shadcn/ui
-
-Deploy and test the app in Autonomy
-
-Before creating and deploying the app, create a README with an
-architecture diagram of the app.
+First, create a README with an architecture diagram. Then deploy and test in Autonomy.
 ```
 
 
