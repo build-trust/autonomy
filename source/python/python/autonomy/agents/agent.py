@@ -1469,7 +1469,7 @@ class Agent:
     instructions: str,
     name: Optional[str] = None,
     model: Optional[Model] = None,
-    tools: Optional[List[InvokableTool]] = None,
+    tools: Optional[List] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
     exposed_as: Optional[str] = None,
@@ -1487,7 +1487,9 @@ class Agent:
       instructions: System instructions defining agent behavior
       name: Unique agent name (auto-generated if None)
       model: LLM to use (defaults to claude-sonnet-4-v1)
-      tools: List of tools available to the agent
+      tools: List of tools and/or tool factories. Can contain:
+             - InvokableTool instances (static, shared across all scopes)
+             - ToolFactory instances (create scope-specific tools automatically)
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       exposed_as: Optional external name for HTTP exposure
@@ -1497,6 +1499,20 @@ class Agent:
 
     Returns:
       AgentReference for interacting with the started agent
+
+    Example:
+      from autonomy import Agent, Tool, FilesystemTools
+
+      fs_tools = FilesystemTools()
+
+      agent = await Agent.start(
+        node=node,
+        name="assistant",
+        tools=[
+          Tool(my_function),  # Static tool
+          fs_factory,         # Factory - creates scope-specific tools
+        ],
+      )
     """
 
     if name is None:
@@ -1527,7 +1543,7 @@ class Agent:
     instructions: str,
     number_of_agents: int,
     model: Optional[Model] = None,
-    tools: Optional[List[InvokableTool]] = None,
+    tools: Optional[List] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
@@ -1545,7 +1561,9 @@ class Agent:
       instructions: System instructions defining agent behavior
       number_of_agents: Number of agent instances to create
       model: LLM to use (defaults to claude-3-5-sonnet-v2)
-      tools: List of tools available to all agents
+      tools: List of tools and/or tool factories. Can contain:
+             - InvokableTool instances (static, shared across all scopes)
+             - ToolFactory instances (create scope-specific tools automatically)
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       max_messages_in_short_term_memory: Maximum messages in short-term memory
@@ -1586,7 +1604,7 @@ class Agent:
     name: str,
     instructions: str,
     model: Model,
-    tools: Optional[List[InvokableTool]],
+    tools: Optional[List],
     max_iterations: Optional[int],
     max_execution_time: Optional[float],
     exposed_as: Optional[str],
@@ -1605,7 +1623,7 @@ class Agent:
       name: Unique agent name
       instructions: System instructions defining agent behavior
       model: LLM to use for reasoning
-      tools: List of tools available to the agent
+      tools: List of tools and/or tool factories
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       exposed_as: Optional external name for HTTP exposure
@@ -1622,7 +1640,27 @@ class Agent:
     if tools is None:
       tools = []
 
-    tool_specs, tools_dict = await prepare_tools(tools, node)
+    # Separate static tools from tool factories
+    # Static tools: Shared across all workers (same instance for everyone)
+    # Tool factories: Create isolated instances per worker (scope/conversation specific)
+    #
+    # Examples:
+    # - Tool(get_time) → Static (shared)
+    # - FilesystemTools() → Factory (creates isolated instances)
+    static_tools = []
+    tool_factories = []
+
+    for tool in tools:
+      # Detect factories by checking for create_tools method (ToolFactory protocol)
+      # FilesystemTools implements this when visibility requires scope/conversation context
+      if hasattr(tool, 'create_tools') and callable(getattr(tool, 'create_tools')):
+        tool_factories.append(tool)
+      else:
+        # Regular tools are static and shared across all workers
+        static_tools.append(tool)
+
+    # Prepare static tools (shared across all workers/scopes/conversations)
+    tool_specs, tools_dict = await prepare_tools(static_tools, node)
 
     from ..memory.memory import Memory
 
@@ -1634,14 +1672,76 @@ class Agent:
     )
     await memory.initialize_database()
 
-    def agent_creator():
+    def agent_creator(scope: Optional[str], conversation: Optional[str]):
+      """
+      Create an agent instance with scope/conversation-specific tools.
+
+      Called by the spawner for each unique (scope, conversation) pair.
+      This enables:
+      - FilesystemTools to create isolated instances based on visibility level
+      - Different users/conversations to have separate tool instances
+      - Proper multi-tenant isolation
+
+      Args:
+        scope: User/tenant identifier (e.g., "user-alice")
+        conversation: Session identifier (e.g., "chat-1")
+
+      Returns:
+        Agent instance with both static and scope-specific tools
+
+      Execution Context (Rust ↔ Python):
+        This function is called from Rust via PyO3, executing in a special context:
+
+        1. Tokio async runtime detects need for new worker
+        2. Spawner calls spawn_blocking() → creates new OS thread
+        3. In blocking thread: Python::with_gil() → acquires Python GIL
+        4. worker_constructor.call1(py, (scope, conversation)) → calls THIS function
+           ┌─────────────────────────────────────────────────────────┐
+           │ THIS FUNCTION EXECUTES HERE                             │
+           │ - In a Rust-spawned OS thread (not main Python thread)  │
+           │ - GIL is held (safe Python execution)                   │
+           │ - NO asyncio event loop exists in this thread           │
+           │ - Must create our own event loop to run async code      │
+           └─────────────────────────────────────────────────────────┘
+        5. Returns Agent object back through PyO3 → Rust gets PyObject wrapper
+        6. Worker starts, ready to handle messages
+
+      Why we need manual event loop management:
+        - spawn_blocking threads don't have asyncio event loops
+        - prepare_tools() is async and needs an event loop to run
+        - We create a temporary event loop, run our async code, then clean up
+      """
+      # Create scope/conversation-specific tools from factories
+      # Factories receive agent_name, scope, and conversation to determine isolation level
+      # Example: FilesystemTools(visibility="conversation") creates isolated filesystem at:
+      #   /tmp/agent-files/{agent_name}/{scope}/{conversation}/
+      scope_specific_tools = []
+      for factory in tool_factories:
+        factory_tools = factory.create_tools(scope, conversation, agent_name=name)
+        scope_specific_tools.extend(factory_tools)
+
+      # Combine static tools (shared) with scope-specific tools (isolated)
+      import asyncio
+      all_tools = tools + scope_specific_tools
+
+      # Prepare all tools for this specific agent instance
+      # Create temporary event loop for this Rust-spawned thread (see detailed flow above)
+      loop = asyncio.new_event_loop()
+      asyncio.set_event_loop(loop)
+      try:
+        scope_tool_specs, scope_tools_dict = loop.run_until_complete(
+          prepare_tools(all_tools, node)
+        )
+      finally:
+        loop.close()
+
       kwargs = {
         "node": node,
         "name": name,
         "instructions": instructions,
         "model": model,
-        "tool_specs": tool_specs,
-        "tools": tools_dict,
+        "tool_specs": scope_tool_specs,
+        "tools": scope_tools_dict,
         "memory": memory,
       }
       if max_iterations is not None:
