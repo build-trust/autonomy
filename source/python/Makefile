@@ -53,11 +53,11 @@ build-images-amd64:
 	docker pull cgr.dev/chainguard/python:latest-dev
 	docker pull cgr.dev/chainguard/python:latest
 
-	DOCKER_BUILDKIT=0 docker build --platform linux/amd64 \
+	DOCKER_BUILDKIT=0 docker build --no-cache --platform linux/amd64 \
 		-t ghcr.io/build-trust/autonomy-python-dev:latest \
 		-t ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH) --target dev --file Dockerfile .
 
-	DOCKER_BUILDKIT=0 docker build --platform linux/amd64 \
+	DOCKER_BUILDKIT=0 docker build --no-cache --platform linux/amd64 \
 		-t ghcr.io/build-trust/autonomy-python:latest \
 		-t ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH) --file Dockerfile .
 
