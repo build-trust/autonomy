@@ -661,7 +661,7 @@ class Agent:
       - conversation: Thread separation (e.g., "chat-2024-01-15")
 
     Example: Agent "henry" serving user "alice" in conversation "chat1"
-             → scope "henry/alice/chat1" for all memory operations
+      → scope "henry/alice/chat1" for all memory operations
 
   TOOLS
     External functions (Python or MCP servers) that agents invoke to take actions
@@ -1058,9 +1058,9 @@ class Agent:
     Streaming vs Non-streaming:
       ┌─────────────┐
       │   stream?   │
-      └──────┬──────┘
-             ├── True  → Streaming: Better UX, lower latency to first token
-             └── False → Non-streaming: Simpler errors, atomic responses
+      └─────┬───────┘
+            ├── True  → Streaming: Better UX, lower latency to first token
+            └── False → Non-streaming: Simpler errors, atomic responses
 
     Args:
       scope: User/tenant identifier for memory isolation
@@ -1143,7 +1143,9 @@ class Agent:
                       # Accumulate arguments from this chunk
                       if hasattr(tc, "function") and hasattr(tc.function, "arguments") and tc.function.arguments:
                         accumulated_tool_calls[tc_index].function.arguments += tc.function.arguments
-                      logger.debug(f"[MODEL←STREAM] Accumulated tool call chunk: index={tc_index}, total_args_length={len(accumulated_tool_calls[tc_index].function.arguments)}")
+                      logger.debug(
+                        f"[MODEL←STREAM] Accumulated tool call chunk: index={tc_index}, total_args_length={len(accumulated_tool_calls[tc_index].function.arguments)}"
+                      )
                     else:
                       # First chunk for this tool call
                       # Generate unique ID with collision detection (some models don't provide IDs)
@@ -1154,7 +1156,9 @@ class Agent:
                       tool_name = (
                         tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
                       )
-                      logger.debug(f"[MODEL←STREAM] New tool call chunk: index={tc_index}, id={call_id}, name={tool_name}")
+                      logger.debug(
+                        f"[MODEL←STREAM] New tool call chunk: index={tc_index}, id={call_id}, name={tool_name}"
+                      )
                       if logger.isEnabledFor(10):  # DEBUG level
                         logger.debug(f"[MODEL←STREAM] Tool call details: {tc}")
 
@@ -1488,8 +1492,8 @@ class Agent:
       name: Unique agent name (auto-generated if None)
       model: LLM to use (defaults to claude-sonnet-4-v1)
       tools: List of tools and/or tool factories. Can contain:
-             - InvokableTool instances (static, shared across all scopes)
-             - ToolFactory instances (create scope-specific tools automatically)
+        - InvokableTool instances (static, shared across all scopes)
+        - ToolFactory instances (create scope-specific tools automatically)
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       exposed_as: Optional external name for HTTP exposure
@@ -1562,8 +1566,8 @@ class Agent:
       number_of_agents: Number of agent instances to create
       model: LLM to use (defaults to claude-3-5-sonnet-v2)
       tools: List of tools and/or tool factories. Can contain:
-             - InvokableTool instances (static, shared across all scopes)
-             - ToolFactory instances (create scope-specific tools automatically)
+- InvokableTool instances (static, shared across all scopes)
+- ToolFactory instances (create scope-specific tools automatically)
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       max_messages_in_short_term_memory: Maximum messages in short-term memory
@@ -1653,7 +1657,7 @@ class Agent:
     for tool in tools:
       # Detect factories by checking for create_tools method (ToolFactory protocol)
       # FilesystemTools implements this when visibility requires scope/conversation context
-      if hasattr(tool, 'create_tools') and callable(getattr(tool, 'create_tools')):
+      if hasattr(tool, "create_tools") and callable(getattr(tool, "create_tools")):
         tool_factories.append(tool)
       else:
         # Regular tools are static and shared across all workers
@@ -1696,13 +1700,13 @@ class Agent:
         2. Spawner calls spawn_blocking() → creates new OS thread
         3. In blocking thread: Python::with_gil() → acquires Python GIL
         4. worker_constructor.call1(py, (scope, conversation)) → calls THIS function
-           ┌─────────────────────────────────────────────────────────┐
-           │ THIS FUNCTION EXECUTES HERE                             │
-           │ - In a Rust-spawned OS thread (not main Python thread)  │
-           │ - GIL is held (safe Python execution)                   │
-           │ - NO asyncio event loop exists in this thread           │
-           │ - Must create our own event loop to run async code      │
-           └─────────────────────────────────────────────────────────┘
+          ┌─────────────────────────────────────────────────────────┐
+          │ THIS FUNCTION EXECUTES HERE                             │
+          │ - In a Rust-spawned OS thread (not main Python thread)  │
+          │ - GIL is held (safe Python execution)                   │
+          │ - NO asyncio event loop exists in this thread           │
+          │ - Must create our own event loop to run async code      │
+          └─────────────────────────────────────────────────────────┘
         5. Returns Agent object back through PyO3 → Rust gets PyObject wrapper
         6. Worker starts, ready to handle messages
 
@@ -1722,6 +1726,7 @@ class Agent:
 
       # Combine static tools (shared) with scope-specific tools (isolated)
       import asyncio
+
       all_tools = tools + scope_specific_tools
 
       # Prepare all tools for this specific agent instance
@@ -1729,9 +1734,7 @@ class Agent:
       loop = asyncio.new_event_loop()
       asyncio.set_event_loop(loop)
       try:
-        scope_tool_specs, scope_tools_dict = loop.run_until_complete(
-          prepare_tools(all_tools, node)
-        )
+        scope_tool_specs, scope_tools_dict = loop.run_until_complete(prepare_tools(all_tools, node))
       finally:
         loop.close()
 

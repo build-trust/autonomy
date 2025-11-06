@@ -119,10 +119,10 @@ class Memory:
         """
         WITH ranked_messages AS (
           SELECT scope, conversation, message,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY scope, conversation
-                   ORDER BY id DESC
-                 ) as rn
+                ROW_NUMBER() OVER (
+                  PARTITION BY scope, conversation
+                  ORDER BY id DESC
+                ) as rn
           FROM conversation
           WHERE tenant_id = %s
         )
@@ -294,20 +294,20 @@ class Memory:
 
     # Check if any message has structured content (dict)
     # If so, skip model token counting to avoid warnings from litellm
-    has_structured_content = any(isinstance(msg.get('content'), dict) for msg in messages)
+    has_structured_content = any(isinstance(msg.get("content"), dict) for msg in messages)
 
     if has_structured_content:
       # Use character estimate for structured content
       total_chars = 0
       for msg in messages:
-        if isinstance(msg.get('content'), dict):
+        if isinstance(msg.get("content"), dict):
           # Extract text from structured content like {'text': '...', 'type': 'text'}
-          if 'text' in msg['content']:
-            total_chars += len(msg['content']['text'])
+          if "text" in msg["content"]:
+            total_chars += len(msg["content"]["text"])
           else:
-            total_chars += len(str(msg['content']))
+            total_chars += len(str(msg["content"]))
         else:
-          total_chars += len(str(msg.get('content', '')))
+          total_chars += len(str(msg.get("content", "")))
       return total_chars // 4
 
     try:
