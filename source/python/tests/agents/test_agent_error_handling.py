@@ -498,7 +498,7 @@ class TestToolExecutionEdgeCases:
     # Model provides malformed JSON
     model = MockModel(
       [
-        {"role": "assistant", "tool_calls": [{"name": "json_tool", "arguments": '{invalid json}'}]},
+        {"role": "assistant", "tool_calls": [{"name": "json_tool", "arguments": "{invalid json}"}]},
         {"role": "assistant", "content": "Handled JSON error."},
       ]
     )

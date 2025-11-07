@@ -40,7 +40,7 @@ import uuid
 
 from collections import OrderedDict
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TypedDict, NotRequired
 
 from ..autonomy_in_rust_for_python import warn
 from ..helpers.validate_address import validate_address
@@ -90,6 +90,68 @@ TOOL_ID_CLEANUP_BATCH_SIZE = 100
 # Memory and context limits
 MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT = 1000
 MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT = 100000
+
+
+# =============================================================================
+# CONFIGURATION TYPE DEFINITIONS
+# =============================================================================
+
+
+class AgentConfig(TypedDict):
+  """Configuration for starting a single agent.
+
+  Only 'instructions' is required. All other fields are optional
+  and will use sensible defaults if not provided.
+
+  Example:
+    config = {
+      "instructions": "Help users with their questions",
+      "name": "support-bot",
+      "model": Model(name="claude-sonnet-4-v1"),
+      "tools": [search_tool, database_tool],
+      "max_iterations": 500,
+    }
+    agent = await Agent.start_from_config(node=node, config=config)
+  """
+
+  instructions: str
+  name: NotRequired[str]
+  model: NotRequired[Model]
+  tools: NotRequired[List]
+  max_iterations: NotRequired[int]
+  max_execution_time: NotRequired[float]
+  exposed_as: NotRequired[str]
+  max_messages_in_short_term_memory: NotRequired[int]
+  max_tokens_in_short_term_memory: NotRequired[int]
+  enable_long_term_memory: NotRequired[bool]
+
+
+class AgentManyConfig(TypedDict):
+  """Configuration for starting multiple agents.
+
+  Both 'instructions' and 'number_of_agents' are required.
+  Note: 'name' and 'exposed_as' are not supported for multiple agents
+  (names are auto-generated per agent).
+
+  Example:
+    config = {
+      "instructions": "Process customer requests",
+      "number_of_agents": 10,
+      "model": Model(name="claude-sonnet-4-v1"),
+      "max_iterations": 500,
+    }
+    agents = await Agent.start_many_from_config(node=node, config=config)
+  """
+
+  instructions: str
+  number_of_agents: int
+  model: NotRequired[Model]
+  tools: NotRequired[List]
+  max_iterations: NotRequired[int]
+  max_execution_time: NotRequired[float]
+  max_messages_in_short_term_memory: NotRequired[int]
+  max_tokens_in_short_term_memory: NotRequired[int]
+  enable_long_term_memory: NotRequired[bool]
 
 
 # =============================================================================
@@ -689,7 +751,7 @@ class Agent:
     - Memory isolation: Prevent cross-user and cross-agent data leakage
 
   USAGE
-    # Single agent
+    # Single agent - direct parameters
     agent = await Agent.start(
       node=node,
       name="customer-support",
@@ -698,13 +760,30 @@ class Agent:
       tools=[search_tool, database_tool]
     )
 
-    # Multiple collaborating agents
+    # Single agent - from config dict
+    config = {
+      "name": "customer-support",
+      "instructions": "Help users with their questions",
+      "model": Model(name="claude-sonnet-4-v1"),
+      "tools": [search_tool, database_tool],
+    }
+    agent = await Agent.start_from_config(node=node, config=config)
+
+    # Multiple agents - direct parameters
     agents = await Agent.start_many(
       node=node,
       instructions="Analyze customer sentiment",
       number_of_agents=10,
       model=Model(name="claude-sonnet-4-v1")
     )
+
+    # Multiple agents - from config dict
+    config = {
+      "instructions": "Analyze customer sentiment",
+      "number_of_agents": 10,
+      "model": Model(name="claude-sonnet-4-v1"),
+    }
+    agents = await Agent.start_many_from_config(node=node, config=config)
 
   Attributes:
     node: Node this agent actor runs on
@@ -1601,6 +1680,150 @@ class Agent:
       agents.append(agent_ref)
 
     return agents
+
+  @staticmethod
+  async def start_from_config(
+    node: Node,
+    config: AgentConfig,
+  ):
+    """
+    Start a single agent using dictionary-based configuration.
+
+    This method provides an alternative to Agent.start() for cases where
+    configuration is stored in dictionaries, loaded from files (YAML/JSON),
+    or dynamically generated.
+
+    Args:
+      node: Node instance where the agent will run
+      config: Dictionary containing agent configuration. Only 'instructions'
+              is required; all other fields are optional.
+
+    Returns:
+      AgentReference for interacting with the started agent
+
+    Example:
+      # From a dictionary
+      config = {
+        "instructions": "Help users with their questions",
+        "name": "support-bot",
+        "model": Model(name="claude-sonnet-4-v1"),
+        "tools": [search_tool, database_tool],
+        "max_iterations": 500,
+      }
+      agent = await Agent.start_from_config(node=node, config=config)
+
+      # From a YAML file
+      import yaml
+      with open("agent_config.yaml") as f:
+        config = yaml.safe_load(f)
+      agent = await Agent.start_from_config(node=node, config=config)
+
+      # Config composition
+      base_config = {"model": Model(name="claude-sonnet-4-v1")}
+      specific_config = {**base_config, "instructions": "...", "name": "agent1"}
+      agent = await Agent.start_from_config(node=node, config=specific_config)
+    """
+    # Extract required fields
+    instructions = config["instructions"]
+
+    # Extract optional fields with defaults
+    name = config.get("name")
+    model = config.get("model")
+    tools = config.get("tools")
+    max_iterations = config.get("max_iterations")
+    max_execution_time = config.get("max_execution_time")
+    exposed_as = config.get("exposed_as")
+    max_messages_in_short_term_memory = config.get(
+      "max_messages_in_short_term_memory", MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT
+    )
+    max_tokens_in_short_term_memory = config.get(
+      "max_tokens_in_short_term_memory", MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT
+    )
+    enable_long_term_memory = config.get("enable_long_term_memory", False)
+
+    # Delegate to existing start() method
+    return await Agent.start(
+      node=node,
+      instructions=instructions,
+      name=name,
+      model=model,
+      tools=tools,
+      max_iterations=max_iterations,
+      max_execution_time=max_execution_time,
+      exposed_as=exposed_as,
+      max_messages_in_short_term_memory=max_messages_in_short_term_memory,
+      max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
+      enable_long_term_memory=enable_long_term_memory,
+    )
+
+  @staticmethod
+  async def start_many_from_config(
+    node: Node,
+    config: AgentManyConfig,
+  ):
+    """
+    Start multiple agents using dictionary-based configuration.
+
+    This method provides an alternative to Agent.start_many() for cases where
+    configuration is stored in dictionaries, loaded from files (YAML/JSON),
+    or dynamically generated.
+
+    Args:
+      node: Node instance where the agents will run
+      config: Dictionary containing agent configuration. Both 'instructions'
+              and 'number_of_agents' are required.
+
+    Returns:
+      List of AgentReference objects for the started agents
+
+    Example:
+      # From a dictionary
+      config = {
+        "instructions": "Process customer requests",
+        "number_of_agents": 10,
+        "model": Model(name="claude-sonnet-4-v1"),
+        "max_iterations": 500,
+      }
+      agents = await Agent.start_many_from_config(node=node, config=config)
+
+      # From environment-based config
+      import os
+      config = {
+        "instructions": os.getenv("AGENT_INSTRUCTIONS"),
+        "number_of_agents": int(os.getenv("AGENT_COUNT", "5")),
+      }
+      agents = await Agent.start_many_from_config(node=node, config=config)
+    """
+    # Extract required fields
+    instructions = config["instructions"]
+    number_of_agents = config["number_of_agents"]
+
+    # Extract optional fields with defaults
+    model = config.get("model")
+    tools = config.get("tools")
+    max_iterations = config.get("max_iterations")
+    max_execution_time = config.get("max_execution_time")
+    max_messages_in_short_term_memory = config.get(
+      "max_messages_in_short_term_memory", MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT
+    )
+    max_tokens_in_short_term_memory = config.get(
+      "max_tokens_in_short_term_memory", MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT
+    )
+    enable_long_term_memory = config.get("enable_long_term_memory", False)
+
+    # Delegate to existing start_many() method
+    return await Agent.start_many(
+      node=node,
+      instructions=instructions,
+      number_of_agents=number_of_agents,
+      model=model,
+      tools=tools,
+      max_iterations=max_iterations,
+      max_execution_time=max_execution_time,
+      max_messages_in_short_term_memory=max_messages_in_short_term_memory,
+      max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
+      enable_long_term_memory=enable_long_term_memory,
+    )
 
   @staticmethod
   async def start_agent_impl(

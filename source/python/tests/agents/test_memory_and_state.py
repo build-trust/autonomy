@@ -179,7 +179,7 @@ class TestMemoryEdgeCases:
       "Unicode: 世界 🌍 café",
       "Newlines:\nLine 1\nLine 2",
       "Tabs:\tTabbed\tContent",
-      "JSON: {\"key\": \"value\"}",
+      'JSON: {"key": "value"}',
       "SQL: SELECT * FROM users WHERE name='test'",
     ]
 
@@ -197,9 +197,7 @@ class TestMemoryEdgeCases:
 
   async def _test_memory_concurrent_access_same_conversation(self, node):
     """Test concurrent memory access"""
-    model = MockModel(
-      [{"role": "assistant", "content": f"Response {i}"} for i in range(10)]
-    )
+    model = MockModel([{"role": "assistant", "content": f"Response {i}"} for i in range(10)])
 
     agent = await Agent.start(
       node=node,
@@ -501,7 +499,10 @@ class TestStateManagement:
     """Test -> WAITING_FOR_INPUT transition"""
     model = MockModel(
       [
-        {"role": "assistant", "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Your name?"}'}]},
+        {
+          "role": "assistant",
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Your name?"}'}],
+        },
         {"role": "assistant", "content": "Thanks for the info"},
       ]
     )

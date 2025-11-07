@@ -185,9 +185,7 @@ class TestConversationPauseResumeInterrupt:
       ]
     )
 
-    agent = await Agent.start(
-      node=node, name="multi-pause-agent", instructions="Ask multiple questions", model=model
-    )
+    agent = await Agent.start(node=node, name="multi-pause-agent", instructions="Ask multiple questions", model=model)
 
     # First pause
     response1 = await agent.send("Start", conversation="multi-conv")
@@ -201,7 +199,13 @@ class TestConversationPauseResumeInterrupt:
     response3 = await agent.send("Answer 2", conversation="multi-conv")
     assert len(response3) > 0
     # Should have final response
-    final_content = " ".join([str(msg.content.text if hasattr(msg.content, "text") else msg.content) for msg in response3 if hasattr(msg, "content") and msg.content])
+    final_content = " ".join(
+      [
+        str(msg.content.text if hasattr(msg.content, "text") else msg.content)
+        for msg in response3
+        if hasattr(msg, "content") and msg.content
+      ]
+    )
     assert "answered" in final_content.lower() or len(response3) > 0
 
 
@@ -423,7 +427,11 @@ class TestStreamingErrorHandling:
     )
 
     agent = await Agent.start(
-      node=node, name="tool-accumulate-agent", instructions="Test tool calls", model=model, tools=[Tool(calculator_tool)]
+      node=node,
+      name="tool-accumulate-agent",
+      instructions="Test tool calls",
+      model=model,
+      tools=[Tool(calculator_tool)],
     )
 
     # Should handle tool calls and continue
@@ -818,9 +826,7 @@ def run_coverage_improvement_tests():
   import subprocess
   import sys
 
-  result = subprocess.run(
-    [sys.executable, "-m", "pytest", "-v", __file__], cwd=".", capture_output=False, text=True
-  )
+  result = subprocess.run([sys.executable, "-m", "pytest", "-v", __file__], cwd=".", capture_output=False, text=True)
 
   return result.returncode == 0
 
