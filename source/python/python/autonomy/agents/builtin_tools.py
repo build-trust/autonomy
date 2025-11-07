@@ -6,7 +6,8 @@ core functionality for human-in-the-loop interactions, debugging,
 and other standard operations.
 """
 
-from typing import Any, Dict
+import json
+from typing import Any, Dict, Optional
 from ..tools.protocol import InvokableTool
 
 
@@ -45,7 +46,7 @@ class AskUserForInputTool(InvokableTool):
       "and wait for the user's response before continuing."
     )
 
-  async def invoke(self, params: Dict[str, Any]) -> Dict[str, Any]:
+  async def invoke(self, json_argument: Optional[str]) -> Dict[str, Any]:
     """
     Mark that we're waiting for user input.
 
@@ -53,11 +54,22 @@ class AskUserForInputTool(InvokableTool):
     when it detects this special return value.
 
     Args:
-      params: Must contain 'prompt' or 'question' key with the question for the user
+      json_argument: JSON string containing 'prompt' or 'question' key with the question for the user
 
     Returns:
       Dict with _waiting_for_input marker flag and prompt text
     """
+    # Parse JSON argument string into dictionary
+    if json_argument is None or json_argument.strip() == "":
+      params = {}
+    else:
+      try:
+        params = json.loads(json_argument)
+        if not isinstance(params, dict):
+          params = {}
+      except json.JSONDecodeError:
+        params = {}
+
     # Accept both 'question' and 'prompt' for flexibility
     prompt = params.get("question") or params.get("prompt") or "Please provide input:"
 
