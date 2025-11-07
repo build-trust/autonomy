@@ -7,6 +7,9 @@ help:
 	@echo "  build                    - Build this project"
 	@echo "  test                     - Run tests with proper resource limits"
 	@echo "  test-agents              - Run agent tests specifically"
+	@echo "  coverage                 - Run tests with coverage report (terminal)"
+	@echo "  coverage-html            - Run tests with HTML coverage report"
+	@echo "  coverage-report          - Open HTML coverage report in browser"
 	@echo "  format (fmt)             - Format code using cargo fmt and ruff format"
 	@echo "  clean                    - Delete all build artifacts"
 	@echo "  images                   - Build and push all AMD64 images"
@@ -40,6 +43,26 @@ test-tools:
 		uv run --active pytest -vv tests/tools/test_tools.py
 	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
 		uv run --active pytest -vv tests/tools/test_mcp_tools.py
+
+coverage:
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest --cov=autonomy --cov-report=term-missing || true
+
+coverage-html:
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest --cov=autonomy --cov-report=html --cov-report=term-missing || true
+	@echo ""
+	@echo "Coverage report generated in htmlcov/index.html"
+	@echo "Run 'make coverage-report' to open it in your browser"
+
+coverage-report: coverage-html
+	@if command -v open >/dev/null 2>&1; then \
+		open htmlcov/index.html; \
+	elif command -v xdg-open >/dev/null 2>&1; then \
+		xdg-open htmlcov/index.html; \
+	else \
+		echo "Please open htmlcov/index.html in your browser"; \
+	fi
 
 build-images-amd64:
 	docker run --rm -v "$(shell pwd)":/io \
@@ -86,5 +109,6 @@ clean:
 	rm -rf target
 	rm -rf python/autonomy/*.abi3.so
 
-.PHONY: default help fmt format build test test-agents clean
+.PHONY: default help fmt format build test test-agents test-models test-tools clean
+.PHONY: coverage coverage-html coverage-report
 .PHONY: build-images-amd64 push-images-amd64-latest push-images-amd64-hash images

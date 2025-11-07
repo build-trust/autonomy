@@ -8,3 +8,5 @@ target
 *.so
 .scratch
 .repl
+htmlcov
+.coverage
