@@ -3,18 +3,18 @@ Comprehensive tests for memory edge cases and state management.
 
 This test file targets:
 1. Memory Edge Cases (~10 tests)
-   - Memory operation failures
-   - Persistence errors
-   - Cross-scope isolation
-   - Memory cleanup
-   - Concurrent memory access
+  - Memory operation failures
+  - Persistence errors
+  - Cross-scope isolation
+  - Memory cleanup
+  - Concurrent memory access
 
 2. State Management (~15 tests)
-   - Complex state transitions
-   - Recovery scenarios
-   - Error propagation
-   - State machine lifecycle
-   - Interruption handling
+  - Complex state transitions
+  - Recovery scenarios
+  - Error propagation
+  - State machine lifecycle
+  - Interruption handling
 
 Coverage goal: Increase agent.py coverage to 75-80%
 """
