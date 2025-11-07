@@ -1555,27 +1555,27 @@ class Agent:
     enable_long_term_memory: bool = False,
   ):
     """
-    Start multiple agents on a node for load distribution.
+        Start multiple agents on a node for load distribution.
 
-    Creates multiple agents with identical configuration to enable concurrent
-    processing of different conversations for better throughput.
+        Creates multiple agents with identical configuration to enable concurrent
+        processing of different conversations for better throughput.
 
-    Args:
-      node: Node instance where the agents will run
-      instructions: System instructions defining agent behavior
-      number_of_agents: Number of agent instances to create
-      model: LLM to use (defaults to claude-3-5-sonnet-v2)
-      tools: List of tools and/or tool factories. Can contain:
-- InvokableTool instances (static, shared across all scopes)
-- ToolFactory instances (create scope-specific tools automatically)
-      max_iterations: Maximum state machine iterations
-      max_execution_time: Maximum execution time in seconds
-      max_messages_in_short_term_memory: Maximum messages in short-term memory
-      max_tokens_in_short_term_memory: Maximum tokens in short-term memory
-      enable_long_term_memory: Enable persistent long-term memory (database)
+        Args:
+          node: Node instance where the agents will run
+          instructions: System instructions defining agent behavior
+          number_of_agents: Number of agent instances to create
+          model: LLM to use (defaults to claude-3-5-sonnet-v2)
+          tools: List of tools and/or tool factories. Can contain:
+    - InvokableTool instances (static, shared across all scopes)
+    - ToolFactory instances (create scope-specific tools automatically)
+          max_iterations: Maximum state machine iterations
+          max_execution_time: Maximum execution time in seconds
+          max_messages_in_short_term_memory: Maximum messages in short-term memory
+          max_tokens_in_short_term_memory: Maximum tokens in short-term memory
+          enable_long_term_memory: Enable persistent long-term memory (database)
 
-    Returns:
-      List of AgentReference objects for the started agents
+        Returns:
+          List of AgentReference objects for the started agents
     """
 
     if model is None:
@@ -1727,7 +1727,7 @@ class Agent:
       # Combine static tools (shared) with scope-specific tools (isolated)
       import asyncio
 
-      all_tools = tools + scope_specific_tools
+      all_tools = static_tools + scope_specific_tools
 
       # Prepare all tools for this specific agent instance
       # Create temporary event loop for this Rust-spawned thread (see detailed flow above)
