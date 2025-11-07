@@ -52,3 +52,16 @@ The `autonomy` command line tool:
 
 1. Rust crates live in the path `source/rust`.
 2. Run any rust related commands inside `source/rust`.
+
+## Guidelines for writing commit messages
+
+- Use imperative mood and active voice
+- Start the subject line with a verb: "Add", "Fix", "Update", "Remove", "Refactor"
+- Keep the subject line under 50 characters
+- Capitalize the first letter of the subject line
+- Do not end the subject line with a period
+- Separate the subject from the body with a blank line
+- Wrap the body at 72 characters
+- Use the body to explain what and why, not how
+- Focus on the change itself, not the process of making it
+- Write as if completing the sentence: "If applied, this commit will..."
