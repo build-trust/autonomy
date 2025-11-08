@@ -2028,6 +2028,8 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
 
   Automatically includes built-in tools:
     - ask_user_for_input: Request input from user (human-in-the-loop)
+    - get_current_time_utc: Get current time in UTC timezone
+    - get_current_time: Get current time in a specific timezone
 
   Args:
     tools: List of InvokableTool instances to prepare
@@ -2038,10 +2040,14 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
       - tool_specs: List of JSON schema dicts for model consumption
       - tools_dict: Dict mapping tool names to InvokableTool instances
   """
-  from .builtin_tools import AskUserForInputTool
+  from .builtin_tools import AskUserForInputTool, GetCurrentTimeUtcTool, GetCurrentTimeTool
 
   # Add built-in tools
-  builtin_tools = [AskUserForInputTool()]
+  builtin_tools = [
+    AskUserForInputTool(),
+    GetCurrentTimeUtcTool(),
+    GetCurrentTimeTool(),
+  ]
 
   tool_specs = []
   tools_dict = {}

@@ -7,6 +7,8 @@ and other standard operations.
 """
 
 import json
+from datetime import datetime, UTC
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 from ..tools.protocol import InvokableTool
 
@@ -95,6 +97,149 @@ class AskUserForInputTool(InvokableTool):
           "type": "object",
           "properties": {"question": {"type": "string", "description": "The question to ask the user"}},
           "required": ["question"],
+        },
+      },
+    }
+
+
+class GetCurrentTimeUtcTool(InvokableTool):
+  """
+  Built-in tool that returns the current UTC time.
+
+  Returns the current time in UTC timezone formatted as ISO 8601.
+  This is useful for agents that need to know the current time for
+  timestamping, scheduling, or time-sensitive operations.
+
+  Example usage by agent:
+    Agent: "Let me check the current time..."
+    Tool call: get_current_time_utc()
+    → Tool result: "2024-01-15T14:30:45.123456+00:00"
+    Agent: "The current UTC time is 2:30 PM..."
+
+  Returns:
+    ISO 8601 formatted UTC timestamp string
+  """
+
+  def __init__(self):
+    super().__init__()
+    self.name = "get_current_time_utc"
+    self.description = (
+      "Get the current time in UTC timezone. Returns the time in ISO 8601 format."
+    )
+
+  async def invoke(self, json_argument: Optional[str]) -> str:
+    """
+    Return the current UTC time as ISO 8601 string.
+
+    Args:
+      json_argument: Not used for this tool (accepts empty or None)
+
+    Returns:
+      Current UTC time as ISO 8601 formatted string
+    """
+    return datetime.now(UTC).isoformat()
+
+  async def spec(self) -> dict:
+    """
+    Return OpenAI-compatible tool specification.
+
+    Returns:
+      Tool spec dict in OpenAI function calling format
+    """
+    return {
+      "type": "function",
+      "function": {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+        },
+      },
+    }
+
+
+class GetCurrentTimeTool(InvokableTool):
+  """
+  Built-in tool that returns the current time in a specific timezone.
+
+  Returns the current time in the specified timezone formatted as ISO 8601.
+  This is useful for agents that need to work with times in different
+  timezones or provide localized time information.
+
+  Example usage by agent:
+    Agent: "Let me check the current time in New York..."
+    Tool call: get_current_time(timezone="America/New_York")
+    → Tool result: "2024-01-15T09:30:45.123456-05:00"
+    Agent: "The current time in New York is 9:30 AM..."
+
+  Args:
+    timezone: IANA timezone name (e.g., "America/New_York", "Europe/London", "Asia/Tokyo")
+
+  Returns:
+    ISO 8601 formatted timestamp string in the specified timezone
+  """
+
+  def __init__(self):
+    super().__init__()
+    self.name = "get_current_time"
+    self.description = (
+      "Get the current time in a specific timezone. "
+      "Provide a timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo'). "
+      "Returns the time in ISO 8601 format."
+    )
+
+  async def invoke(self, json_argument: Optional[str]) -> str:
+    """
+    Return the current time in the specified timezone as ISO 8601 string.
+
+    Args:
+      json_argument: JSON string containing 'timezone' key with IANA timezone name
+
+    Returns:
+      Current time in specified timezone as ISO 8601 formatted string
+    """
+    # Parse JSON argument string into dictionary
+    if json_argument is None or json_argument.strip() == "":
+      params = {}
+    else:
+      try:
+        params = json.loads(json_argument)
+        if not isinstance(params, dict):
+          params = {}
+      except json.JSONDecodeError:
+        params = {}
+
+    timezone_name = params.get("timezone", "UTC")
+
+    try:
+      tz = ZoneInfo(timezone_name)
+      return datetime.now(tz).isoformat()
+    except Exception as e:
+      return f"Error: Invalid timezone '{timezone_name}'. Please use a valid IANA timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo'). Error: {str(e)}"
+
+  async def spec(self) -> dict:
+    """
+    Return OpenAI-compatible tool specification.
+
+    Returns:
+      Tool spec dict in OpenAI function calling format
+    """
+    return {
+      "type": "function",
+      "function": {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "timezone": {
+              "type": "string",
+              "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo')",
+            }
+          },
+          "required": ["timezone"],
         },
       },
     }
