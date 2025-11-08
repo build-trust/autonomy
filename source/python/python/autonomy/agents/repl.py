@@ -171,6 +171,7 @@ class Repl:
     """Handle streaming agent responses with timeout protection."""
     buffer = ""
     response_timeout = self.timeout or 120.0
+    stream_ended_normally = False
 
     try:
       stream = self.agent_reference.send_stream(
@@ -193,10 +194,10 @@ class Repl:
               buffer = ""
 
           if response.finished:
+            stream_ended_normally = True
             if buffer:
               await self.write(writer, buffer)
-            writer.write(b"0\n")
-            await writer.drain()
+              buffer = ""
             break
         else:
           # Handle regular conversation response
@@ -207,9 +208,15 @@ class Repl:
             received = str(content)
 
           await self.write(writer, received)
-          writer.write(b"0\n")
-          await writer.drain()
+          stream_ended_normally = True
           break
+
+      # Always send end-of-stream marker when stream completes
+      # This handles both normal completion (finished=True) and agent pause (stream ends early)
+      if buffer:
+        await self.write(writer, buffer)
+      writer.write(b"0\n")
+      await writer.drain()
 
     except asyncio.TimeoutError:
       await self.write_repl_message(writer, f"Response timed out after {response_timeout}s")
