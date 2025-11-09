@@ -212,6 +212,11 @@ class HttpServer(InfoContext):
                 yield json.dumps(received, default=default) + "\n"
                 break
 
+            # Always yield the final snippet when stream completes
+            # This handles both normal completion (finished=True) and agent pause (stream ends early)
+            if received_snippet:
+              yield json.dumps(received_snippet, default=default) + "\n"
+
           return StreamingResponse(stream_response(), media_type="application/json")
         else:
           return await reference.send(msg, scope, conversation, timeout=timeout)
