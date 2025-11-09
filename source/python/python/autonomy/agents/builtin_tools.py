@@ -43,9 +43,11 @@ class AskUserForInputTool(InvokableTool):
     super().__init__()
     self.name = "ask_user_for_input"
     self.description = (
-      "Ask the user for additional information. Use this when you need "
-      "clarification or more details from the user. The agent will pause "
-      "and wait for the user's response before continuing."
+      "REQUIRED: Use this tool whenever you need information from the user that you don't have. "
+      "This includes any questions, clarifications, or requests for details. "
+      "DO NOT ask questions in your text response - always use this tool to ask questions. "
+      "The conversation will pause and wait for the user's response before continuing. "
+      "After receiving the user's answer, you can proceed with their request."
     )
 
   async def invoke(self, json_argument: Optional[str]) -> Dict[str, Any]:
@@ -95,7 +97,12 @@ class AskUserForInputTool(InvokableTool):
         "description": self.description,
         "parameters": {
           "type": "object",
-          "properties": {"question": {"type": "string", "description": "The question to ask the user"}},
+          "properties": {
+            "question": {
+              "type": "string",
+              "description": "The exact question or prompt to display to the user. Be clear and specific about what information you need."
+            }
+          },
           "required": ["question"],
         },
       },
