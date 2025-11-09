@@ -220,6 +220,8 @@ class MessageType(Enum):
   GET_IDENTIFIER_RESPONSE = "get_identifier_response"
   GET_CONVERSATIONS_REQUEST = "get_conversations_request"
   GET_CONVERSATIONS_RESPONSE = "get_conversations_response"
+  GET_CONVERSATION_STATE_REQUEST = "get_conversation_state_request"
+  GET_CONVERSATION_STATE_RESPONSE = "get_conversation_state_response"
   ERROR = "error"
 
 
@@ -249,6 +251,23 @@ class GetConversationsRequest:
 class GetConversationsResponse:
   conversations: list[dict]
   type: MessageType = MessageType.GET_CONVERSATIONS_RESPONSE
+
+
+@dataclass
+class GetConversationStateRequest:
+  scope: str
+  conversation: str
+  type: MessageType = MessageType.GET_CONVERSATION_STATE_REQUEST
+
+
+@dataclass
+class GetConversationStateResponse:
+  is_paused: bool
+  phase: str
+  message_count: int
+  scope: str = ""
+  conversation: str = ""
+  type: MessageType = MessageType.GET_CONVERSATION_STATE_RESPONSE
 
 
 @dataclass
@@ -302,6 +321,8 @@ Message = Union[
   GetIdentifierResponse,
   GetConversationsRequest,
   GetConversationsResponse,
+  GetConversationStateRequest,
+  GetConversationStateResponse,
   Error,
 ]
 
@@ -328,6 +349,31 @@ class Reference:
     response = await self.send_and_receive_request(GetIdentifierRequest(scope, conversation))
     return response.identifier
 
+  async def get_conversation_state(
+    self, scope="", conversation=""
+  ) -> GetConversationStateResponse:
+    """
+    Get the current state of a conversation.
+
+    Returns:
+        GetConversationStateResponse with fields:
+        - is_paused: bool (True if waiting for user input)
+        - phase: str (e.g., "waiting_for_input", "done", "thinking")
+        - message_count: int (number of messages in conversation)
+    """
+    response = await self.send_and_receive_request(GetConversationStateRequest(scope, conversation))
+    return response
+
+  async def is_paused(self, scope="", conversation="") -> bool:
+    """
+    Check if a conversation is currently paused waiting for user input.
+
+    Returns:
+        True if conversation is in WAITING_FOR_INPUT phase
+    """
+    state = await self.get_conversation_state(scope, conversation)
+    return state.is_paused
+
   async def send(
     self, message: List | MessageContent | str, scope="", conversation="", timeout=None
   ) -> List[ConversationMessage]:
@@ -339,7 +385,13 @@ class Reference:
       request = ConversationSnippet(scope, conversation, [UserMessage(message)])
 
     response = await self.send_and_receive_request(request, timeout=timeout)
-    return response.messages
+
+    # Handle both ConversationSnippet and StreamedConversationSnippet
+    # (can get StreamedConversationSnippet if conversation was started with send_stream)
+    if isinstance(response, StreamedConversationSnippet):
+      return response.snippet.messages
+    else:
+      return response.messages
 
   async def send_stream(
     self, message: MessageContent | str, scope="", conversation="", timeout=None
@@ -418,6 +470,8 @@ class Reference:
           expected_part_nb = response.part_nb + 1
           finished = response.finished
           yield response
+          if finished:
+            break
 
         if len(out_of_order_messages) > 0:
           while len(out_of_order_messages) > 0:
@@ -427,8 +481,13 @@ class Reference:
               expected_part_nb = m.part_nb + 1
               finished = m.finished
               yield m
+              if finished:
+                break
             else:
               break
+          # Check if we should exit outer loop after processing out-of-order messages
+          if finished:
+            break
       else:
         finished = True
         yield response
@@ -602,6 +661,8 @@ class MessageConverter:
         "get_identifier_response": GetIdentifierResponse,
         "get_conversations_request": GetConversationsRequest,
         "get_conversations_response": GetConversationsResponse,
+        "get_conversation_state_request": GetConversationStateRequest,
+        "get_conversation_state_response": GetConversationStateResponse,
         "error": Error,
       }
       message_cls = mapping.get(typ)
