@@ -68,6 +68,14 @@ docstring-code-format = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+markers = [
+  "integration: marks tests as integration tests requiring external services (AWS Bedrock, etc.)",
+  "unit: marks tests as unit tests (fast, no external dependencies)",
+  "slow: marks tests as slow running tests",
+  "concurrent: marks tests for concurrency and thread safety",
+  "error_handling: marks tests for error handling and edge cases",
+  "core: marks tests for core functionality",
+]
 filterwarnings = [
   "ignore::DeprecationWarning:litellm.*",
   "ignore::DeprecationWarning:pydantic.*",
