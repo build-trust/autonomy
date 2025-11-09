@@ -419,6 +419,40 @@ class BedrockClient(InfoContext, DebugContext):
       if system_messages:
         payload["system"] = system_messages[0]["content"]
 
+      # Add tools if provided
+      if "tool_specs" in kwargs and kwargs["tool_specs"]:
+        # Convert OpenAI-style tool specs to Anthropic format
+        tools = []
+        for tool_spec in kwargs["tool_specs"]:
+          if tool_spec.get("type") == "function":
+            func = tool_spec["function"]
+            tools.append({
+              "name": func["name"],
+              "description": func.get("description", ""),
+              "input_schema": func.get("parameters", {"type": "object", "properties": {}})
+            })
+        if tools:
+          payload["tools"] = tools
+          self.logger.debug(f"[BEDROCK] Converted {len(tools)} tool specs to Anthropic format")
+
+      # Also check for 'tools' key (not tool_specs)
+      if "tools" in kwargs and kwargs["tools"]:
+        self.logger.debug(f"[BEDROCK] Found 'tools' in kwargs (not tool_specs): {len(kwargs['tools'])} tools")
+        if "tools" not in payload:
+          # If tools weren't added via tool_specs, try to add them from 'tools' key
+          tools = []
+          for tool_spec in kwargs["tools"]:
+            if tool_spec.get("type") == "function":
+              func = tool_spec["function"]
+              tools.append({
+                "name": func["name"],
+                "description": func.get("description", ""),
+                "input_schema": func.get("parameters", {"type": "object", "properties": {}})
+              })
+          if tools:
+            payload["tools"] = tools
+            self.logger.debug(f"[BEDROCK] Added {len(tools)} tools from 'tools' kwargs")
+
     elif "meta.llama" in self.model_id:
       # Llama format
       payload = {
@@ -513,6 +547,20 @@ class BedrockClient(InfoContext, DebugContext):
     normalized_messages = self._normalize_messages(messages, is_thinking)
     payload = self._prepare_bedrock_payload(normalized_messages, stream, **kwargs)
 
+    # Debug logging for tools
+    if "tools" in kwargs:
+      self.logger.debug(f"[BEDROCK] Tools passed in kwargs: {len(kwargs.get('tools', []))} tools")
+    if "tool_specs" in kwargs:
+      self.logger.debug(f"[BEDROCK] Tool specs passed in kwargs: {len(kwargs.get('tool_specs', []))} tool_specs")
+    if "tools" in payload:
+      self.logger.debug(f"[BEDROCK] Tools in payload: {len(payload.get('tools', []))} tools")
+      for tool in payload.get("tools", []):
+        self.logger.debug(f"[BEDROCK] Tool: {tool.get('name')} - {tool.get('description')}")
+    else:
+      self.logger.debug("[BEDROCK] No tools in payload!")
+
+    self.logger.debug(f"[BEDROCK] Full payload keys: {list(payload.keys())}")
+
     if stream:
       return self._complete_chat_stream(payload, is_thinking, **kwargs)
     else:
@@ -536,31 +584,67 @@ class BedrockClient(InfoContext, DebugContext):
 
       response_body = json.loads(response["body"].read())
 
-      # Parse response based on model type
-      content = self._extract_content_from_response(response_body)
+      # Extract content and tool calls from response
+      text_content = ""
+      tool_calls = []
+      thinking_content = None
+
+      if "anthropic" in self.model_id:
+        # Claude response format - check all content blocks
+        content_blocks = response_body.get("content", [])
+        for block in content_blocks:
+          if block.get("type") == "text":
+            text = block.get("text", "")
+            # Handle thinking tags
+            if "</think>" in text:
+              end_think_tag = text.find("</think>")
+              thinking_content = text[:end_think_tag].replace("<think>", "")
+              text_content += text[end_think_tag + len("</think>") :].strip()
+            else:
+              text_content += text
+          elif block.get("type") == "tool_use":
+            # Extract tool use
+            tool_use = block
+            tool_calls.append({
+              "id": tool_use.get("id"),
+              "type": "function",
+              "function": {
+                "name": tool_use.get("name"),
+                "arguments": json.dumps(tool_use.get("input", {}))
+              }
+            })
+      else:
+        # For non-Anthropic models, extract text only
+        text_content = self._extract_content_from_response(response_body)
+        if "</think>" in text_content:
+          end_think_tag = text_content.find("</think>")
+          thinking_content = text_content[:end_think_tag].replace("<think>", "")
+          text_content = text_content[end_think_tag + len("</think>") :].strip()
 
       # Create response object similar to OpenAI/LiteLLM format
+      class ToolCall:
+        def __init__(self, id: str, type_: str, function: dict):
+          self.id = id
+          self.type = type_
+          self.function = type("Function", (), function)()
+
+      class Message:
+        def __init__(self, content: str, tool_calls: list, reasoning_content: str):
+          self.content = content
+          self.role = "assistant"
+          self.reasoning_content = reasoning_content
+          self.tool_calls = [ToolCall(tc["id"], tc["type"], tc["function"]) for tc in tool_calls] if tool_calls else None
+
       class Choice:
-        def __init__(self, content: str):
-          self.message = type("Message", (), {"content": content, "role": "assistant", "reasoning_content": None})()
+        def __init__(self, content: str, tool_calls: list, reasoning_content: str):
+          self.message = Message(content, tool_calls, reasoning_content)
           self.finish_reason = "stop"
 
       class Response:
-        def __init__(self, content: str):
-          self.choices = [Choice(content)]
+        def __init__(self, content: str, tool_calls: list, reasoning_content: str):
+          self.choices = [Choice(content, tool_calls, reasoning_content)]
 
-      # Handle thinking content
-      final_content = content
-      thinking_content = None
-
-      if "</think>" in content:
-        end_think_tag = content.find("</think>")
-        thinking_content = content[:end_think_tag].replace("<think>", "")
-        final_content = content[end_think_tag + len("</think>") :].strip()
-
-      response_obj = Response(final_content)
-      if thinking_content:
-        response_obj.choices[0].message.reasoning_content = thinking_content
+      response_obj = Response(text_content, tool_calls, thinking_content)
 
       self.logger.info(f"Finished processing messages with Bedrock model '{self.original_name}'")
       return response_obj
@@ -641,6 +725,8 @@ class BedrockClient(InfoContext, DebugContext):
     """Process Anthropic/Claude streaming response."""
     current_thinking = is_thinking
     chunk_count = 0
+    current_tool_use = None
+    accumulated_tool_input = ""
 
     for event in stream:
       if "chunk" in event:
@@ -650,41 +736,111 @@ class BedrockClient(InfoContext, DebugContext):
           chunk_count += 1
           self.logger.debug(f"Processing Bedrock event {chunk_count}: {chunk_data.get('type', 'unknown')}")
 
-          if chunk_data.get("type") == "content_block_delta":
+          if chunk_data.get("type") == "content_block_start":
+            # New content block starting - could be text or tool_use
+            content_block = chunk_data.get("content_block", {})
+            if content_block.get("type") == "tool_use":
+              # Starting a tool use block
+              current_tool_use = {
+                "id": content_block.get("id"),
+                "name": content_block.get("name"),
+                "index": chunk_data.get("index", 0)
+              }
+              accumulated_tool_input = ""
+              self.logger.debug(f"Starting tool use: {current_tool_use['name']}")
+
+          elif chunk_data.get("type") == "content_block_delta":
             delta = chunk_data.get("delta", {})
-            content = delta.get("text", "")
 
-            # Handle thinking tags
-            if "<think>" in content:
-              current_thinking = True
-              content = content.replace("<think>", "")
+            # Check if this is a tool input delta
+            if delta.get("type") == "input_json_delta":
+              # Accumulate tool input JSON
+              partial_json = delta.get("partial_json", "")
+              accumulated_tool_input += partial_json
+              self.logger.debug(f"Accumulated tool input: {accumulated_tool_input[:100]}...")
 
-            if "</think>" in content:
-              current_thinking = False
-              content = content.replace("</think>", "")
+            else:
+              # Regular text content
+              content = delta.get("text", "")
 
-            # Create chunk object
-            class Delta:
-              def __init__(self, content: str):
-                if current_thinking:
-                  self.reasoning_content = content
+              # Handle thinking tags
+              if "<think>" in content:
+                current_thinking = True
+                content = content.replace("<think>", "")
+
+              if "</think>" in content:
+                current_thinking = False
+                content = content.replace("</think>", "")
+
+              # Create chunk object
+              class Delta:
+                def __init__(self, content: str):
+                  if current_thinking:
+                    self.reasoning_content = content
+                    self.content = None
+                  else:
+                    self.content = content
+                    self.reasoning_content = None
+
+              class Choice:
+                def __init__(self, content: str):
+                  self.delta = Delta(content)
+                  self.finish_reason = None
+
+              class Chunk:
+                def __init__(self, content: str):
+                  self.choices = [Choice(content)]
+
+              if content:  # Only yield if there's actual content
+                self.logger.debug(f"Yielding content chunk: {repr(content[:50])}")
+                yield Chunk(content)
+
+          elif chunk_data.get("type") == "content_block_stop":
+            # Content block finished
+            if current_tool_use is not None:
+              # Complete tool use block - yield it
+              self.logger.debug(f"Completed tool use: {current_tool_use['name']}")
+
+              # Parse the accumulated JSON
+              try:
+                tool_args = json.loads(accumulated_tool_input) if accumulated_tool_input else {}
+              except json.JSONDecodeError:
+                self.logger.warning(f"Failed to parse tool input: {accumulated_tool_input}")
+                tool_args = {}
+
+              # Create tool call object
+              class ToolCall:
+                def __init__(self, id: str, name: str, arguments: str, index: int):
+                  self.id = id
+                  self.function = type("Function", (), {"name": name, "arguments": arguments})()
+                  self.index = index
+
+              class Delta:
+                def __init__(self, tool_call: ToolCall):
+                  self.tool_calls = [tool_call]
                   self.content = None
-                else:
-                  self.content = content
                   self.reasoning_content = None
 
-            class Choice:
-              def __init__(self, content: str):
-                self.delta = Delta(content)
-                self.finish_reason = None
+              class Choice:
+                def __init__(self, tool_call: ToolCall):
+                  self.delta = Delta(tool_call)
+                  self.finish_reason = None
 
-            class Chunk:
-              def __init__(self, content: str):
-                self.choices = [Choice(content)]
+              class Chunk:
+                def __init__(self, tool_call: ToolCall):
+                  self.choices = [Choice(tool_call)]
 
-            if content:  # Only yield if there's actual content
-              self.logger.debug(f"Yielding content chunk: {repr(content[:50])}")
-              yield Chunk(content)
+              tool_call = ToolCall(
+                current_tool_use["id"],
+                current_tool_use["name"],
+                json.dumps(tool_args),
+                current_tool_use["index"]
+              )
+              yield Chunk(tool_call)
+
+              # Reset tool use state
+              current_tool_use = None
+              accumulated_tool_input = ""
 
           elif chunk_data.get("type") == "message_stop":
             # Final chunk - send empty content with finish_reason to signal completion
