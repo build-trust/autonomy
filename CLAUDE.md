@@ -34,12 +34,29 @@ The `autonomy` command line tool:
 - To test examples locally (if dev machine is signed into AWS with access to the right models):
   - Run the example directly using environment variables:
     ```
-    cd source/python
-    AUTONOMY_USE_DIRECT_BEDROCK=1 AUTONOMY_WAIT_UNTIL_INTERRUPTED=1 AUTONOMY_USE_IN_MEMORY_DATABASE=1 uv run --active ../../examples/001/images/main.py
+    cd examples/001/images && \
+      AUTONOMY_USE_DIRECT_BEDROCK=1 \
+      AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+        uv run --active main.py
     ```
-  - Replace `../../examples/001/images/main.py` with the path to the specific example you want to test.
+  - Replace `examples/001/images` with the path to the specific example you want to test.
   - This approach bypasses the full autonomy deployment and uses AWS Bedrock directly.
 
+## Testing Strategy
+
+When testing agents and streaming responses:
+- Redirect logs to a file for analysis: `uv run --active main.py > /tmp/test.log 2>&1 &`
+- Test the HTTP API separately using curl commands on `http://localhost:8000`
+- For streaming responses, check for proper completion: `curl --silent --request POST --header "Content-Type: application/json" --data '{"message":"..."}' "http://localhost:8000/agents/AGENT_NAME?stream=true"`
+- Verify no timeout errors in logs: `grep -i "error\|exception\|timeout" /tmp/test.log`
+- Test multi-turn conversations by sending multiple requests to verify state management
+- When testing `ask_user_for_input` tool:
+  - First request should pause with `"phase": "waiting_for_input"`
+  - Stream should complete (not timeout) when waiting for input
+  - Second request with user response should resume correctly
+  - Verify no duplicate messages in conversation history
+- Use `jq` to parse and filter streaming JSON responses for specific fields
+- Enable debug logging for detailed flow analysis: `AUTONOMY_LOG_LEVEL="INFO,agent=DEBUG,model=DEBUG"`
 
 ## Guidelines for developing in Python
 
@@ -55,6 +72,8 @@ The `autonomy` command line tool:
 - The venv for is always at .venv at the root of this repo.
 - To add python deps: `cd source/python && uv add --active <package>`
 - To remove python deps: `cd source/python && uv remove --active <package>`
+- IMPORTANT: always use `--active` with `uv` commands.
+- IMPORTANT: always refer `source/python/Makefile` for the right build commands.
 
 ## Guidelines for developing in Rust
 
