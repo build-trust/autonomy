@@ -58,6 +58,8 @@ from ..nodes.message import (
   Error,
   GetConversationsRequest,
   GetConversationsResponse,
+  GetConversationStateRequest,
+  GetConversationStateResponse,
   GetIdentifierRequest,
   GetIdentifierResponse,
   MessageConverter,
@@ -308,6 +310,8 @@ class StateMachine:
     # Start execution timer for safety backstop
     self.start_time = time.time()
     self.max_execution_time = agent.max_execution_time
+    self.paused_at = None  # Track when we paused to exclude from execution time
+    self.total_paused_time = 0.0  # Cumulative time spent paused
 
     # Pause/resume support for human-in-the-loop functionality
     self.is_paused = False  # True when waiting for user input
@@ -322,9 +326,9 @@ class StateMachine:
     Checks safety limits, then delegates to state-specific handlers.
     """
 
-    # Check execution time limit
+    # Check execution time limit (excluding paused time)
     current_time = time.time()
-    elapsed_time = current_time - self.start_time
+    elapsed_time = current_time - self.start_time - self.total_paused_time
 
     if elapsed_time > self.max_execution_time:
       logger.error(f"[STATE_MACHINE] Exceeded maximum execution time ({self.max_execution_time}s)")
@@ -563,12 +567,14 @@ class StateMachine:
         await self.agent.remember(self.scope, self.conversation, waiting_message)
 
         if self.stream:
-          yield await self.streaming_response.make_snippet(waiting_message)
+          yield await self.streaming_response.make_snippet(waiting_message, finished=True)
         else:
           self.whole_response.messages.append(waiting_message)
 
         # Mark as paused - run() will detect this
         self.is_paused = True
+        self.paused_at = time.time()  # Record when we paused
+        logger.debug(f"[STATE_MACHINE] Paused at {self.paused_at}, total paused time so far: {self.total_paused_time}s")
         return
 
       # Normal tool call - store result and continue
@@ -654,6 +660,7 @@ class StateMachine:
 
     try:
       # Add overall timeout protection for the entire state machine run
+      # Note: This timeout includes paused time, but transition() checks exclude paused time
       async with asyncio.timeout(self.max_execution_time):
         while self.state != State.DONE:
           # Check for interruption
@@ -669,6 +676,9 @@ class StateMachine:
           # Check if we're paused
           if self.is_paused:
             logger.info(f"[STATE_MACHINE] Paused in {self.state.name} state")
+            # For non-streaming mode, yield accumulated response before pausing
+            if not self.stream:
+              yield self.whole_response
             # Don't transition to DONE - just stop iterating
             # Agent will keep this state machine and resume later
             return
@@ -682,8 +692,8 @@ class StateMachine:
       logger.error(f"State machine run timed out after {self.max_execution_time}s")
       yield Error(f"Agent execution timed out after {self.max_execution_time:.1f} seconds")
 
-    elapsed_time = time.time() - self.start_time
-    logger.info(f"State machine completed: {self.iteration} iterations in {elapsed_time:.1f}s")
+    elapsed_time = time.time() - self.start_time - self.total_paused_time
+    logger.info(f"State machine completed: {self.iteration} iterations in {elapsed_time:.1f}s (paused for {self.total_paused_time:.1f}s)")
 
 
 # =============================================================================
@@ -887,6 +897,7 @@ class Agent:
         StreamedConversationSnippet: self.handle__conversation_snippet,
         GetIdentifierRequest: self.handle__get_identifier_request,
         GetConversationsRequest: self.handle__get_conversations_request,
+        GetConversationStateRequest: self.handle__get_conversation_state_request,
       }
 
       handler = handlers.get(type(message))
@@ -937,6 +948,62 @@ class Agent:
     messages = await self.memory.get_messages_only(self._memory_scope(message.scope), message.conversation)
     return GetConversationsResponse(messages)
 
+  async def handle__get_conversation_state_request(
+    self, message: GetConversationStateRequest
+  ) -> GetConversationStateResponse:
+    """
+    Get the current state of a conversation.
+
+    Args:
+      message: Request containing scope and conversation identifiers
+
+    Returns:
+      Response containing conversation state information:
+      - is_paused: True if waiting for user input
+      - phase: Current state machine phase
+      - message_count: Number of messages in conversation
+    """
+    # Check if there's an active state machine
+    state_machine = self._active_state_machine
+
+    # Get messages from memory
+    messages = await self.memory.get_messages_only(self._memory_scope(message.scope), message.conversation)
+
+    if state_machine is None:
+      # No active state machine - conversation is either new or completed
+      return GetConversationStateResponse(
+        is_paused=False,
+        phase="done",
+        message_count=len(messages),
+        scope=message.scope,
+        conversation=message.conversation,
+      )
+
+    # Active state machine exists - check if it matches the requested conversation
+    # The active state machine stores the raw scope (not prefixed), so compare with message.scope directly
+    if (state_machine.scope == message.scope and
+        state_machine.conversation == message.conversation):
+      # This is the active conversation
+      is_paused = state_machine.state == State.WAITING_FOR_INPUT
+      phase = state_machine.state.value  # Get string value from enum
+
+      return GetConversationStateResponse(
+        is_paused=is_paused,
+        phase=phase,
+        message_count=len(messages),
+        scope=message.scope,
+        conversation=message.conversation,
+      )
+    else:
+      # Different conversation is active, so this one is completed or not started
+      return GetConversationStateResponse(
+        is_paused=False,
+        phase="done",
+        message_count=len(messages),
+        scope=message.scope,
+        conversation=message.conversation,
+      )
+
   async def handle__conversation_snippet(self, message):
     """
     Handle conversation snippets with support for pause/resume and interruption.
@@ -971,20 +1038,29 @@ class Agent:
 
       machine = self._active_state_machine
 
-      # Add new user messages to memory
-      for msg in messages:
-        await self.remember(scope, conversation, msg)
-
       # Create tool result with user's response
-      user_response = "\n".join([msg.content for msg in messages if hasattr(msg, "content") and msg.content])
+      # Note: We don't add user messages to memory here because the response
+      # should only appear as a tool result, not as a separate user message
+      user_response = "\n".join([msg.content.text if hasattr(msg.content, "text") else str(msg.content) for msg in messages if hasattr(msg, "content") and msg.content])
 
       # Complete the pending ask_user_for_input tool call
       from ..nodes.message import ToolCallResponseMessage
 
       tool_result = ToolCallResponseMessage(
-        tool_call_id=machine.pending_tool_call_id or "unknown", result=user_response
+        tool_call_id=machine.pending_tool_call_id or "unknown",
+        name="ask_user_for_input",
+        content=user_response
       )
       await self.remember(scope, conversation, tool_result)
+
+      # Create NEW response helper for resume (resets part_nb counter)
+      # This is critical - the client creates a new request/mailbox and expects part_nb to start from 1
+      resume_response = ConversationResponse(scope, conversation, stream)
+      machine.streaming_response = resume_response
+      # Note: whole_response stays as ConversationSnippet for non-streaming mode
+
+      # Reset final_content_sent to allow finish fallbacks in resumed stream
+      machine.final_content_sent = False
 
       if stream:
         yield await machine.streaming_response.make_snippet(tool_result)
@@ -993,6 +1069,14 @@ class Agent:
 
       # Resume the state machine
       machine.is_paused = False
+
+      # Update total paused time
+      if machine.paused_at is not None:
+        paused_duration = time.time() - machine.paused_at
+        machine.total_paused_time += paused_duration
+        logger.debug(f"[STATE_MACHINE] Resuming after {paused_duration}s pause, total paused time: {machine.total_paused_time}s")
+        machine.paused_at = None
+
       machine.state = State.THINKING  # Continue from thinking
 
       logger.info("State machine resumed, continuing execution")
