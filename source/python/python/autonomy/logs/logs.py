@@ -29,7 +29,7 @@ def get_logging_config() -> dict[str, int | bool | dict | str | None]:
 
   global LOG_LEVELS
   if not LOG_LEVELS:
-    set_log_levels(None)
+    set_log_levels(os.environ.get("AUTONOMY_LOG_LEVEL"))
   return create_logging_config(LOG_LEVELS, FORMAT)
 
 
