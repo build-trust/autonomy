@@ -223,6 +223,22 @@ Agents have memory organized by scope ID and conversation ID so they can retain 
 ### Tools
 Tools are external functions that agents can invoke to take actions and gather more information. These external functions can be written in Python or provided by MCP servers.
 
+Autonomy automatically provides built-in tools to agents:
+
+**Always Available:**
+- **`get_current_time_utc`** - Get the current time in UTC timezone
+- **`get_current_time`** - Get the current time in a specific timezone
+
+**Available When Enabled:**
+- **`ask_user_for_input`** - Request input from the user (human-in-the-loop). Requires `enable_ask_for_user_input=True` when starting the agent.
+
+**Subagent Tools** (automatically added when `subagents` are configured):
+- **`start_subagent`** - Start a configured subagent
+- **`delegate_to_subagent`** - Delegate a task to a specific subagent
+- **`delegate_to_subagents_parallel`** - Delegate tasks to parallel subagent instances
+- **`list_subagents`** - List configured and running subagents
+- **`stop_subagent`** - Stop a running subagent
+
 ## Best Practices
 
 * Reference the [getting started guide](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md) for file templates when creating new apps.
