@@ -1,0 +1,946 @@
+---
+title: "Coding Agents: How to give agents filesystem access"
+description: "Give Autonomy agents filesystem access with four visibility levels for flexible isolation. Default conversation-level isolation provides maximum privacy."
+noindex: true
+---
+
+# A guide for coding agents to give agents filesystem access
+
+Enable **Autonomy** agents to manage files with **FilesystemTools** - a scoped, secure filesystem with **four visibility levels** for flexible multi-tenant isolation.
+
+> **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
+
+*Keywords: filesystem, files, storage, read file, write file, ls, grep, glob, visibility levels, scope isolation, conversation isolation, multi-tenant, file management*
+
+This guide shows how to give agents filesystem access with configurable isolation levels and security guarantees.
+
+## Why Use Filesystem Tools
+
+Agents often need to:
+- Store notes, documents, and data
+- Organize information across multiple files
+- Search through content
+- Maintain persistent state beyond conversation memory
+
+FilesystemTools provides:
+- **Four visibility levels**: all, agent, scope, conversation (default)
+- **Conversation-level isolation (default)**: Maximum privacy - each conversation gets separate storage
+- **Security**: Path validation prevents directory traversal
+- **Ten operations**: list_directory, read_file, write_file, edit_file, find_files, search_in_files, remove_file, remove_directory, copy_file, move_file
+- **Virtual filesystem**: Agents see "/" as their visibility root
+- **Factory mode**: Automatic isolation - no manual setup needed
+
+## Visibility Levels Overview
+
+FilesystemTools supports four visibility levels for flexible isolation:
+
+| Visibility | Path | Use For |
+|-----------|------|---------|
+| `conversation` (DEFAULT) | `/data/{agent}/{scope}/{conversation}/` | **Session-specific files** - maximum isolation |
+| `scope` | `/data/{agent}/{scope}/` | User-specific files - shared across conversations |
+| `agent` | `/data/{agent}/` | Team/department files - shared across users |
+| `all` | `/data/` | Global configuration - shared across everyone |
+
+**Default**: `visibility="conversation"` provides maximum privacy by isolating each conversation.
+
+## Complete Example: Multi-Tenant Agent with Automatic Isolation
+
+This example shows an agent that automatically provides isolated filesystem access per conversation.
+
+### Project Structure
+
+```
+notes-app/
+├── autonomy.yaml
+└── images/main/
+    ├── Dockerfile
+    └── main.py
+```
+
+### main.py
+
+```python
+from autonomy import Agent, Model, Node, FilesystemTools
+
+
+async def main(node):
+  # Create FilesystemTools in factory mode
+  # Default visibility="conversation" provides per-conversation isolation
+  fs_tools = FilesystemTools()
+  
+  await Agent.start(
+    node=node,
+    name="notes-assistant",
+    instructions="""
+    You are a helpful note-taking assistant with filesystem access.
+    
+    Help users organize their notes and files using these tools:
+    - list_directory(path): List files and directories
+    - read_file(path): Read file contents (supports line ranges)
+    - write_file(path, content): Create or overwrite a file
+    - edit_file(path, old_string, new_string): Replace text in a file
+    - find_files(pattern): Find files matching glob pattern (e.g., "*.txt", "**/*.md")
+    - search_in_files(pattern, path): Search for regex pattern in files
+    - remove_file(path): Delete a file
+    - remove_directory(path, recursive): Delete a directory
+    - copy_file(source, destination): Copy a file or directory
+    - move_file(source, destination): Move or rename a file or directory
+    
+    Each conversation has isolated storage. Files won't be visible in other conversations.
+    Be organized and help users structure their information effectively.
+    """,
+    model=Model("claude-sonnet-4-v1"),
+    tools=[fs_tools],  # Just pass the factory - that's it!
+  )
+
+
+Node.start(main)
+```
+
+### autonomy.yaml
+
+```yaml
+name: notesapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+### Dockerfile
+
+```dockerfile
+FROM ghcr.io/build-trust/autonomy-python:latest
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+## Deploy and Test
+
+Deploy your zone:
+
+```bash
+autonomy zone deploy
+```
+
+Test with different conversations - each gets isolated storage:
+
+```bash
+# Conversation 1
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"Create ideas.txt with project ideas","scope":"alice","conversation":"project-a"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/notes-assistant"
+
+# Conversation 2 - separate storage
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"Create ideas.txt with different ideas","scope":"alice","conversation":"project-b"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/notes-assistant"
+
+# List files in conversation 1 - only sees project-a files
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"List all files","scope":"alice","conversation":"project-a"}' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/notes-assistant"
+```
+
+**Result**: Each conversation has completely isolated storage.
+
+## Visibility Levels in Detail
+
+### 1. Conversation-Level Isolation (DEFAULT)
+
+Maximum isolation - each conversation gets separate storage.
+
+```python
+# Factory mode - default visibility="conversation"
+fs_tools = FilesystemTools()
+
+agent = await Agent.start(
+  node=node,
+  name="assistant",
+  tools=[fs_tools],
+)
+
+# Each conversation gets isolated storage:
+# - scope="alice", conversation="chat-1" → /tmp/agent-files/assistant/alice/chat-1/
+# - scope="alice", conversation="chat-2" → /tmp/agent-files/assistant/alice/chat-2/
+# - scope="bob", conversation="chat-1" → /tmp/agent-files/assistant/bob/chat-1/
+```
+
+**Use when**: You want maximum privacy and each conversation should start with a clean slate.
+
+**Directory structure**:
+```
+/tmp/agent-files/
+└── assistant/
+    ├── alice/
+    │   ├── chat-1/
+    │   │   └── ideas.txt
+    │   └── chat-2/
+    │       └── notes.txt
+    └── bob/
+        └── chat-1/
+            └── data.txt
+```
+
+### 2. Scope-Level Isolation
+
+Isolated per user - conversations share files within a user.
+
+```python
+# Explicit scope-level visibility
+fs_tools = FilesystemTools(visibility="scope")
+
+agent = await Agent.start(
+  node=node,
+  name="assistant",
+  tools=[fs_tools],
+)
+
+# All conversations for a user share the same storage:
+# - scope="alice", conversation="chat-1" → /tmp/agent-files/assistant/alice/
+# - scope="alice", conversation="chat-2" → /tmp/agent-files/assistant/alice/
+# - scope="bob", conversation="chat-1" → /tmp/agent-files/assistant/bob/
+```
+
+**Use when**: Users need persistent files that are accessible across all their conversations.
+
+**Directory structure**:
+```
+/tmp/agent-files/
+└── assistant/
+    ├── alice/
+    │   ├── documents/
+    │   └── notes.txt
+    └── bob/
+        └── files/
+```
+
+### 3. Agent-Level Isolation
+
+Isolated per agent - all users share files.
+
+```python
+# Agent-level visibility
+fs_tools = FilesystemTools(visibility="agent")
+
+agent = await Agent.start(
+  node=node,
+  name="support-team",
+  tools=[fs_tools],
+)
+
+# All users of this agent share the same storage:
+# - Any scope, any conversation → /tmp/agent-files/support-team/
+```
+
+**Use when**: You need team-wide or department-wide shared files.
+
+**Directory structure**:
+```
+/tmp/agent-files/
+├── support-team/
+│   ├── kb/
+│   └── team-notes.txt
+├── sales-team/
+│   └── leads.txt
+└── hr-team/
+    └── policies/
+```
+
+### 4. All-Level (Global) Sharing
+
+Shared across all agents and users.
+
+```python
+# Global visibility
+fs_tools = FilesystemTools(visibility="all")
+
+agent = await Agent.start(
+  node=node,
+  name="assistant",
+  tools=[fs_tools],
+)
+
+# Everyone shares the same storage:
+# - Any agent, any scope, any conversation → /tmp/agent-files/
+```
+
+**Use when**: You need global configuration files or public assets.
+
+**Directory structure**:
+```
+/tmp/agent-files/
+├── config.json
+├── templates/
+└── public-assets/
+```
+
+## Available Filesystem Operations
+
+FilesystemTools provides ten operations for file management. Note that the method names shown below are the actual Python method names - agents will call these directly.
+
+### list_directory(path)
+
+List files and directories at a path.
+
+```python
+fs_tools.list_directory(".")          # List current directory
+fs_tools.list_directory("docs")       # List docs directory
+```
+
+**Returns**: Formatted list with file sizes and directory markers.
+
+**Parameters**:
+- `path` (str, default="."): Directory path to list, relative to visibility root
+
+### read_file(path, start_line=None, end_line=None)
+
+Read the contents of a file, optionally specifying a line range.
+
+```python
+fs_tools.read_file("notes.txt")                    # Read entire file
+fs_tools.read_file("docs/readme.md")               # Read entire file
+fs_tools.read_file("log.txt", start_line=10, end_line=20)  # Read lines 10-20
+fs_tools.read_file("data.csv", start_line=50)      # Read from line 50 to end
+```
+
+**Returns**: File contents as string, or error message.
+
+**Parameters**:
+- `path` (str): File path to read, relative to visibility root
+- `start_line` (int, optional): Line number to start reading from (1-based, inclusive)
+- `end_line` (int, optional): Line number to stop reading at (1-based, inclusive)
+
+**Note**: Only works with UTF-8 text files. Use line ranges for large files to avoid loading everything into memory.
+
+### write_file(path, content)
+
+Create or overwrite a file completely.
+
+```python
+fs_tools.write_file("todo.txt", "Buy groceries\nFinish report")
+fs_tools.write_file("data/results.json", json_data)
+```
+
+**Returns**: Success message with bytes written, or error message.
+
+**Parameters**:
+- `path` (str): File path to write, relative to visibility root
+- `content` (str): Complete content to write to the file
+
+**Creates parent directories automatically**. This tool completely replaces existing files - use `edit_file` to modify portions of existing files.
+
+### edit_file(path, old_string, new_string, replace_all=False)
+
+Replace text in a file using exact string matching.
+
+```python
+# Replace single occurrence (safe mode - default)
+fs_tools.edit_file("config.yaml", "port: 8080", "port: 3000")
+
+# Replace all occurrences
+fs_tools.edit_file("app.py", "old_name", "new_name", replace_all=True)
+
+# Delete text by replacing with empty string
+fs_tools.edit_file("readme.md", "TODO: Remove this\n", "")
+
+# Multi-line replacement
+fs_tools.edit_file("code.py", "def old():\n    return 1", "def new():\n    return 2")
+```
+
+**Returns**: Success message with count of replacements, or error message.
+
+**Parameters**:
+- `path` (str): File path to edit, relative to visibility root
+- `old_string` (str): Exact text to find and replace (must match exactly including whitespace)
+- `new_string` (str): Text to replace `old_string` with
+- `replace_all` (bool, default=False): If False, requires `old_string` to be unique. If True, replaces all occurrences.
+
+**Important**: This performs exact string matching, not regex. The `old_string` must match exactly including all whitespace and newlines. By default (replace_all=False), this tool requires `old_string` to appear exactly once as a safety feature.
+
+**Use for**: Updating configuration values, renaming functions, fixing typos, replacing specific lines.
+
+### find_files(pattern)
+
+Find files matching a glob pattern.
+
+```python
+fs_tools.find_files("*.txt")           # All .txt files in root
+fs_tools.find_files("**/*.md")         # All .md files recursively
+fs_tools.find_files("docs/*.json")     # JSON files in docs/
+fs_tools.find_files("test_*.py")       # Files starting with "test_"
+```
+
+**Returns**: List of matching files with sizes, or message if no matches found.
+
+**Parameters**:
+- `pattern` (str): Glob pattern to match files against. Supports `*` (any chars), `**` (recursive), `?` (single char), `[seq]` (char in seq)
+
+**Note**: Only returns files, not directories. Results are sorted alphabetically.
+
+### search_in_files(pattern, path=".", case_sensitive=True, context_lines=None, show_line_numbers=True, max_results=100)
+
+Search for a regex pattern in files.
+
+```python
+# Simple search
+fs_tools.search_in_files("TODO", ".")
+
+# Case-insensitive search
+fs_tools.search_in_files("error", ".", case_sensitive=False)
+
+# Search with context lines
+fs_tools.search_in_files("def main", ".", context_lines=2)
+
+# Regex pattern search
+fs_tools.search_in_files(r"class \w+:", "src")
+
+# Search in specific file
+fs_tools.search_in_files("import", "main.py")
+```
+
+**Returns**: Formatted list of matches with file paths, line numbers, and content, or message if no matches found.
+
+**Parameters**:
+- `pattern` (str): Regular expression pattern to search for (full Python regex syntax supported)
+- `path` (str, default="."): Directory or file to search in, relative to visibility root
+- `case_sensitive` (bool, default=True): If False, search ignores case
+- `context_lines` (int, optional): Number of lines to show before and after each match
+- `show_line_numbers` (bool, default=True): If False, omits line numbers from output
+- `max_results` (int, default=100): Maximum number of matches to return
+
+**Use for**: Finding TODO comments, searching for function definitions, locating error messages, searching codebase.
+
+### remove_file(path)
+
+Delete a file.
+
+```python
+fs_tools.remove_file("old_notes.txt")
+fs_tools.remove_file("temp/cache.json")
+```
+
+**Returns**: Success message or error if file doesn't exist. Returns error if path is a directory.
+
+**Parameters**:
+- `path` (str): File path to delete, relative to visibility root
+
+**Warning**: This operation is permanent and cannot be undone.
+
+### remove_directory(path, recursive=False)
+
+Delete a directory.
+
+```python
+fs_tools.remove_directory("empty_folder")              # Delete empty directory only
+fs_tools.remove_directory("old_project", recursive=True)  # Delete directory and all contents
+```
+
+**Returns**: Success message or error. Cannot delete the root directory.
+
+**Parameters**:
+- `path` (str): Directory path to delete, relative to visibility root
+- `recursive` (bool, default=False): If True, deletes directory and all contents. If False, only deletes empty directories.
+
+**Warning**: When using `recursive=True`, ALL files and subdirectories will be permanently deleted. This operation cannot be undone.
+
+### copy_file(source, destination, recursive=False)
+
+Copy a file or directory to a new location.
+
+```python
+# Copy a file
+fs_tools.copy_file("config.yaml", "config.backup.yaml")
+
+# Copy to different directory (creates parent dirs automatically)
+fs_tools.copy_file("report.pdf", "archive/2024/report.pdf")
+
+# Copy a directory
+fs_tools.copy_file("templates", "backup/templates", recursive=True)
+```
+
+**Returns**: Success message or error if operation fails.
+
+**Parameters**:
+- `source` (str): Source file or directory path, relative to visibility root
+- `destination` (str): Destination path, relative to visibility root
+- `recursive` (bool, default=False): Required for copying directories. If False, only copies files.
+
+**Use for**: Creating backups, duplicating configuration files, copying templates.
+
+### move_file(source, destination)
+
+Move or rename a file or directory.
+
+```python
+# Rename a file
+fs_tools.move_file("draft.md", "final.md")
+
+# Move file to different directory
+fs_tools.move_file("report.pdf", "archive/2024/report.pdf")
+
+# Rename a directory
+fs_tools.move_file("old_folder", "new_folder")
+
+# Move directory to new location
+fs_tools.move_file("temp", "archive/temp")
+```
+
+**Returns**: Success message or error if operation fails.
+
+**Parameters**:
+- `source` (str): Source file or directory path, relative to visibility root
+- `destination` (str): Destination path, relative to visibility root
+
+**Note**: This is a move operation, not a copy - the source will no longer exist after the operation. Parent directories in destination path are created automatically.
+
+## Factory Mode vs Direct Mode
+
+### Factory Mode (Recommended for Multi-Tenant)
+
+Let the spawner create isolated instances automatically:
+
+```python
+# Factory mode - missing required parameters for the visibility level
+fs_tools = FilesystemTools()  # Default: conversation-level isolation
+
+agent = await Agent.start(
+  node=node,
+  name="assistant",
+  tools=[fs_tools],  # Spawner creates instances with proper context
+)
+
+# Each request automatically gets the right isolation:
+await agent.send("Create file.txt", scope="alice", conversation="chat-1")
+# → /tmp/agent-files/assistant/alice/chat-1/file.txt
+
+await agent.send("Create file.txt", scope="alice", conversation="chat-2")
+# → /tmp/agent-files/assistant/alice/chat-2/file.txt
+```
+
+**When to use**: Multi-tenant applications where you don't know scopes/conversations upfront.
+
+### Direct Mode (Single-Tenant or Known Context)
+
+Create instances with all parameters provided:
+
+```python
+# Direct mode - all required parameters provided
+fs_tools = FilesystemTools(
+  visibility="conversation",
+  agent_name="assistant",
+  scope="alice",
+  conversation="chat-1"
+)
+
+# Use directly
+fs_tools.write_file("notes.txt", "My notes")
+content = fs_tools.read_file("notes.txt")
+
+# Or with agent (less common)
+agent = await Agent.start(
+  node=node,
+  name="single-user-assistant",
+  tools=[
+    Tool(fs_tools.ls),
+    Tool(fs_tools.read_file),
+    Tool(fs_tools.write_file),
+  ],
+)
+```
+
+**When to use**: Single-tenant apps or when scope/conversation are known at startup.
+
+## Custom API with Dynamic Isolation
+
+Example showing per-user isolation with custom API:
+
+```python
+from autonomy import Agent, HttpServer, Model, Node, NodeDep, FilesystemTools
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class ChatRequest(BaseModel):
+  message: str
+  user_id: str
+  conversation_id: str
+
+@app.post("/chat")
+async def chat(request: ChatRequest, node: NodeDep):
+  """Chat endpoint with per-conversation filesystem isolation."""
+  
+  # FilesystemTools in factory mode - creates isolated instances automatically
+  fs_tools = FilesystemTools(visibility="conversation")  # Default
+  
+  # One agent handles all users and conversations
+  agent = await Agent.start(
+    node=node,
+    name="assistant",
+    instructions="You are a helpful assistant with file access.",
+    model=Model("claude-sonnet-4-v1"),
+    tools=[fs_tools],  # Factory mode - automatic isolation
+  )
+  
+  # Each user+conversation gets isolated storage automatically
+  response = await agent.send(
+    request.message,
+    scope=request.user_id,
+    conversation=request.conversation_id
+  )
+  
+  return {
+    "response": response[-1].content.text,
+    "user_id": request.user_id,
+    "conversation_id": request.conversation_id
+  }
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+Test with different users and conversations:
+
+```bash
+# Alice, conversation 1
+curl -X POST "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Create notes.txt","user_id":"alice","conversation_id":"proj-a"}'
+
+# Alice, conversation 2 - different isolated storage
+curl -X POST "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Create notes.txt","user_id":"alice","conversation_id":"proj-b"}'
+
+# Bob, conversation 1 - different isolated storage
+curl -X POST "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Create notes.txt","user_id":"bob","conversation_id":"proj-a"}'
+```
+
+Each user+conversation combination gets completely isolated storage.
+
+## Choosing the Right Visibility Level
+
+### Decision Guide
+
+```
+Need to share files across all agents? → visibility="all"
+  └─ No
+      ↓
+Need to share files across all users of an agent? → visibility="agent"
+  └─ No
+      ↓
+Need to share files across conversations within a user? → visibility="scope"
+  └─ No
+      ↓
+Need maximum isolation per conversation? → visibility="conversation" (DEFAULT)
+```
+
+### Common Use Cases
+
+**Session-specific temporary files** → `visibility="conversation"` (default)
+- Chat sessions
+- Temporary work files
+- Isolated experiments
+- Maximum privacy
+
+**User persistent documents** → `visibility="scope"`
+- Personal documents that persist
+- User workspace files
+- Data shared across user's conversations
+
+**Team/department shared files** → `visibility="agent"`
+- Team knowledge base
+- Department-wide notes
+- Shared resources
+
+**Global configuration** → `visibility="all"`
+- API keys
+- Templates
+- Public assets
+
+## Security Features
+
+### Path Validation
+
+All paths are validated to prevent directory traversal attacks:
+
+```python
+fs_tools.write_file("notes.txt", "Safe")           # ✅ Allowed
+fs_tools.write_file("docs/readme.md", "Safe")      # ✅ Allowed
+fs_tools.write_file("../../../etc/passwd", "Bad")  # ❌ Blocked - ValueError
+fs_tools.write_file("../other-user/file.txt", "")  # ❌ Blocked - ValueError
+```
+
+**Protection**: Attempts to escape visibility boundary raise `ValueError`.
+
+### Parameter Validation
+
+All parameters are validated at initialization:
+
+```python
+FilesystemTools(visibility="conversation", agent_name="bot", scope="alice", conversation="chat-1")  # ✅ Valid
+FilesystemTools(visibility="scope", agent_name="bot", scope="alice")  # ✅ Valid
+FilesystemTools(visibility="scope", agent_name="bot/../admin", scope="alice")  # ❌ Invalid - ValueError
+FilesystemTools(visibility="conversation", scope="user/alice")  # ❌ Invalid - ValueError
+```
+
+**Requirements**: Parameters cannot contain `/`, `\`, or `..`.
+
+### Visibility Boundaries
+
+Each visibility level enforces strict boundaries:
+
+```
+visibility="all"          → No isolation (intentional global sharing)
+visibility="agent"        → Cannot access other agents' files
+visibility="scope"        → Cannot access other users' files
+visibility="conversation" → Cannot access other conversations' files
+```
+
+All levels validate paths to prevent escaping their respective boundaries.
+
+## Virtual Filesystem Mapping
+
+Agents see a virtual filesystem where `/` is their visibility root:
+
+```
+Visibility: conversation
+Agent Name: assistant
+Scope: alice
+Conversation: chat-1
+
+Physical Path:          /tmp/agent-files/assistant/alice/chat-1/notes/ideas.md
+Agent Path (virtual):   /notes/ideas.md
+Agent Sees:             / = /tmp/agent-files/assistant/alice/chat-1/
+```
+
+**Benefits**:
+- Simple paths for agents ("notes.txt" not full path)
+- Visibility changes don't affect agent code
+- Clean abstraction for isolation
+
+## Persistent Storage
+
+For production, mount a persistent volume:
+
+```yaml
+name: notesapp
+pods:
+  - name: main-pod
+    public: true
+    volumes:
+      - name: user-files
+        size: 100Gi
+    containers:
+      - name: main
+        image: main
+        volumeMounts:
+          - name: user-files
+            mountPath: /user-files
+```
+
+Update your code to use the mounted volume:
+
+```python
+# Factory mode with persistent storage
+fs_tools = FilesystemTools(
+  visibility="conversation",  # Default
+  base_dir="/user-files"  # Persistent volume
+)
+
+agent = await Agent.start(
+  node=node,
+  name="assistant",
+  tools=[fs_tools],
+)
+```
+
+## Common Patterns
+
+### Session-Specific Note-Taking (Default)
+
+```python
+# Default conversation-level isolation
+fs_tools = FilesystemTools()
+
+agent = await Agent.start(
+  node=node,
+  name="notes",
+  instructions="""
+  Help users take notes in this conversation.
+  Files are specific to this conversation session.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  tools=[fs_tools],
+)
+```
+
+### Persistent User Workspace
+
+```python
+# Scope-level for files shared across conversations
+fs_tools = FilesystemTools(visibility="scope")
+
+agent = await Agent.start(
+  node=node,
+  name="workspace",
+  instructions="""
+  Manage user's persistent workspace.
+  Files are shared across all their conversations.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  tools=[fs_tools],
+)
+```
+
+### Team Knowledge Base
+
+```python
+# Agent-level for team-wide sharing
+fs_tools = FilesystemTools(visibility="agent")
+
+agent = await Agent.start(
+  node=node,
+  name="team-kb",
+  instructions="""
+  Manage the team knowledge base.
+  All team members can access and edit.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  tools=[fs_tools],
+)
+```
+
+### Document Search Agent
+
+```python
+# Default conversation-level
+fs_tools = FilesystemTools()
+
+agent = await Agent.start(
+  node=node,
+  name="search",
+  instructions="""
+  Help users find information in their documents.
+  Use glob to find files by name.
+  Use grep to search content.
+  Summarize results clearly.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  tools=[fs_tools],
+)
+```
+
+## Best Practices
+
+### ✅ Do's
+
+- **Use default visibility**: `FilesystemTools()` provides conversation-level isolation (best for privacy)
+- **Explicit visibility for sharing**: Use `visibility="scope"` when conversations need to share files
+- **Factory mode for multi-tenant**: Let the spawner create instances automatically
+- **Descriptive scope/conversation IDs**: Use meaningful identifiers from your application
+- **Validate user input**: Ensure scope/conversation IDs come from authenticated sources
+- **Guide agents**: Provide clear instructions on visibility behavior
+- **Use write_file carefully**: It completely replaces files - use edit_file for modifications
+- **Leverage glob**: Help agents find files by pattern
+
+### ❌ Don'ts
+
+- **Don't skip validation**: Always validate user input before using in scope/conversation
+- **Don't use system paths**: Keep base_dir in application-managed space
+- **Don't ignore errors**: Check tool responses for error messages
+- **Don't use for large files**: FilesystemTools loads entire files into memory
+- **Don't hardcode visibility**: Choose based on your isolation requirements
+- **Don't mix visibility levels**: One agent should use one visibility level consistently
+
+## Error Handling
+
+All filesystem operations return error messages rather than raising exceptions:
+
+```python
+# File doesn't exist
+result = fs_tools.read_file("missing.txt")
+# Returns: "Error: File 'missing.txt' does not exist"
+
+# Factory mode - direct usage blocked
+fs = FilesystemTools()  # Factory mode
+result = fs.read_file("file.txt")
+# Returns: "Error: FilesystemTools is in factory mode. Use with Agent.start() to create scope-specific instances."
+
+# Invalid regex
+result = fs_tools.grep("[invalid(", ".")
+# Returns: "Error: Invalid regex pattern '[invalid(': ..."
+
+# Path traversal attempt
+result = fs_tools.read_file("../../../etc/passwd")
+# Returns: "Error: Path '../../../etc/passwd' attempts to escape scope boundary"
+```
+
+**Design**: Errors are strings so agents can see them and respond appropriately.
+
+## Limitations
+
+- **Memory**: Files are loaded entirely into memory (not suitable for GB-sized files)
+- **Encoding**: Only UTF-8 text files supported
+- **Binary Files**: Binary files skipped in grep, may error on read
+- **No Permissions**: No file permission system (all files readable/writable within visibility)
+- **No Quotas**: No built-in storage quotas per scope/conversation
+- **No Cleanup**: Old conversation files persist (implement cleanup separately if needed)
+
+## Migrating from Scope-Only Pattern
+
+If you have code that used the old pattern with explicit scope:
+
+**Old Pattern**:
+```python
+# Old - manual scope management
+alice_tools = FilesystemTools(scope="alice")
+bob_tools = FilesystemTools(scope="bob")
+
+alice_agent = await Agent.start(name="alice-assistant", tools=[...])
+bob_agent = await Agent.start(name="bob-assistant", tools=[...])
+```
+
+**New Pattern (Conversation-Level)**:
+```python
+# New - automatic conversation-level isolation (default)
+fs_tools = FilesystemTools()  # Factory mode, default visibility="conversation"
+
+agent = await Agent.start(
+  name="assistant",
+  tools=[fs_tools],
+)
+
+# Each conversation gets isolated storage automatically
+await agent.send("...", scope="alice", conversation="chat-1")
+await agent.send("...", scope="alice", conversation="chat-2")
+```
+
+**New Pattern (Scope-Level if you need shared files)**:
+```python
+# If conversations should share files within a user
+fs_tools = FilesystemTools(visibility="scope")
+
+agent = await Agent.start(
+  name="assistant",
+  tools=[fs_tools],
+)
+
+# All conversations for alice share the same files
+await agent.send("...", scope="alice", conversation="chat-1")
+await agent.send("...", scope="alice", conversation="chat-2")
+```
+
+## Related Guides
+
+- [How to create and deploy a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
+- [How to give agents tools](https://autonomy.computer/docs/_for-coding-agents/tools.md)
+- [How to use memory, conversation, and scope](https://autonomy.computer/docs/_for-coding-agents/memory.md)
+- [How to create custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
