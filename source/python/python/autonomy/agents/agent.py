@@ -99,6 +99,34 @@ MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT = 100000
 # =============================================================================
 
 
+class SubagentConfig(TypedDict):
+  """Configuration for a subagent that can be started by a parent agent.
+
+  Only 'role' and 'instructions' are required. All other fields are optional.
+
+  Example:
+    subagent_config = {
+      "role": "researcher",
+      "instructions": "You are a research specialist.",
+      "model": Model(name="claude-sonnet-4-v1"),
+      "auto_start": False,
+      "runner_filter": "runner",
+    }
+  """
+
+  role: str
+  instructions: str
+  model: NotRequired[Model]
+  tools: NotRequired[List]
+  max_iterations: NotRequired[int]
+  max_execution_time: NotRequired[float]
+  max_messages_in_short_term_memory: NotRequired[int]
+  max_tokens_in_short_term_memory: NotRequired[int]
+  enable_long_term_memory: NotRequired[bool]
+  auto_start: NotRequired[bool]
+  runner_filter: NotRequired[str]
+
+
 class AgentConfig(TypedDict):
   """Configuration for starting a single agent.
 
@@ -112,6 +140,12 @@ class AgentConfig(TypedDict):
       "model": Model(name="claude-sonnet-4-v1"),
       "tools": [search_tool, database_tool],
       "max_iterations": 500,
+      "subagents": {
+        "researcher": {
+          "role": "researcher",
+          "instructions": "Research specialist",
+        }
+      }
     }
     agent = await Agent.start_from_config(node=node, config=config)
   """
@@ -127,6 +161,8 @@ class AgentConfig(TypedDict):
   max_tokens_in_short_term_memory: NotRequired[int]
   enable_long_term_memory: NotRequired[bool]
   enable_ask_for_user_input: NotRequired[bool]
+  subagents: NotRequired[Dict[str, SubagentConfig]]
+  subagent_runner_filter: NotRequired[str]
 
 
 class AgentManyConfig(TypedDict):
@@ -824,6 +860,8 @@ class Agent:
     memory: Memory,
     max_iterations: int = MAX_ITERATIONS_DEFAULT,
     max_execution_time: float = MAX_EXECUTION_TIME_DEFAULT,
+    subagent_configs: Optional[Dict[str, SubagentConfig]] = None,
+    parent_agent_name: Optional[str] = None,
   ):
     logger.info(f"Starting agent '{name}'")
     self.node = node
@@ -843,6 +881,12 @@ class Agent:
     # Tool call ID tracking prevents collisions (OrderedDict enables efficient FIFO cleanup)
     self._tool_call_ids = OrderedDict()
     self._tool_call_id_lock = asyncio.Lock()
+
+    # Subagent management
+    self.subagent_configs = subagent_configs or {}
+    self.parent_agent_name = parent_agent_name
+    self.subagents = None  # Will be initialized if subagents configured
+    self.subagent_runner_filter = None  # Will be set if provided in config
 
     # State machine tracking for pause/resume support
     # Since each Agent instance handles one (scope, conversation) pair,
@@ -1043,7 +1087,11 @@ class Agent:
       # Create tool result with user's response
       # Note: We don't add user messages to memory here because the response
       # should only appear as a tool result, not as a separate user message
-      user_response = "\n".join([msg.content.text if hasattr(msg.content, "text") else str(msg.content) for msg in messages if hasattr(msg, "content") and msg.content])
+      user_response = "\n".join([
+        msg.content.text if hasattr(msg.content, "text") else str(msg.content)
+        for msg in messages
+        if hasattr(msg, "content") and msg.content
+      ])
 
       # Complete the pending ask_user_for_input tool call
       from ..nodes.message import ToolCallResponseMessage
@@ -1646,6 +1694,8 @@ class Agent:
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
     enable_ask_for_user_input: bool = False,
+    subagents: Optional[Dict[str, SubagentConfig]] = None,
+    subagent_runner_filter: Optional[str] = None,
   ):
     """
     Start a single agent on a node.
@@ -1707,6 +1757,8 @@ class Agent:
       max_tokens_in_short_term_memory,
       enable_long_term_memory,
       enable_ask_for_user_input,
+      subagents,
+      subagent_runner_filter,
     )
 
   @staticmethod
@@ -1833,6 +1885,8 @@ class Agent:
     )
     enable_long_term_memory = config.get("enable_long_term_memory", False)
     enable_ask_for_user_input = config.get("enable_ask_for_user_input", False)
+    subagents = config.get("subagents")
+    subagent_runner_filter = config.get("subagent_runner_filter")
 
     # Delegate to existing start() method
     return await Agent.start(
@@ -1848,6 +1902,8 @@ class Agent:
       max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
       enable_long_term_memory=enable_long_term_memory,
       enable_ask_for_user_input=enable_ask_for_user_input,
+      subagents=subagents,
+      subagent_runner_filter=subagent_runner_filter,
     )
 
   @staticmethod
@@ -1935,6 +1991,8 @@ class Agent:
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
     enable_ask_for_user_input: bool = False,
+    subagent_configs: Optional[Dict[str, SubagentConfig]] = None,
+    subagent_runner_filter: Optional[str] = None,
   ):
     """
     Internal implementation for agent creation and startup.
@@ -2056,23 +2114,65 @@ class Agent:
       asyncio.set_event_loop(loop)
       try:
         scope_tool_specs, scope_tools_dict = loop.run_until_complete(prepare_tools(all_tools, node, enable_ask_for_user_input))
-      finally:
-        loop.close()
 
-      kwargs = {
-        "node": node,
-        "name": name,
-        "instructions": instructions,
-        "model": model,
-        "tool_specs": scope_tool_specs,
-        "tools": scope_tools_dict,
-        "memory": memory,
-      }
-      if max_iterations is not None:
-        kwargs["max_iterations"] = max_iterations
-      if max_execution_time is not None:
-        kwargs["max_execution_time"] = max_execution_time
-      return Agent(**kwargs)
+        kwargs = {
+          "node": node,
+          "name": name,
+          "instructions": instructions,
+          "model": model,
+          "tool_specs": scope_tool_specs,
+          "tools": scope_tools_dict,
+          "memory": memory,
+        }
+        if max_iterations is not None:
+          kwargs["max_iterations"] = max_iterations
+        if max_execution_time is not None:
+          kwargs["max_execution_time"] = max_execution_time
+        if subagent_configs is not None:
+          kwargs["subagent_configs"] = subagent_configs
+        if subagent_runner_filter is not None:
+          kwargs["subagent_runner_filter"] = subagent_runner_filter
+
+        agent_instance = Agent(**kwargs)
+
+        # Initialize Subagents manager if subagents are configured
+        if subagent_configs:
+          from ..tools.subagents import Subagents
+          from ..agents.builtin_tools import (
+            StartSubagentTool,
+            DelegateToSubagentTool,
+            DelegateToSubagentsParallelTool,
+            ListSubagentsTool,
+            StopSubagentTool,
+          )
+
+          # Set runner filter BEFORE creating Subagents so it's available in __init__
+          agent_instance.subagent_runner_filter = subagent_runner_filter
+          agent_instance.subagents = Subagents(agent_instance)
+
+          # Register subagent management tools
+          subagent_tools = [
+            StartSubagentTool(agent_instance),
+            DelegateToSubagentTool(agent_instance),
+            DelegateToSubagentsParallelTool(agent_instance),
+            ListSubagentsTool(agent_instance),
+            StopSubagentTool(agent_instance),
+          ]
+
+          # Add subagent tools to the agent's tool specs and tools dict
+          for tool in subagent_tools:
+            spec = loop.run_until_complete(tool.spec())
+            scope_tool_specs.append(spec)
+            scope_tools_dict[tool.name] = tool
+
+          # Update agent's tools
+          agent_instance.tool_specs = scope_tool_specs
+          agent_instance.tools = scope_tools_dict
+
+        return agent_instance
+      finally:
+        # Close the event loop after all async operations are complete
+        loop.close()
 
     await node.start_spawner(name, agent_creator, key_extractor, None, exposed_as)
     logger.debug(f"Successfully started agent {name}")
