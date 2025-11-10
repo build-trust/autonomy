@@ -2,5 +2,6 @@ from .tool import Tool
 from .mcp import McpTool
 from .filesystem import FilesystemTools
 from .factory import ToolFactory
+from .subagents import Subagents
 
-__all__ = ["Tool", "McpTool", "FilesystemTools", "ToolFactory"]
+__all__ = ["Tool", "McpTool", "FilesystemTools", "ToolFactory", "Subagents"]
