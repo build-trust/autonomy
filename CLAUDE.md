@@ -22,6 +22,11 @@ The `autonomy` command line tool:
 ## General Development Guidelines
 
 - Use the `.scratch` directory for any notes, temporary tests, or experimental code that shouldn't be committed to the repository.
+- When using `git diff`, always pipe output to prevent blocking on large diffs:
+  - Use `git diff | cat` to view diffs without pagination
+  - Use `git diff --stat` to see a summary of changes
+  - Use `git diff --name-only` to see only changed file names
+  - Avoid running bare `git diff` commands that may open an interactive pager
 
 ## Guidelines for creating and running examples
 
