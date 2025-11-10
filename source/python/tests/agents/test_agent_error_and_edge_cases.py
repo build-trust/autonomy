@@ -73,6 +73,7 @@ class TestConversationPauseResumeInterrupt:
       name="pause-resume-agent",
       instructions="You are a helpful assistant that asks questions.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # First message - this should trigger the ask_user_for_input tool

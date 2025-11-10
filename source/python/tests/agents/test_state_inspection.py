@@ -42,6 +42,7 @@ class TestStateInspection:
       name="test-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Send initial message (will trigger pause)
@@ -81,6 +82,7 @@ class TestStateInspection:
       name="test-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Initial message (triggers pause)
@@ -125,6 +127,7 @@ class TestStateInspection:
       name="test-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Send initial message
@@ -178,6 +181,7 @@ class TestStateInspection:
       name="test-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Send message and let it complete
@@ -218,6 +222,7 @@ class TestStateInspection:
       name="test-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Use streaming mode
@@ -274,6 +279,7 @@ class TestStateInspection:
       name="test-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Start conversation 1 (will pause)

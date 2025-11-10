@@ -47,6 +47,7 @@ class TestStreamingResumeDebug:
       name="debug-agent",
       instructions="You are a test assistant. When asked to collect info, use ask_user_for_input.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     print("\n" + "="*60)
@@ -136,6 +137,7 @@ class TestStreamingResumeDebug:
       name="debug-agent-1",
       instructions="You are a test assistant.",
       model=model1,
+      enable_ask_for_user_input=True,
     )
 
     # Initial with streaming
@@ -173,6 +175,7 @@ class TestStreamingResumeDebug:
       name="debug-agent-2",
       instructions="You are a test assistant.",
       model=model2,
+      enable_ask_for_user_input=True,
     )
 
     # Initial with streaming
