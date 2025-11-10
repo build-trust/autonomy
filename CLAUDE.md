@@ -92,3 +92,6 @@ When testing agents and streaming responses:
 - Use the body to explain what and why, not how
 - Focus on the change itself, not the process of making it
 - Write as if completing the sentence: "If applied, this commit will..."
+
+## Documentation
+- Don't create too many summary documents and markdown files.
