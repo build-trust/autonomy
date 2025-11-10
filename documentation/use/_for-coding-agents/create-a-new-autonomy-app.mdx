@@ -85,6 +85,12 @@ Node.start(main)
 
 ```
 
+**Note on Built-in Tools**: This agent automatically has access to these built-in tools:
+- `get_current_time_utc` - Get the current time in UTC timezone
+- `get_current_time` - Get the current time in a specific timezone
+
+To enable human-in-the-loop interactions, add `enable_ask_for_user_input=True` to the `Agent.start()` call. See the [tools guide](https://autonomy.computer/docs/_for-coding-agents/tools.md) for more details.
+
 ### Step 5: Create `images/main/index.html`
 
 The python program in `images/main/main.py` starts an Autonomy Node. The Node by default starts an HTTP server. If `images/main/index.html` is present, the Node's HTTP server will serve it at its root `/` .

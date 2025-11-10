@@ -14,9 +14,36 @@ Enhance **Autonomy** agents with tools that perform specific actions, access ext
 
 This guide shows how to create agents with both Python tools and MCP tools for external service integration.
 
+## Built-in Tools
+
+Autonomy automatically provides built-in tools to agents:
+
+### Always Available
+
+These tools are automatically available to all agents without any configuration:
+
+- **`get_current_time_utc`** - Get the current time in UTC timezone
+- **`get_current_time`** - Get the current time in a specific timezone (e.g., "America/New_York", "Europe/London", "Asia/Tokyo")
+
+### Available When Enabled
+
+- **`ask_user_for_input`** - Request input from the user (human-in-the-loop)
+  - **Requires:** `enable_ask_for_user_input=True` when calling `Agent.start()`
+  - **Default:** Not enabled (defaults to `False`)
+
+### Subagent Tools
+
+When an agent has `subagents` configured, these tools are automatically added:
+
+- **`start_subagent`** - Start a configured subagent on-demand
+- **`delegate_to_subagent`** - Delegate a task to a specific subagent and wait for response
+- **`delegate_to_subagents_parallel`** - Delegate multiple tasks to parallel subagent instances
+- **`list_subagents`** - List all configured and running subagents with their status
+- **`stop_subagent`** - Stop a running subagent
+
 ## Creating Agents with Tools
 
-Autonomy agents can use two types of tools:
+Autonomy agents can use two types of custom tools:
 
 1. **Python Tools** - Functions defined directly in your code
 2. **MCP Tools** - Tools from Model Context Protocol servers
@@ -222,6 +249,87 @@ Node.start(
 | Multiple pods with clones | MCP server container in each pod definition |
 | Only main-pod needs MCP tools | MCP server only in main-pod |
 | All pods need MCP tools | MCP server in every pod definition |
+
+## Using Built-in Time Tools
+
+Agents can check the current time without any configuration. The built-in time tools are automatically available:
+
+### Example: Agent with Time Awareness
+
+```python
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="""
+            You are Henry, a helpful assistant.
+            
+            When users ask about time, use the built-in time tools:
+            - Use get_current_time_utc() for UTC time
+            - Use get_current_time(timezone="...") for specific timezones
+        """,
+        model=Model("claude-sonnet-4-v1"),
+    )
+
+
+Node.start(main)
+```
+
+### Test Time Tools
+
+```bash
+# Test UTC time
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{ "message": "What is the current UTC time?" }' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
+
+# Test timezone-specific time
+timeout 15s curl --silent --request POST \
+--header "Content-Type: application/json" \
+--data '{ "message": "What time is it in Tokyo?" }' \
+"https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
+```
+
+The agent will automatically use:
+- `get_current_time_utc()` to get UTC time
+- `get_current_time(timezone="Asia/Tokyo")` to get Tokyo time
+
+## Using the Ask User for Input Tool
+
+The `ask_user_for_input` tool enables human-in-the-loop interactions where the agent can pause and request input from the user.
+
+### Example: Agent with User Input Capability
+
+```python
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="""
+            You are Henry, an expert legal assistant.
+            
+            When you need information from the user, use ask_user_for_input.
+        """,
+        model=Model("claude-sonnet-4-v1"),
+        enable_ask_for_user_input=True,  # Enable the tool
+    )
+
+
+Node.start(main)
+```
+
+**Key Points:**
+- Set `enable_ask_for_user_input=True` when calling `Agent.start()`
+- The agent can call this tool to pause and wait for user response
+- The conversation resumes after the user provides input
+- Useful for gathering missing information, confirmations, or clarifications
 
 ## Related Guides
 
