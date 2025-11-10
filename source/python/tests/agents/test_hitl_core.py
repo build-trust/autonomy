@@ -48,6 +48,7 @@ class TestHITLCoreFunctionality:
       name="test-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # STEP 1: Initial message that triggers pause
@@ -108,6 +109,7 @@ class TestHITLCoreFunctionality:
       name="pause-agent",
       instructions="Test pause/resume",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Initial message that triggers pause - use streaming
@@ -216,6 +218,7 @@ class TestHITLCoreFunctionality:
       name="state-monitor-agent",
       instructions="Monitor states",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Send initial message - this should pause
@@ -255,6 +258,7 @@ class TestHITLCoreFunctionality:
       name="multi-pause-agent",
       instructions="Ask multiple questions",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # First pause
@@ -310,6 +314,7 @@ class TestHITLCoreFunctionality:
       name="timestamp-agent",
       instructions="Test timestamps",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Record time before pause

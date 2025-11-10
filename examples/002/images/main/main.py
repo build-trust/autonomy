@@ -12,7 +12,8 @@ async def main(node):
         ask_user_for_input tool. Do NOT ask questions in your regular responses.
         Ask ONE question at a time using the tool.
       """,
-      model=Model("claude-sonnet-4-v1")
+      model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
   )
 
 Node.start(main)

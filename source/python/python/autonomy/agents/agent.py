@@ -126,6 +126,7 @@ class AgentConfig(TypedDict):
   max_messages_in_short_term_memory: NotRequired[int]
   max_tokens_in_short_term_memory: NotRequired[int]
   enable_long_term_memory: NotRequired[bool]
+  enable_ask_for_user_input: NotRequired[bool]
 
 
 class AgentManyConfig(TypedDict):
@@ -154,6 +155,7 @@ class AgentManyConfig(TypedDict):
   max_messages_in_short_term_memory: NotRequired[int]
   max_tokens_in_short_term_memory: NotRequired[int]
   enable_long_term_memory: NotRequired[bool]
+  enable_ask_for_user_input: NotRequired[bool]
 
 
 # =============================================================================
@@ -1643,6 +1645,7 @@ class Agent:
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
+    enable_ask_for_user_input: bool = False,
   ):
     """
     Start a single agent on a node.
@@ -1663,6 +1666,7 @@ class Agent:
       max_messages_in_short_term_memory: Maximum messages in short-term memory
       max_tokens_in_short_term_memory: Maximum tokens in short-term memory
       enable_long_term_memory: Enable persistent long-term memory (database)
+      enable_ask_for_user_input: Enable ask_user_for_input tool
 
     Returns:
       AgentReference for interacting with the started agent
@@ -1702,6 +1706,7 @@ class Agent:
       max_messages_in_short_term_memory,
       max_tokens_in_short_term_memory,
       enable_long_term_memory,
+      enable_ask_for_user_input,
     )
 
   @staticmethod
@@ -1716,6 +1721,7 @@ class Agent:
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
+    enable_ask_for_user_input: bool = False,
   ):
     """
         Start multiple agents on a node for load distribution.
@@ -1736,6 +1742,7 @@ class Agent:
           max_messages_in_short_term_memory: Maximum messages in short-term memory
           max_tokens_in_short_term_memory: Maximum tokens in short-term memory
           enable_long_term_memory: Enable persistent long-term memory (database)
+          enable_ask_for_user_input: Enable ask_user_for_input tool
 
         Returns:
           List of AgentReference objects for the started agents
@@ -1760,6 +1767,7 @@ class Agent:
         max_messages_in_short_term_memory,
         max_tokens_in_short_term_memory,
         enable_long_term_memory,
+        enable_ask_for_user_input,
       )
       agents.append(agent_ref)
 
@@ -1824,6 +1832,7 @@ class Agent:
       "max_tokens_in_short_term_memory", MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT
     )
     enable_long_term_memory = config.get("enable_long_term_memory", False)
+    enable_ask_for_user_input = config.get("enable_ask_for_user_input", False)
 
     # Delegate to existing start() method
     return await Agent.start(
@@ -1838,6 +1847,7 @@ class Agent:
       max_messages_in_short_term_memory=max_messages_in_short_term_memory,
       max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
       enable_long_term_memory=enable_long_term_memory,
+      enable_ask_for_user_input=enable_ask_for_user_input,
     )
 
   @staticmethod
@@ -1894,6 +1904,7 @@ class Agent:
       "max_tokens_in_short_term_memory", MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT
     )
     enable_long_term_memory = config.get("enable_long_term_memory", False)
+    enable_ask_for_user_input = config.get("enable_ask_for_user_input", False)
 
     # Delegate to existing start_many() method
     return await Agent.start_many(
@@ -1907,6 +1918,7 @@ class Agent:
       max_messages_in_short_term_memory=max_messages_in_short_term_memory,
       max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
       enable_long_term_memory=enable_long_term_memory,
+      enable_ask_for_user_input=enable_ask_for_user_input,
     )
 
   @staticmethod
@@ -1922,6 +1934,7 @@ class Agent:
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
+    enable_ask_for_user_input: bool = False,
   ):
     """
     Internal implementation for agent creation and startup.
@@ -1941,6 +1954,7 @@ class Agent:
       max_messages_in_short_term_memory: Maximum messages in short-term memory
       max_tokens_in_short_term_memory: Maximum tokens in short-term memory
       enable_long_term_memory: Enable persistent long-term memory (database)
+      enable_ask_for_user_input: Enable ask_user_for_input tool
 
     Returns:
       AgentReference for interacting with the started agent
@@ -1971,7 +1985,7 @@ class Agent:
         static_tools.append(tool)
 
     # Prepare static tools (shared across all workers/scopes/conversations)
-    tool_specs, tools_dict = await prepare_tools(static_tools, node)
+    tool_specs, tools_dict = await prepare_tools(static_tools, node, enable_ask_for_user_input)
 
     from ..memory.memory import Memory
 
@@ -2041,7 +2055,7 @@ class Agent:
       loop = asyncio.new_event_loop()
       asyncio.set_event_loop(loop)
       try:
-        scope_tool_specs, scope_tools_dict = loop.run_until_complete(prepare_tools(all_tools, node))
+        scope_tool_specs, scope_tools_dict = loop.run_until_complete(prepare_tools(all_tools, node, enable_ask_for_user_input))
       finally:
         loop.close()
 
@@ -2102,7 +2116,7 @@ def key_extractor(message):
   return None
 
 
-async def prepare_tools(tools: List[InvokableTool], node: Node):
+async def prepare_tools(tools: List[InvokableTool], node: Node, enable_ask_for_user_input: bool = False):
   """
   Prepare tools for agent use by configuring node references and extracting specs.
 
@@ -2111,13 +2125,14 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
     2. tools_dict: Name→tool mapping (for fast lookup during tool execution)
 
   Automatically includes built-in tools:
-    - ask_user_for_input: Request input from user (human-in-the-loop)
+    - ask_user_for_input: Request input from user (human-in-the-loop) - only if enable_ask_for_user_input is True
     - get_current_time_utc: Get current time in UTC timezone
     - get_current_time: Get current time in a specific timezone
 
   Args:
     tools: List of InvokableTool instances to prepare
     node: Node instance to inject into tools that need it
+    enable_ask_for_user_input: Whether to include ask_user_for_input tool
 
   Returns:
     Tuple of (tool_specs, tools_dict):
@@ -2128,10 +2143,13 @@ async def prepare_tools(tools: List[InvokableTool], node: Node):
 
   # Add built-in tools
   builtin_tools = [
-    AskUserForInputTool(),
     GetCurrentTimeUtcTool(),
     GetCurrentTimeTool(),
   ]
+
+  # Conditionally add human-in-the-loop tools
+  if enable_ask_for_user_input:
+    builtin_tools.insert(0, AskUserForInputTool())
 
   tool_specs = []
   tools_dict = {}

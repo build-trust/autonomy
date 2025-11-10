@@ -61,6 +61,7 @@ class TestBasicPauseResume:
         Do NOT ask for the same information twice.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Send initial request
@@ -106,6 +107,7 @@ class TestBasicPauseResume:
         Do NOT ask for clarification - use what the user provides.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Pause the agent
@@ -165,6 +167,7 @@ class TestStreamingPauseResume:
         Keep responses brief.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     chunks = []
@@ -215,6 +218,7 @@ class TestStreamingPauseResume:
         Keep all responses very brief (1-2 sentences).
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Pause the agent
@@ -283,6 +287,7 @@ class TestMultiplePauses:
         Keep responses very brief.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Initial request - should pause for first question
@@ -344,6 +349,7 @@ class TestMultiplePauses:
         Ask a unique question for each request.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Start first conversation
@@ -404,6 +410,7 @@ class TestEdgeCases:
         Keep responses brief.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Pause the agent
@@ -439,6 +446,7 @@ class TestEdgeCases:
         Keep responses very brief.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Before any messages
@@ -483,6 +491,7 @@ class TestPerformance:
         You are helpful. Use ask_user_for_input immediately when asked.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     start = time.time()
@@ -515,6 +524,7 @@ class TestPerformance:
         After getting answer, respond very briefly and stop.
       """,
       model=Model("claude-sonnet-4-v1"),
+      enable_ask_for_user_input=True,
     )
 
     # Pause

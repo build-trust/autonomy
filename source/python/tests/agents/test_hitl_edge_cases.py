@@ -47,6 +47,7 @@ class TestHITLEdgeCases:
       name="rapid-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Do one rapid pause/resume cycle
@@ -89,6 +90,7 @@ class TestHITLEdgeCases:
       name="non-pause-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # First message (not paused)
@@ -135,6 +137,7 @@ class TestHITLEdgeCases:
       name="empty-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Trigger pause
@@ -179,6 +182,7 @@ class TestHITLEdgeCases:
       name="long-pause-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Trigger pause

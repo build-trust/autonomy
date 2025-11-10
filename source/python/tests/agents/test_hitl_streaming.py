@@ -45,6 +45,7 @@ class TestHITLStreaming:
       name="streaming-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Send message with streaming
@@ -101,6 +102,7 @@ class TestHITLStreaming:
       name="resume-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Initial pause - use streaming
@@ -170,6 +172,7 @@ class TestHITLStreaming:
       name="multi-pause-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # First pause/resume cycle
@@ -227,6 +230,7 @@ class TestHITLStreaming:
       name="order-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Send message with streaming
@@ -280,6 +284,7 @@ class TestHITLStreaming:
       name="timeout-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Should complete before timeout

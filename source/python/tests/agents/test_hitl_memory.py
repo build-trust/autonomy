@@ -47,6 +47,7 @@ class TestHITLMemory:
       name="memory-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Send initial messages to build history
@@ -97,6 +98,7 @@ class TestHITLMemory:
       name="context-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Establish context
@@ -152,6 +154,7 @@ class TestHITLMemory:
       name="isolation-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     # Conversation 1
@@ -210,6 +213,7 @@ class TestHITLMemory:
       name="history-agent",
       instructions="You are a helpful assistant.",
       model=model,
+      enable_ask_for_user_input=True,
     )
 
     messages_count = []
