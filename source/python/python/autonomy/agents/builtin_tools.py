@@ -3,14 +3,17 @@ Built-in tools automatically available to all agents.
 
 These tools are registered with every agent instance and provide
 core functionality for human-in-the-loop interactions, debugging,
-and other standard operations.
+subagent management, and other standard operations.
 """
 
 import json
 from datetime import datetime, UTC
 from zoneinfo import ZoneInfo
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from ..tools.protocol import InvokableTool
+
+if TYPE_CHECKING:
+  from .agent import Agent
 
 
 class AskUserForInputTool(InvokableTool):
@@ -114,37 +117,32 @@ class GetCurrentTimeUtcTool(InvokableTool):
   Built-in tool that returns the current UTC time.
 
   Returns the current time in UTC timezone formatted as ISO 8601.
-  This is useful for agents that need to know the current time for
-  timestamping, scheduling, or time-sensitive operations.
-
-  Example usage by agent:
-    Agent: "Let me check the current time..."
-    Tool call: get_current_time_utc()
-    → Tool result: "2024-01-15T14:30:45.123456+00:00"
-    Agent: "The current UTC time is 2:30 PM..."
+  Useful for agents that need to know the current time for scheduling,
+  timestamps, or time-based decisions.
 
   Returns:
-    ISO 8601 formatted UTC timestamp string
+    Current UTC time as ISO 8601 string (e.g., "2024-01-15T14:30:00Z")
   """
 
   def __init__(self):
     super().__init__()
     self.name = "get_current_time_utc"
     self.description = (
-      "Get the current time in UTC timezone. Returns the time in ISO 8601 format."
+      "Get the current time in UTC timezone. "
+      "Returns the time formatted as ISO 8601 (e.g., '2024-01-15T14:30:00Z'). "
+      "Use this when you need to know the current time for scheduling, "
+      "timestamps, or time-based decisions."
     )
 
   async def invoke(self, json_argument: Optional[str]) -> str:
     """
-    Return the current UTC time as ISO 8601 string.
-
-    Args:
-      json_argument: Not used for this tool (accepts empty or None)
+    Return current UTC time.
 
     Returns:
-      Current UTC time as ISO 8601 formatted string
+      ISO 8601 formatted timestamp string
     """
-    return datetime.now(UTC).isoformat()
+    current_time = datetime.now(UTC)
+    return current_time.isoformat()
 
   async def spec(self) -> dict:
     """
@@ -161,7 +159,279 @@ class GetCurrentTimeUtcTool(InvokableTool):
         "parameters": {
           "type": "object",
           "properties": {},
-          "required": [],
+        },
+      },
+    }
+
+
+class StartSubagentTool(InvokableTool):
+  """
+  Built-in tool that allows agents to start configured subagents on-demand.
+
+  When an agent calls this tool, it starts a subagent using one of the
+  predefined subagent configurations from the parent agent's config.
+
+  Args:
+    role: The role/name of the subagent to start (must match a key in subagents config)
+
+  Returns:
+    Success message with subagent identifier or error message
+  """
+
+  def __init__(self, agent: "Agent"):
+    super().__init__()
+    self.agent = agent
+    self.name = "start_subagent"
+    self.description = (
+      "Start a configured subagent by role name. The subagent will be initialized "
+      "and ready to receive tasks via delegate_to_subagent."
+    )
+
+  async def invoke(self, json_argument: Optional[str]) -> str:
+    """Start a subagent by role."""
+    if json_argument is None or json_argument.strip() == "":
+      return "Error: 'role' parameter is required"
+
+    try:
+      params = json.loads(json_argument)
+      if not isinstance(params, dict):
+        return "Error: Invalid parameters format"
+    except json.JSONDecodeError:
+      return "Error: Invalid JSON in parameters"
+
+    role = params.get("role")
+    if not role:
+      return "Error: 'role' parameter is required"
+
+    try:
+      subagent_ref = await self.agent.subagents.start_subagent(role)
+      return f"Successfully started subagent '{role}' (name: {subagent_ref.name})"
+    except Exception as e:
+      return f"Error starting subagent: {str(e)}"
+
+  async def spec(self) -> dict:
+    """Return OpenAI-compatible tool specification."""
+    return {
+      "type": "function",
+      "function": {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "description": "The role of the subagent to start",
+            }
+          },
+          "required": ["role"],
+        },
+      },
+    }
+
+
+class DelegateToSubagentTool(InvokableTool):
+  """
+  Built-in tool that delegates a task to a specific subagent.
+
+  Sends a task to a running subagent and waits for its response.
+  The subagent must be started first (either via start_subagent or auto_start).
+
+  Args:
+    role: The role of the subagent to delegate to
+    task: The task description or prompt to send
+    timeout: Optional timeout in seconds (default: 60)
+
+  Returns:
+    The subagent's response text or error message
+  """
+
+  def __init__(self, agent: "Agent"):
+    super().__init__()
+    self.agent = agent
+    self.name = "delegate_to_subagent"
+    self.description = (
+      "Delegate a task to a subagent and wait for its response. "
+      "The subagent must be started first (or configured with auto_start)."
+    )
+
+  async def invoke(self, json_argument: Optional[str]) -> str:
+    """Delegate a task to a subagent."""
+    if json_argument is None or json_argument.strip() == "":
+      return "Error: 'role' and 'task' parameters are required"
+
+    try:
+      params = json.loads(json_argument)
+      if not isinstance(params, dict):
+        return "Error: Invalid parameters format"
+    except json.JSONDecodeError:
+      return "Error: Invalid JSON in parameters"
+
+    role = params.get("role")
+    task = params.get("task")
+    timeout = params.get("timeout", 60)
+
+    if not role or not task:
+      return "Error: Both 'role' and 'task' parameters are required"
+
+    try:
+      result = await self.agent.subagents.delegate_to_subagent(role, task, timeout=timeout)
+      return result
+    except Exception as e:
+      return f"Error delegating to subagent: {str(e)}"
+
+  async def spec(self) -> dict:
+    """Return OpenAI-compatible tool specification."""
+    return {
+      "type": "function",
+      "function": {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "description": "The role of the subagent to delegate to",
+            },
+            "task": {
+              "type": "string",
+              "description": "The task description or prompt to send to the subagent",
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Optional timeout in seconds (default: 60)",
+            },
+          },
+          "required": ["role", "task"],
+        },
+      },
+    }
+
+
+class DelegateToSubagentsParallelTool(InvokableTool):
+  """
+  Built-in tool that delegates multiple tasks to parallel subagent instances.
+
+  Creates one subagent instance per task and processes them concurrently.
+  Useful for batch processing or parallel research/analysis tasks.
+
+  Args:
+    role: The role of subagents to use
+    tasks: List of task descriptions to process in parallel
+    timeout: Optional timeout in seconds per task (default: 60)
+    runner_filter: Optional filter for targeting specific runner nodes
+
+  Returns:
+    JSON string with list of results, each containing task, result/error, and success status
+  """
+
+  def __init__(self, agent: "Agent"):
+    super().__init__()
+    self.agent = agent
+    self.name = "delegate_to_subagents_parallel"
+    self.description = (
+      "Delegate multiple tasks to parallel subagent instances. "
+      "Creates one subagent per task for concurrent processing. "
+      "Returns results for all tasks."
+    )
+
+  async def invoke(self, json_argument: Optional[str]) -> str:
+    """Delegate tasks to parallel subagents."""
+    if json_argument is None or json_argument.strip() == "":
+      return "Error: 'role' and 'tasks' parameters are required"
+
+    try:
+      params = json.loads(json_argument)
+      if not isinstance(params, dict):
+        return "Error: Invalid parameters format"
+    except json.JSONDecodeError:
+      return "Error: Invalid JSON in parameters"
+
+    role = params.get("role")
+    tasks = params.get("tasks")
+    timeout = params.get("timeout", 60)
+    runner_filter = params.get("runner_filter")
+
+    if not role or not tasks:
+      return "Error: Both 'role' and 'tasks' parameters are required"
+
+    try:
+      results = await self.agent.subagents.delegate_to_subagents_parallel(
+        role, tasks, timeout=timeout, runner_filter=runner_filter
+      )
+      return json.dumps(results, indent=2)
+    except Exception as e:
+      return f"Error in parallel delegation: {str(e)}"
+
+  async def spec(self) -> dict:
+    """Return OpenAI-compatible tool specification."""
+    return {
+      "type": "function",
+      "function": {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "description": "The role of subagents to use for parallel execution",
+            },
+            "tasks": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of task descriptions to process in parallel",
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Optional timeout in seconds per task (default: 60)",
+            },
+            "runner_filter": {
+              "type": "string",
+              "description": "Optional filter for Zone.nodes() to target specific runners",
+            },
+          },
+          "required": ["role", "tasks"],
+        },
+      },
+    }
+
+
+class ListSubagentsTool(InvokableTool):
+  """
+  Built-in tool that lists configured and running subagents.
+
+  Returns information about all subagent configurations and their current status.
+
+  Returns:
+    JSON string with configured roles, running roles, and detailed status
+  """
+
+  def __init__(self, agent: "Agent"):
+    super().__init__()
+    self.agent = agent
+    self.name = "list_subagents"
+    self.description = "List all configured and running subagents with their status."
+
+  async def invoke(self, json_argument: Optional[str]) -> str:
+    """List subagents."""
+    try:
+      result = self.agent.subagents.list_subagents()
+      return json.dumps(result, indent=2)
+    except Exception as e:
+      return f"Error listing subagents: {str(e)}"
+
+  async def spec(self) -> dict:
+    """Return OpenAI-compatible tool specification."""
+    return {
+      "type": "function",
+      "function": {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+          "type": "object",
+          "properties": {},
         },
       },
     }
@@ -172,20 +442,13 @@ class GetCurrentTimeTool(InvokableTool):
   Built-in tool that returns the current time in a specific timezone.
 
   Returns the current time in the specified timezone formatted as ISO 8601.
-  This is useful for agents that need to work with times in different
-  timezones or provide localized time information.
-
-  Example usage by agent:
-    Agent: "Let me check the current time in New York..."
-    Tool call: get_current_time(timezone="America/New_York")
-    → Tool result: "2024-01-15T09:30:45.123456-05:00"
-    Agent: "The current time in New York is 9:30 AM..."
+  Useful for agents that need to work with different timezones.
 
   Args:
-    timezone: IANA timezone name (e.g., "America/New_York", "Europe/London", "Asia/Tokyo")
+    timezone: IANA timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo')
 
   Returns:
-    ISO 8601 formatted timestamp string in the specified timezone
+    Current time in the specified timezone as ISO 8601 string
   """
 
   def __init__(self):
@@ -193,19 +456,20 @@ class GetCurrentTimeTool(InvokableTool):
     self.name = "get_current_time"
     self.description = (
       "Get the current time in a specific timezone. "
-      "Provide a timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo'). "
-      "Returns the time in ISO 8601 format."
+      "Returns the time formatted as ISO 8601. "
+      "Accepts IANA timezone names like 'America/New_York', 'Europe/London', 'Asia/Tokyo'. "
+      "Use this when you need to know the current time in a specific location."
     )
 
   async def invoke(self, json_argument: Optional[str]) -> str:
     """
-    Return the current time in the specified timezone as ISO 8601 string.
+    Return current time in specified timezone.
 
     Args:
-      json_argument: JSON string containing 'timezone' key with IANA timezone name
+      json_argument: JSON string with 'timezone' field (defaults to UTC if not provided)
 
     Returns:
-      Current time in specified timezone as ISO 8601 formatted string
+      ISO 8601 formatted timestamp string or error message
     """
     # Parse JSON argument string into dictionary
     if json_argument is None or json_argument.strip() == "":
@@ -222,9 +486,10 @@ class GetCurrentTimeTool(InvokableTool):
 
     try:
       tz = ZoneInfo(timezone_name)
-      return datetime.now(tz).isoformat()
+      current_time = datetime.now(tz)
+      return current_time.isoformat()
     except Exception as e:
-      return f"Error: Invalid timezone '{timezone_name}'. Please use a valid IANA timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo'). Error: {str(e)}"
+      return f"Error: Invalid timezone '{timezone_name}'. Use IANA timezone names like 'America/New_York', 'Europe/London', 'Asia/Tokyo'. Error: {str(e)}"
 
   async def spec(self) -> dict:
     """
@@ -243,10 +508,70 @@ class GetCurrentTimeTool(InvokableTool):
           "properties": {
             "timezone": {
               "type": "string",
-              "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo')",
+              "description": "IANA timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo'). Defaults to UTC if not provided.",
             }
           },
-          "required": ["timezone"],
+          "required": [],
+        },
+      },
+    }
+
+
+class StopSubagentTool(InvokableTool):
+  """
+  Built-in tool that allows agents to stop running subagents.
+
+  Args:
+    role: The role of the subagent to stop
+
+  Returns:
+    Success or error message
+  """
+
+  def __init__(self, agent: "Agent"):
+    super().__init__()
+    self.agent = agent
+    self.name = "stop_subagent"
+    self.description = "Stop a running subagent by role name."
+
+  async def invoke(self, json_argument: Optional[str]) -> str:
+    """Stop a subagent."""
+    if json_argument is None or json_argument.strip() == "":
+      return "Error: 'role' parameter is required"
+
+    try:
+      params = json.loads(json_argument)
+      if not isinstance(params, dict):
+        return "Error: Invalid parameters format"
+    except json.JSONDecodeError:
+      return "Error: Invalid JSON in parameters"
+
+    role = params.get("role")
+    if not role:
+      return "Error: 'role' parameter is required"
+
+    try:
+      await self.agent.subagents.stop_subagent(role)
+      return f"Successfully stopped subagent '{role}'"
+    except Exception as e:
+      return f"Error stopping subagent: {str(e)}"
+
+  async def spec(self) -> dict:
+    """Return OpenAI-compatible tool specification."""
+    return {
+      "type": "function",
+      "function": {
+        "name": self.name,
+        "description": self.description,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "description": "The role of the subagent to stop",
+            }
+          },
+          "required": ["role"],
         },
       },
     }
