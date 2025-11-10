@@ -136,6 +136,93 @@ timeout 15s curl --silent --request POST \
 
 **Tool Selection**: The agent analyzes the user's message and your instructions to decide which tools to use and when.
 
+## MCP Servers in Multi-Pod Deployments
+
+> **IMPORTANT**: MCP servers are accessed over `localhost`. When your zone has nodes distributed across multiple pods, each pod that needs MCP tools must have its own MCP server container.
+
+### Why This Matters
+
+Containers within the same pod share a network namespace and communicate via `localhost`. When you distribute nodes across multiple pods (using `clones` or separate pod definitions), each pod runs on a different machine. An agent running in one pod cannot access MCP servers in another pod over `localhost`.
+
+### Example: Distributed Workers with MCP Tools
+
+If you have workers across multiple pods that need MCP tools, configure the MCP server in each pod:
+
+#### autonomy.yaml
+
+```yaml
+name: distributed
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+      - name: brave
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+        args:
+          ["--sse-port", "8001", "--pass-environment", "--",
+           "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+
+  - name: runner-pod
+    clones: 3
+    containers:
+      - name: runner
+        image: runner
+      - name: brave
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+        args:
+          ["--sse-port", "8001", "--pass-environment", "--",
+           "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+#### images/runner/main.py
+
+```python
+from autonomy import Agent, Model, Node, McpTool, McpClient
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="searcher",
+        instructions="You search the web for information.",
+        model=Model("nova-micro-v1"),
+        tools=[
+            McpTool("brave_search", "brave_web_search"),
+        ],
+    )
+
+
+Node.start(
+    main,
+    mcp_clients=[
+        McpClient(name="brave_search", address="http://localhost:8001/sse"),
+    ],
+)
+```
+
+**Key Points:**
+
+- **Both `main-pod` and `runner-pod` have their own `brave` container** - Each pod needs its own MCP server
+- **Each clone of `runner-pod` gets its own MCP server** - The 3 clones each run independently with their own brave container
+- **All MCP clients use `localhost`** - Each node connects to the MCP server in its own pod
+- **Environment variables are duplicated** - Each pod needs the same secrets configuration
+
+### Decision Guide
+
+| Scenario | MCP Server Configuration |
+|----------|-------------------------|
+| Single pod with one node | One MCP server container in that pod |
+| Single pod with multiple agents | One MCP server container shared by all agents |
+| Multiple pods with clones | MCP server container in each pod definition |
+| Only main-pod needs MCP tools | MCP server only in main-pod |
+| All pods need MCP tools | MCP server in every pod definition |
+
 ## Related Guides
 
 - [How to create and deploy a new Autonomy app](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)

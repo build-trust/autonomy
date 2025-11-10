@@ -319,6 +319,8 @@ pods:
 - Both `main` and `runner` containers are Autonomy Nodes (they call `Node.start()`)
 - You could also add non-Node containers in a Zone (like MCP servers) that don't call `Node.start()`
 
+> **IMPORTANT**: If your distributed workers need MCP tools, each pod must have its own MCP server container since agents and workers access MCP servers over `localhost`. See the [tools guide section on multi-pod deployments](https://autonomy.computer/docs/_for-coding-agents/tools.md#mcp-servers-in-multi-pod-deployments) for complete examples.
+
 ### Step 2: Discover Nodes in a Zone
 
 Use `Zone.nodes()` to find nodes running in other containers:

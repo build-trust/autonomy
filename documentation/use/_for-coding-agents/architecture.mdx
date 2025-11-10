@@ -377,6 +377,8 @@ async def main(node):
 Node.start(main)
 ```
 
+> **Note**: If your distributed workers need MCP tools, each pod must have its own MCP server container since agents access MCP servers over `localhost`. See the [tools guide](https://autonomy.computer/docs/_for-coding-agents/tools.md#mcp-servers-in-multi-pod-deployments) for details.
+
 ### Pattern 4: Multi-Agent Collaboration
 
 Team of specialized agents.
