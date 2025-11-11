@@ -69,6 +69,16 @@ from ..nodes.message import (
   ToolCallResponseMessage,
 )
 
+from .context import (
+  ContextTemplate,
+  ContextSection,
+  SystemInstructionsSection,
+  ConversationHistorySection,
+  AdditionalContextSection,
+  FrameworkInstructionsSection,
+  create_default_template,
+)
+
 logger = get_logger("agent")
 
 
@@ -154,15 +164,16 @@ class AgentConfig(TypedDict):
   name: NotRequired[str]
   model: NotRequired[Model]
   tools: NotRequired[List]
+  context_template: NotRequired[ContextTemplate]
   max_iterations: NotRequired[int]
   max_execution_time: NotRequired[float]
-  exposed_as: NotRequired[str]
   max_messages_in_short_term_memory: NotRequired[int]
   max_tokens_in_short_term_memory: NotRequired[int]
   enable_long_term_memory: NotRequired[bool]
   enable_ask_for_user_input: NotRequired[bool]
   subagents: NotRequired[Dict[str, SubagentConfig]]
   subagent_runner_filter: NotRequired[str]
+  exposed_as: NotRequired[str]
 
 
 class AgentManyConfig(TypedDict):
@@ -186,6 +197,7 @@ class AgentManyConfig(TypedDict):
   number_of_agents: int
   model: NotRequired[Model]
   tools: NotRequired[List]
+  context_template: NotRequired[ContextTemplate]
   max_iterations: NotRequired[int]
   max_execution_time: NotRequired[float]
   max_messages_in_short_term_memory: NotRequired[int]
@@ -227,34 +239,38 @@ class State(Enum):
 #     │         │
 #     └───┬─────┘
 #         │
+#         │ [start]
 #         ▼
 #     ┌──────────┐
-#     │          │
-#     │ THINKING │◀─────┐
-#     │          │      │
-#     └┬────┬────┘      │
-#      │    │           │
-#      │    ▼           │
-#      │  ┌────────┐    │
-#      │  │        │    │
-#      │  │ ACTING │────┤
-#      │  │        │    │
-#      │  └───┬────┘    │
-#      │      │         │
-#      │      ▼         │
-#      │  ┌──────────────────┐
-#      │  │                  │
-#      │  │ WAITING_FOR_     │ [paused, waits for user]
-#      │  │     INPUT        │
-#      │  │                  │
-#      │  └──────────────────┘
-#      │        │
-#      │        │ [user responds]
-#      │        └──────────────┐
-#      │                       │
-#      │ [response complete && no tool calls]
-#      │ [error conditions]
-#      │ [max iterations reached]
+#     │          │◀────────────────────────────┐
+#     │ THINKING │◀────────────────┐           │
+#     │          │                 │           │
+#     └┬────┬────┘                 │           │
+#      │    │                      ▲           ▲
+#      │    │ [has tool calls]     │           │
+#      │    ▼                      │           │
+#      │  ┌────────┐               │           │
+#      │  │        │               │           │
+#      │  │ ACTING │───────────────┘           │
+#      │  │        │                           │
+#      │  └───┬────┘                           │
+#      │      │                                │
+#      │      │ [ask_user_for_input called]    │
+#      │      ▼                                │
+#      │  ╔══════════════════════╗             │
+#      │  ║                      ║             │
+#      │  ║  WAITING_FOR_INPUT   ║             │
+#      │  ║                      ║             │
+#      │  ╚══════╤═══════════════╝             ▲
+#      │         │                             │
+#      │         │                             │
+#      │         │  USER RESPONDS              │
+#      │         ▼                             │
+#      │         └─────────────────────────────┘
+#      │
+#      │
+#      │ [no tool calls OR error OR max iterations]
+#      │
 #      ▼
 #  ┌─────────┐
 #  │         │
@@ -862,6 +878,8 @@ class Agent:
     max_execution_time: float = MAX_EXECUTION_TIME_DEFAULT,
     subagent_configs: Optional[Dict[str, SubagentConfig]] = None,
     parent_agent_name: Optional[str] = None,
+    context_template: Optional[ContextTemplate] = None,
+    enable_ask_for_user_input: bool = False,
   ):
     logger.info(f"Starting agent '{name}'")
     self.node = node
@@ -892,6 +910,18 @@ class Agent:
     # Since each Agent instance handles one (scope, conversation) pair,
     # we only need to track one active state machine at a time
     self._active_state_machine: Optional[StateMachine] = None
+
+    # Context template for organizing model input context into sections
+    # If no custom template is provided, use the default template with framework instructions
+    if context_template is None:
+      self.context_template = create_default_template(
+        memory,
+        memory.instructions,
+        enable_ask_for_user_input=enable_ask_for_user_input,
+        subagent_configs=subagent_configs,
+      )
+    else:
+      self.context_template = context_template
 
     logger.info(f"Started agent '{name}'")
 
@@ -1237,17 +1267,38 @@ class Agent:
 
   async def determine_input_context(self, scope: str, conversation: str):
     """
-    Retrieve message history as typed ConversationMessage objects for model input.
+    Build structured model input context from multiple organized sections.
+
+    Uses the agent's context template to construct model input by combining:
+    - System instructions (agent behavior and capabilities)
+    - Conversation history (user messages, assistant responses, tool results)
+    - Additional context (knowledge retrieval, external data)
+    - Framework instructions (tool schemas, formatting guidelines)
+
+    The context template organizes these sections in optimal order for model
+    reasoning while respecting memory limits and token constraints.
+
+    Flow:
+      1. Apply context template to agent-scoped memory
+      2. Retrieve raw message dicts from memory system
+      3. Convert to typed ConversationMessage objects
+      4. Return structured context ready for model consumption
 
     Args:
-      scope: User/tenant scope identifier
-      conversation: Conversation identifier
+      scope: User/tenant scope identifier for memory isolation
+      conversation: Conversation thread identifier
 
     Returns:
-      List of ConversationMessage objects providing context for the model
+      List of ConversationMessage objects providing complete context for model,
+      organized by template sections and ready for LLM processing
+
+    Example context structure:
+      [SystemMessage(instructions), UserMessage(query), AssistantMessage(response),
+       ToolCallResponseMessage(result), FrameworkMessage(tool_schemas)]
     """
 
-    raw_messages = await self.memory.get_messages(self._memory_scope(scope), conversation)
+    # Build context using the template (applies to agent-scoped memory)
+    raw_messages = await self.context_template.build_context(self._memory_scope(scope), conversation)
     logger.debug(f"[MEMORY→READ] Retrieved {len(raw_messages)} messages for model context")
     if logger.isEnabledFor(10):  # DEBUG level
       for idx, msg in enumerate(raw_messages):
@@ -1687,15 +1738,16 @@ class Agent:
     name: Optional[str] = None,
     model: Optional[Model] = None,
     tools: Optional[List] = None,
+    context_template: Optional[ContextTemplate] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
-    exposed_as: Optional[str] = None,
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
     enable_ask_for_user_input: bool = False,
     subagents: Optional[Dict[str, SubagentConfig]] = None,
     subagent_runner_filter: Optional[str] = None,
+    exposed_as: Optional[str] = None,
   ):
     """
     Start a single agent on a node.
@@ -1712,11 +1764,14 @@ class Agent:
         - ToolFactory instances (create scope-specific tools automatically)
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
-      exposed_as: Optional external name for HTTP exposure
+      context_template: Optional custom context template for organizing model input
       max_messages_in_short_term_memory: Maximum messages in short-term memory
       max_tokens_in_short_term_memory: Maximum tokens in short-term memory
       enable_long_term_memory: Enable persistent long-term memory (database)
       enable_ask_for_user_input: Enable ask_user_for_input tool
+      subagents: Optional dictionary of subagent configurations
+      subagent_runner_filter: Optional filter for subagent runner selection
+      exposed_as: Optional external name for HTTP exposure
 
     Returns:
       AgentReference for interacting with the started agent
@@ -1724,14 +1779,12 @@ class Agent:
     Example:
       from autonomy import Agent, Tool, FilesystemTools
 
-      fs_tools = FilesystemTools()
-
       agent = await Agent.start(
         node=node,
         name="assistant",
         tools=[
           Tool(my_function),  # Static tool
-          fs_factory,         # Factory - creates scope-specific tools
+          FilesystemTools(),  # Factory - creates scope-specific tools
         ],
       )
     """
@@ -1750,15 +1803,16 @@ class Agent:
       instructions,
       model,
       tools,
+      context_template,
       max_iterations,
       max_execution_time,
-      exposed_as,
       max_messages_in_short_term_memory,
       max_tokens_in_short_term_memory,
       enable_long_term_memory,
       enable_ask_for_user_input,
       subagents,
       subagent_runner_filter,
+      exposed_as,
     )
 
   @staticmethod
@@ -1768,6 +1822,7 @@ class Agent:
     number_of_agents: int,
     model: Optional[Model] = None,
     tools: Optional[List] = None,
+    context_template: Optional[ContextTemplate] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
@@ -1789,6 +1844,7 @@ class Agent:
           tools: List of tools and/or tool factories. Can contain:
     - InvokableTool instances (static, shared across all scopes)
     - ToolFactory instances (create scope-specific tools automatically)
+          context_template: Optional custom context template for organizing model input
           max_iterations: Maximum state machine iterations
           max_execution_time: Maximum execution time in seconds
           max_messages_in_short_term_memory: Maximum messages in short-term memory
@@ -1813,13 +1869,16 @@ class Agent:
         instructions,
         model,
         tools,
+        context_template,
         max_iterations,
         max_execution_time,
-        None,  # exposed_as not supported for multiple agents
         max_messages_in_short_term_memory,
         max_tokens_in_short_term_memory,
         enable_long_term_memory,
         enable_ask_for_user_input,
+        None,  # subagent_configs not supported for multiple agents
+        None,  # subagent_runner_filter not supported for multiple agents
+        None,  # exposed_as not supported for multiple agents
       )
       agents.append(agent_ref)
 
@@ -1874,9 +1933,9 @@ class Agent:
     name = config.get("name")
     model = config.get("model")
     tools = config.get("tools")
+    context_template = config.get("context_template")
     max_iterations = config.get("max_iterations")
     max_execution_time = config.get("max_execution_time")
-    exposed_as = config.get("exposed_as")
     max_messages_in_short_term_memory = config.get(
       "max_messages_in_short_term_memory", MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT
     )
@@ -1887,6 +1946,7 @@ class Agent:
     enable_ask_for_user_input = config.get("enable_ask_for_user_input", False)
     subagents = config.get("subagents")
     subagent_runner_filter = config.get("subagent_runner_filter")
+    exposed_as = config.get("exposed_as")
 
     # Delegate to existing start() method
     return await Agent.start(
@@ -1895,15 +1955,16 @@ class Agent:
       name=name,
       model=model,
       tools=tools,
+      context_template=context_template,
       max_iterations=max_iterations,
       max_execution_time=max_execution_time,
-      exposed_as=exposed_as,
       max_messages_in_short_term_memory=max_messages_in_short_term_memory,
       max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
       enable_long_term_memory=enable_long_term_memory,
       enable_ask_for_user_input=enable_ask_for_user_input,
       subagents=subagents,
       subagent_runner_filter=subagent_runner_filter,
+      exposed_as=exposed_as,
     )
 
   @staticmethod
@@ -1951,6 +2012,7 @@ class Agent:
     # Extract optional fields with defaults
     model = config.get("model")
     tools = config.get("tools")
+    context_template = config.get("context_template")
     max_iterations = config.get("max_iterations")
     max_execution_time = config.get("max_execution_time")
     max_messages_in_short_term_memory = config.get(
@@ -1969,6 +2031,7 @@ class Agent:
       number_of_agents=number_of_agents,
       model=model,
       tools=tools,
+      context_template=context_template,
       max_iterations=max_iterations,
       max_execution_time=max_execution_time,
       max_messages_in_short_term_memory=max_messages_in_short_term_memory,
@@ -1984,15 +2047,16 @@ class Agent:
     instructions: str,
     model: Model,
     tools: Optional[List],
+    context_template: Optional[ContextTemplate],
     max_iterations: Optional[int],
     max_execution_time: Optional[float],
-    exposed_as: Optional[str],
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
     enable_ask_for_user_input: bool = False,
     subagent_configs: Optional[Dict[str, SubagentConfig]] = None,
     subagent_runner_filter: Optional[str] = None,
+    exposed_as: Optional[str] = None,
   ):
     """
     Internal implementation for agent creation and startup.
@@ -2006,13 +2070,16 @@ class Agent:
       instructions: System instructions defining agent behavior
       model: LLM to use for reasoning
       tools: List of tools and/or tool factories
+      context_template: Optional custom context template for organizing model input
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
-      exposed_as: Optional external name for HTTP exposure
       max_messages_in_short_term_memory: Maximum messages in short-term memory
       max_tokens_in_short_term_memory: Maximum tokens in short-term memory
       enable_long_term_memory: Enable persistent long-term memory (database)
       enable_ask_for_user_input: Enable ask_user_for_input tool
+      subagent_configs: Optional dictionary of subagent configurations
+      subagent_runner_filter: Optional filter for subagent runner selection
+      exposed_as: Optional external name for HTTP exposure
 
     Returns:
       AgentReference for interacting with the started agent
@@ -2132,6 +2199,10 @@ class Agent:
           kwargs["subagent_configs"] = subagent_configs
         if subagent_runner_filter is not None:
           kwargs["subagent_runner_filter"] = subagent_runner_filter
+        if context_template is not None:
+          kwargs["context_template"] = context_template
+        if enable_ask_for_user_input:
+          kwargs["enable_ask_for_user_input"] = enable_ask_for_user_input
 
         agent_instance = Agent(**kwargs)
 
