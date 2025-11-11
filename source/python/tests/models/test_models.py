@@ -29,6 +29,7 @@ class TestToolCallIdBugFixSummary:
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
     memory.set_instructions = MagicMock()
+    memory.instructions = "Test agent for bug fix verification"
 
     agent = Agent(
       node=node,
@@ -338,6 +339,7 @@ class TestToolCallIdFixIntegration:
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
     memory.set_instructions = MagicMock()
+    memory.instructions = "You are a helpful assistant that uses tools frequently."
 
     # Create agent with realistic configuration
     agent = Agent(
@@ -628,6 +630,7 @@ class TestToolCallIdBug:
     knowledge = MagicMock(spec=KnowledgeProvider)
     # Mock memory.set_instructions to avoid errors
     memory.set_instructions = MagicMock()
+    memory.instructions = "Test agent for tool call ID testing"
 
     agent = Agent(
       node=node,
@@ -872,6 +875,7 @@ class TestToolCallIdBugSimple:
     knowledge = MagicMock(spec=KnowledgeProvider)
     # Mock memory.set_instructions to avoid errors
     memory.set_instructions = MagicMock()
+    memory.instructions = "Test agent for tool call ID testing"
 
     agent = Agent(
       node=node,
@@ -1066,6 +1070,7 @@ class TestToolCallIdConceptualBug:
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
     memory.set_instructions = MagicMock()
+    memory.instructions = "Test agent for conceptual bug demonstration"
 
     agent = Agent(
       node=node,
@@ -1254,6 +1259,7 @@ class TestToolCallIdFix:
     memory = MagicMock(spec=Memory)
     knowledge = MagicMock(spec=KnowledgeProvider)
     memory.set_instructions = MagicMock()
+    memory.instructions = "Test agent for fix verification"
 
     agent = Agent(
       node=node,

@@ -15,36 +15,62 @@ from autonomy.models.clients.bedrock_client import (
 from autonomy.nodes.message import UserMessage, AssistantMessage
 
 
+# Fixture to check if AWS credentials are configured
+@pytest.fixture
+def aws_credentials():
+  """Provide AWS credentials for tests."""
+  # Check if AWS_PROFILE is set or other AWS credentials exist
+  has_aws = (
+    os.environ.get("AWS_PROFILE") is not None
+    or os.environ.get("AWS_ACCESS_KEY_ID") is not None
+    or os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE") is not None
+  )
+  if not has_aws:
+    pytest.skip("AWS credentials not configured. Set AWS_PROFILE=")
+  return True
+
+
+# Fixture to ensure AWS region is set
+@pytest.fixture
+def aws_region():
+  """Ensure AWS region is configured."""
+  if not os.environ.get("AWS_REGION") and not os.environ.get("AWS_DEFAULT_REGION"):
+    # Set a default region for tests
+    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+  yield
+  # Cleanup is optional since we're just setting a default
+
+
 class TestBedrockClientInitialization:
   """Test BedrockClient initialization and setup."""
 
-  def test_basic_initialization(self):
+  def test_basic_initialization(self, aws_credentials, aws_region):
     """Test basic client initialization."""
     client = BedrockClient("claude-3-5-sonnet-v2")
     assert client.original_name == "claude-3-5-sonnet-v2"
     assert client.name is not None
     assert client.max_input_tokens is None
 
-  def test_initialization_with_max_tokens(self):
+  def test_initialization_with_max_tokens(self, aws_credentials, aws_region):
     """Test client initialization with max tokens."""
     client = BedrockClient("claude-3-5-sonnet-v2", max_input_tokens=100000)
     assert client.max_input_tokens == 100000
 
-  def test_initialization_with_kwargs(self):
+  def test_initialization_with_kwargs(self, aws_credentials, aws_region):
     """Test client initialization with additional kwargs."""
     kwargs = {"temperature": 0.7, "top_p": 0.9}
     client = BedrockClient("claude-3-5-sonnet-v2", **kwargs)
     assert client.temperature == 0.7
     assert client.top_p == 0.9
 
-  def test_model_name_resolution(self):
+  def test_model_name_resolution(self, aws_credentials, aws_region):
     """Test that model names are properly resolved."""
     # Test with alias
     client = BedrockClient("claude-3-5-sonnet-v2")
     assert client.original_name == "claude-3-5-sonnet-v2"
     assert client.name == BEDROCK_MODELS["claude-3-5-sonnet-v2"]
 
-  def test_direct_model_id(self):
+  def test_direct_model_id(self, aws_credentials, aws_region):
     """Test with direct model ID."""
     model_id = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     client = BedrockClient(model_id)
@@ -57,7 +83,7 @@ class TestBedrockClientInitialization:
       BedrockClient("unsupported-model")
 
   @patch("autonomy.models.clients.bedrock_client.boto3.client")
-  def test_bedrock_client_creation(self, mock_boto_client):
+  def test_bedrock_client_creation(self, mock_boto_client, aws_region):
     """Test that Bedrock client is properly created."""
     mock_client = MagicMock()
     mock_boto_client.return_value = mock_client
@@ -69,7 +95,7 @@ class TestBedrockClientInitialization:
 class TestBedrockClientMethods:
   """Test BedrockClient core methods."""
 
-  def test_count_tokens_basic(self):
+  def test_count_tokens_basic(self, aws_credentials, aws_region):
     """Test basic token counting functionality."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -80,7 +106,7 @@ class TestBedrockClientMethods:
     assert isinstance(result, int)
     assert result > 0
 
-  def test_count_tokens_conversation_messages(self):
+  def test_count_tokens_conversation_messages(self, aws_credentials, aws_region):
     """Test token counting with ConversationMessage objects."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -90,7 +116,7 @@ class TestBedrockClientMethods:
     assert isinstance(result, int)
     assert result > 0
 
-  def test_count_tokens_with_thinking(self):
+  def test_count_tokens_with_thinking(self, aws_credentials, aws_region):
     """Test token counting with thinking mode."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -99,7 +125,7 @@ class TestBedrockClientMethods:
     assert isinstance(result, int)
     assert result > 0
 
-  def test_count_tokens_with_tools(self):
+  def test_count_tokens_with_tools(self, aws_credentials, aws_region):
     """Test token counting with tools."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -109,13 +135,13 @@ class TestBedrockClientMethods:
     assert isinstance(result, int)
     assert result > 0
 
-  def test_count_tokens_empty_messages(self):
+  def test_count_tokens_empty_messages(self, aws_credentials, aws_region):
     """Test token counting with empty messages."""
     client = BedrockClient("claude-3-5-sonnet-v2")
     result = client.count_tokens([])
     assert result == 0
 
-  def test_support_tools_claude_models(self):
+  def test_support_tools_claude_models(self, aws_credentials, aws_region):
     """Test tools support for Claude models."""
     client = BedrockClient("claude-3-5-sonnet-v2")
     assert client.support_tools() is True
@@ -123,12 +149,12 @@ class TestBedrockClientMethods:
   # Tests removed: llama and nova models require CLUSTER environment variable
   # for inference profile creation
 
-  def test_support_tools_titan_models(self):
+  def test_support_tools_titan_models(self, aws_credentials, aws_region):
     """Test tools support for Titan models (should be False)."""
     client = BedrockClient("titan-text-express-v1")
     assert client.support_tools() is False
 
-  def test_support_forced_assistant_answer(self):
+  def test_support_forced_assistant_answer(self, aws_credentials, aws_region):
     """Test forced assistant answer support (should always be False for Bedrock)."""
     client = BedrockClient("claude-3-5-sonnet-v2")
     assert client.support_forced_assistant_answer() is False
@@ -139,7 +165,7 @@ class TestBedrockClientChatCompletion:
 
   @pytest.mark.asyncio
   @patch("autonomy.models.clients.bedrock_client.BedrockClient._invoke_model")
-  async def test_complete_chat_error_handling(self, mock_invoke):
+  async def test_complete_chat_error_handling(self, mock_invoke, aws_credentials, aws_region):
     """Test error handling in chat completion."""
     client = BedrockClient("claude-3-5-sonnet-v2")
     client.bedrock_client.invoke_model = MagicMock(
@@ -159,7 +185,7 @@ class TestBedrockClientEmbeddings:
 class TestBedrockClientInternalMethods:
   """Test BedrockClient internal methods."""
 
-  def test_prepare_claude_messages(self):
+  def test_prepare_claude_messages(self, aws_credentials, aws_region):
     """Test Claude message preparation."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -179,7 +205,7 @@ class TestBedrockClientInternalMethods:
     assert len(processed_messages) == 2  # System message extracted
     assert processed_messages[0]["role"] == "user"
 
-  def test_prepare_claude_messages_with_tools(self):
+  def test_prepare_claude_messages_with_tools(self, aws_credentials, aws_region):
     """Test Claude message preparation with tool calls."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -205,7 +231,7 @@ class TestBedrockClientInternalMethods:
 
   # Tests removed: llama and nova models require CLUSTER environment variable
 
-  def test_convert_tools_to_claude_format(self):
+  def test_convert_tools_to_claude_format(self, aws_credentials, aws_region):
     """Test tool conversion to Claude format."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -313,13 +339,13 @@ class TestBedrockUtilityFunctions:
 class TestBedrockClientEdgeCases:
   """Test edge cases and error conditions."""
 
-  def test_empty_messages_handling(self):
+  def test_empty_messages_handling(self, aws_credentials, aws_region):
     """Test handling of empty message lists."""
     client = BedrockClient("claude-3-5-sonnet-v2")
     result = client.count_tokens([])
     assert result == 0
 
-  def test_malformed_messages_handling(self):
+  def test_malformed_messages_handling(self, aws_credentials, aws_region):
     """Test handling of malformed messages."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -328,7 +354,7 @@ class TestBedrockClientEdgeCases:
     result = client.count_tokens(messages)
     assert isinstance(result, int)
 
-  def test_very_long_content(self):
+  def test_very_long_content(self, aws_credentials, aws_region):
     """Test handling of very long message content."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -339,7 +365,7 @@ class TestBedrockClientEdgeCases:
     assert isinstance(result, int)
     assert result > 0
 
-  def test_unicode_content(self):
+  def test_unicode_content(self, aws_credentials, aws_region):
     """Test handling of Unicode content."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -350,7 +376,7 @@ class TestBedrockClientEdgeCases:
     assert isinstance(result, int)
     assert result > 0
 
-  def test_mixed_message_types(self):
+  def test_mixed_message_types(self, aws_credentials, aws_region):
     """Test handling of mixed message types."""
     client = BedrockClient("claude-3-5-sonnet-v2")
 
@@ -364,7 +390,7 @@ class TestBedrockClientEdgeCases:
     assert isinstance(result, int)
     assert result > 0
 
-  def test_none_values_handling(self):
+  def test_none_values_handling(self, aws_credentials, aws_region):
     """Test handling of None values."""
     client = BedrockClient("claude-3-5-sonnet-v2", max_input_tokens=None)
     assert client.max_input_tokens is None
@@ -375,7 +401,7 @@ class TestBedrockClientEdgeCases:
     assert isinstance(result, int)
 
   @pytest.mark.asyncio
-  async def test_network_error_handling(self):
+  async def test_network_error_handling(self, aws_credentials, aws_region):
     """Test handling of network errors."""
     client = BedrockClient("claude-3-5-sonnet-v2")
     client.bedrock_client.invoke_model = MagicMock(side_effect=Exception("Network error"))

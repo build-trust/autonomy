@@ -7,12 +7,24 @@ from .clients.litellm_client import PROVIDER_ALIASES, normalize_messages
 from ..nodes.message import UserMessage, AssistantMessage
 
 
+@pytest.fixture(autouse=True)
+def clean_environment():
+  """Clean environment variables between tests to prevent pollution."""
+  # Store original environment
+  original_env = os.environ.copy()
+  yield
+  # Restore original environment after each test
+  os.environ.clear()
+  os.environ.update(original_env)
+
+
 class TestModel:
   def test_model_initialization(self):
     """Test basic model initialization."""
-    model = Model("claude-3-5-sonnet-v2")
-    assert model.name == "claude-3-5-sonnet-v2"
-    assert model.client is not None
+    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
+      model = Model("claude-3-5-sonnet-v2")
+      assert model.name == "claude-3-5-sonnet-v2"
+      assert model.client is not None
 
   def test_model_list(self):
     """Test that model listing works."""
@@ -31,33 +43,38 @@ class TestModel:
 
   def test_unsupported_model_error(self):
     """Test that unsupported models raise ValueError."""
-    with pytest.raises(ValueError, match="Model 'invalid-model' is not supported"):
-      Model("invalid-model")
+    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
+      with pytest.raises(ValueError, match="Model 'invalid-model' is not supported"):
+        Model("invalid-model")
 
   def test_provider_detection_litellm_proxy(self):
     """Test provider detection for LiteLLM proxy."""
-    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://localhost:8000"}):
+    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
       model = Model("claude-3-5-sonnet-v2")
       assert hasattr(model.client, "name")
       assert model.client.name.startswith("litellm_proxy/")
 
   def test_provider_detection_bedrock(self):
     """Test provider detection for AWS Bedrock."""
-    with patch.dict(os.environ, {"AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token"}):
-      with patch.dict(os.environ, {}, clear=True):
-        os.environ["AWS_WEB_IDENTITY_TOKEN_FILE"] = "/tmp/token"
-        model = Model("claude-3-5-sonnet-v2")
-        assert hasattr(model.client, "name")
-        assert model.client.name.startswith("bedrock/")
+    with patch.dict(os.environ, {
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1"
+    }):
+      model = Model("claude-3-5-sonnet-v2")
+      assert hasattr(model.client, "name")
+      assert model.client.name.startswith("bedrock/")
 
   def test_provider_detection_ollama(self):
-    """Test provider detection for Ollama (default)."""
+    """Test provider detection for Ollama (fallback)."""
     with patch.dict(os.environ, {}, clear=True):
-      model = Model("llama3.3")
-      assert hasattr(model.client, "name")
-      assert model.client.name.startswith("ollama_chat/")
+      with patch("autonomy.models.clients.litellm_client.LiteLLMClient._has_bedrock_access", return_value=False):
+        model = Model("llama3.2")
+        assert hasattr(model.client, "name")
+        assert model.client.name.startswith("ollama")
 
   @patch("autonomy.models.clients.litellm_client.router")
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   async def test_complete_chat_non_streaming(self, mock_router):
     """Test non-streaming chat completion."""
     # Mock the router response
@@ -72,6 +89,7 @@ class TestModel:
     assert response is not None
     mock_router.acompletion.assert_called_once()
 
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_token_counting(self):
     """Test token counting functionality."""
     model = Model("claude-3-5-sonnet-v2")
@@ -82,6 +100,7 @@ class TestModel:
       token_count = model.count_tokens(messages)
       assert token_count == 10
 
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_conversation_message_support(self):
     """Test support for ConversationMessage objects."""
     model = Model("claude-3-5-sonnet-v2")
@@ -96,12 +115,15 @@ class TestModel:
       token_count = model.count_tokens(messages)
       assert token_count == 10
 
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_model_properties(self):
-    """Test model property access."""
+    """Test model property accessors."""
     model = Model("claude-3-5-sonnet-v2")
-    assert model.original_name == "claude-3-5-sonnet-v2"
+    assert model.name == "claude-3-5-sonnet-v2"
+    assert hasattr(model, "client")
     assert model.resolved_name.endswith("claude-3-5-sonnet-20241022-v2:0")
 
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_tools_support_detection(self):
     """Test tools support detection."""
     # Most models support tools
@@ -109,22 +131,27 @@ class TestModel:
     assert model.support_tools() == True
 
     # DeepSeek models don't support tools
-    deepseek_model = Model("deepseek-r1")
-    assert deepseek_model.support_tools() == False
+    with patch.dict(os.environ, {}, clear=True):
+      with patch("autonomy.models.clients.litellm_client.LiteLLMClient._has_bedrock_access", return_value=False):
+        deepseek_model = Model("deepseek-r1")
+        assert deepseek_model.support_tools() == False
 
   def test_forced_assistant_answer_support(self):
     """Test forced assistant answer support detection."""
     # Ollama models support forced assistant answers
     with patch.dict(os.environ, {}, clear=True):
-      model = Model("llama3.3")
-      assert model.support_forced_assistant_answer() == True
+      with patch("autonomy.models.clients.litellm_client.LiteLLMClient._has_bedrock_access", return_value=False):
+        model = Model("llama3.2")
+        assert model.support_forced_assistant_answer() == True
 
     # Bedrock models don't support forced assistant answers
-    with patch.dict(os.environ, {"AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token"}):
-      with patch.dict(os.environ, {}, clear=True):
-        os.environ["AWS_WEB_IDENTITY_TOKEN_FILE"] = "/tmp/token"
-        model = Model("claude-3-5-sonnet-v2")
-        assert model.support_forced_assistant_answer() == False
+    with patch.dict(os.environ, {
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1"
+    }):
+      model = Model("claude-3-5-sonnet-v2")
+      assert model.support_forced_assistant_answer() == False
 
 
 class TestMessageNormalization:

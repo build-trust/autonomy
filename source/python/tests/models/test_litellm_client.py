@@ -149,22 +149,23 @@ class TestLiteLLMClientMethods:
     client = LiteLLMClient("llama3.2")
     assert client.support_tools() is True
 
-  @patch("autonomy.models.clients.litellm_client.boto3.client")
-  def test_has_bedrock_access_success(self, mock_boto_client):
+  @patch("autonomy.models.clients.litellm_client.boto3.Session")
+  def test_has_bedrock_access_success(self, mock_session_class):
     """Test Bedrock access detection when credentials are valid."""
-    mock_sts = MagicMock()
-    mock_sts.get_caller_identity.return_value = {"Account": "123456789012"}
-    mock_boto_client.return_value = mock_sts
+    mock_session = MagicMock()
+    mock_credentials = MagicMock()
+    mock_session.get_credentials.return_value = mock_credentials
+    mock_session_class.return_value = mock_session
 
     client = LiteLLMClient("llama3.2")
     assert client._has_bedrock_access() is True
 
-  @patch("autonomy.models.clients.litellm_client.boto3.client")
-  def test_has_bedrock_access_failure(self, mock_boto_client):
+  @patch("autonomy.models.clients.litellm_client.boto3.Session")
+  def test_has_bedrock_access_failure(self, mock_session_class):
     """Test Bedrock access detection when credentials are invalid."""
     # Clear environment to force Ollama and avoid triggering bedrock detection during init
     with patch.dict(os.environ, {}, clear=True):
-      mock_boto_client.side_effect = Exception("No credentials")
+      mock_session_class.side_effect = Exception("No credentials")
 
       client = LiteLLMClient("llama3.2")
       assert client._has_bedrock_access() is False
@@ -177,7 +178,11 @@ class TestLiteLLMClientMethods:
 
   def test_support_forced_assistant_answer_with_bedrock(self):
     """Test forced assistant answer support for Bedrock (should be False)."""
-    with patch.dict(os.environ, {"AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token"}):
+    with patch.dict(os.environ, {
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1"
+    }):
       client = LiteLLMClient("llama3.2")
       assert client.support_forced_assistant_answer() is False
 

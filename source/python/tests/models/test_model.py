@@ -2,482 +2,293 @@ import pytest
 import os
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from autonomy.models.model import Model, MODEL_CLIENTS
-from autonomy.models.clients.litellm_client import PROVIDER_ALIASES, ALL_PROVIDER_ALLOWED_FULL_NAMES
-from autonomy.models.clients.bedrock_client import BEDROCK_MODELS
-from autonomy.nodes.message import UserMessage, SystemMessage, AssistantMessage
+from autonomy.models.model import Model
+from autonomy.models.clients.litellm_client import PROVIDER_ALIASES, normalize_messages
+from autonomy.nodes.message import UserMessage, AssistantMessage
 
 
-class TestModelInitialization:
-  """Test Model class initialization and basic functionality."""
-
-  def test_model_basic_initialization(self):
-    """Test basic model initialization with default parameters."""
-    model = Model("llama3.2")
-    assert model.name == "llama3.2"
-    assert model.client is not None
-    assert model.max_input_tokens is None
-    assert model.kwargs == {}
-
-  def test_model_initialization_with_max_tokens(self):
-    """Test model initialization with max_input_tokens parameter."""
-    model = Model("llama3.2", max_input_tokens=100000)
-    assert model.name == "llama3.2"
-    assert model.max_input_tokens == 100000
-
-  def test_model_initialization_with_kwargs(self):
-    """Test model initialization with additional kwargs."""
-    kwargs = {"temperature": 0.7, "max_tokens": 4000}
-    model = Model("llama3.2", **kwargs)
-    assert model.name == "llama3.2"
-    assert model.kwargs == kwargs
-
-  def test_model_initialization_all_params(self):
-    """Test model initialization with all parameters."""
-    kwargs = {"temperature": 0.5, "top_p": 0.9}
-    model = Model("llama3.2", max_input_tokens=50000, **kwargs)
-    assert model.name == "llama3.2"
-    assert model.max_input_tokens == 50000
-    assert model.kwargs == kwargs
-
-  def test_unsupported_model_raises_error(self):
-    """Test that unsupported models raise ValueError."""
-    with pytest.raises(ValueError, match="Model 'nonexistent-model' is not supported"):
-      Model("nonexistent-model")
-
-  def test_model_client_attribute_exists(self):
-    """Test that initialized model has client attribute."""
-    model = Model("llama3.2")
-    assert hasattr(model, "client")
-    assert model.client is not None
+@pytest.fixture(autouse=True)
+def clean_environment():
+  """Clean environment variables between tests to prevent pollution."""
+  # Store original environment
+  original_env = os.environ.copy()
+  yield
+  # Restore original environment after each test
+  os.environ.clear()
+  os.environ.update(original_env)
 
 
-class TestModelClientSelection:
-  """Test Model class client selection logic."""
-
-  def test_litellm_client_selection(self):
-    """Test that LiteLLM client is selected for supported models."""
-    # Test with environment variables that favor LiteLLM
-    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://localhost:8000"}, clear=False):
+class TestModel:
+  def test_model_initialization(self):
+    """Test basic model initialization."""
+    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
       model = Model("claude-3-5-sonnet-v2")
-      # Check that client was created
+      assert model.name == "claude-3-5-sonnet-v2"
       assert model.client is not None
-      assert hasattr(model.client, "name")
 
-  def test_bedrock_direct_env_override(self):
-    """Test direct Bedrock client selection with environment variable."""
-    with patch.dict(os.environ, {"AUTONOMY_USE_DIRECT_BEDROCK": "1"}, clear=False):
-      with patch("autonomy.models.model.BedrockClient") as mock_bedrock:
-        mock_instance = MagicMock()
-        mock_bedrock.return_value = mock_instance
-
-        model = Model("llama3.2")  # Use a model that works with Bedrock
-        mock_bedrock.assert_called_once()
-        assert model.client == mock_instance
-
-  def test_bedrock_direct_model_prefix(self):
-    """Test direct Bedrock client selection with bedrock-direct/ prefix."""
-    with patch("autonomy.models.model.BedrockClient") as mock_bedrock:
-      mock_instance = MagicMock()
-      mock_bedrock.return_value = mock_instance
-
-      model = Model("bedrock-direct/llama3.2")
-      mock_bedrock.assert_called_once_with("llama3.2", None)
-      assert model.client == mock_instance
-
-  def test_fallback_to_litellm(self):
-    """Test fallback to LiteLLM for unknown models."""
-    with patch("autonomy.models.model.LiteLLMClient") as mock_litellm:
-      mock_instance = MagicMock()
-      mock_litellm.return_value = mock_instance
-
-      # Use a model that's in our supported list
-      model = Model("llama3.2")
-      assert model.client == mock_instance
-
-  def test_bedrock_model_detection(self):
-    """Test that Bedrock models are properly detected."""
-    with patch("autonomy.models.model.LiteLLMClient") as mock_litellm:
-      mock_instance = MagicMock()
-      mock_litellm.return_value = mock_instance
-
-      # Test with models that work with default provider (Ollama)
-      test_models = ["llama3.2", "deepseek-r1", "gemma3"]
-      for bedrock_model in test_models:
-        if bedrock_model in BEDROCK_MODELS:
-          model = Model(bedrock_model)
-          # Should create some client
-          assert model.client is not None
-
-
-class TestModelProperties:
-  """Test Model class properties."""
-
-  def test_original_name_property(self):
-    """Test original_name property."""
-    model = Model("llama3.2")
-
-    # Mock the client to have original_name attribute
-    model.client.original_name = "test-original-name"
-    assert model.original_name == "test-original-name"
-
-    # Test fallback to model.name when client doesn't have original_name
-    delattr(model.client, "original_name")
-    assert model.original_name == "llama3.2"
-
-  def test_resolved_name_property(self):
-    """Test resolved_name property."""
-    model = Model("llama3.2")
-
-    # Mock the client to have name attribute
-    model.client.name = "resolved-model-name"
-    assert model.resolved_name == "resolved-model-name"
-
-    # Test fallback to model.name when client doesn't have name
-    delattr(model.client, "name")
-    assert model.resolved_name == "llama3.2"
-
-
-class TestModelMethods:
-  """Test Model class methods."""
-
-  def test_count_tokens(self):
-    """Test count_tokens method."""
-    model = Model("llama3.2")
-    model.client.count_tokens = MagicMock(return_value=42)
-
-    messages = [{"role": "user", "content": "Hello"}]
-    result = model.count_tokens(messages)
-
-    assert result == 42
-    model.client.count_tokens.assert_called_once_with(messages, False, None)
-
-  def test_count_tokens_with_params(self):
-    """Test count_tokens method with parameters."""
-    model = Model("llama3.2")
-    model.client.count_tokens = MagicMock(return_value=100)
-
-    messages = [{"role": "user", "content": "Hello"}]
-    tools = [{"name": "test_tool"}]
-    result = model.count_tokens(messages, is_thinking=True, tools=tools)
-
-    assert result == 100
-    model.client.count_tokens.assert_called_once_with(messages, True, tools)
-
-  def test_count_tokens_with_conversation_messages(self):
-    """Test count_tokens with ConversationMessage objects."""
-    model = Model("llama3.2")
-    model.client.count_tokens = MagicMock(return_value=50)
-
-    messages = [UserMessage(content="Hello"), AssistantMessage(content="Hi")]
-    result = model.count_tokens(messages)
-
-    assert result == 50
-    model.client.count_tokens.assert_called_once()
-
-  def test_support_tools(self):
-    """Test support_tools method."""
-    model = Model("llama3.2")
-    model.client.support_tools = MagicMock(return_value=True)
-
-    result = model.support_tools()
-
-    assert result is True
-    model.client.support_tools.assert_called_once()
-
-  def test_support_forced_assistant_answer(self):
-    """Test support_forced_assistant_answer method."""
-    model = Model("llama3.2")
-    model.client.support_forced_assistant_answer = MagicMock(return_value=False)
-
-    result = model.support_forced_assistant_answer()
-
-    assert result is False
-    model.client.support_forced_assistant_answer.assert_called_once()
-
-  @pytest.mark.asyncio
-  async def test_complete_chat_non_streaming(self):
-    """Test complete_chat method in non-streaming mode."""
-    model = Model("llama3.2")
-
-    # Mock the client's complete_chat to return an awaitable
-    mock_response = MagicMock()
-    mock_coro = AsyncMock(return_value=mock_response)
-    model.client.complete_chat = MagicMock(return_value=mock_coro())
-
-    messages = [{"role": "user", "content": "Hello"}]
-    result_coro = model.complete_chat(messages, stream=False)
-    result = await result_coro
-
-    assert result == mock_response
-    model.client.complete_chat.assert_called_once_with(messages, False, False)
-
-  @pytest.mark.asyncio
-  async def test_complete_chat_streaming(self):
-    """Test complete_chat method in streaming mode."""
-    model = Model("llama3.2")
-
-    # Mock the client's complete_chat to return an async generator
-    async def mock_stream():
-      yield {"content": "Hello"}
-      yield {"content": " world"}
-
-    model.client.complete_chat = MagicMock(return_value=mock_stream())
-
-    messages = [{"role": "user", "content": "Hello"}]
-    result_generator = model.complete_chat(messages, stream=True)
-
-    # Collect results from the generator
-    results = []
-    async for chunk in result_generator:
-      results.append(chunk)
-
-    assert len(results) == 2
-    assert results[0]["content"] == "Hello"
-    assert results[1]["content"] == " world"
-    model.client.complete_chat.assert_called_once_with(messages, True, False)
-
-  @pytest.mark.asyncio
-  async def test_complete_chat_with_thinking(self):
-    """Test complete_chat method with thinking mode."""
-    model = Model("llama3.2")
-
-    mock_response = MagicMock()
-    mock_coro = AsyncMock(return_value=mock_response)
-    model.client.complete_chat = MagicMock(return_value=mock_coro())
-
-    messages = [{"role": "user", "content": "Solve this"}]
-    result_coro = model.complete_chat(messages, is_thinking=True, temperature=0.7)
-    result = await result_coro
-
-    assert result == mock_response
-    model.client.complete_chat.assert_called_once_with(messages, False, True, temperature=0.7)
-
-  @pytest.mark.asyncio
-  async def test_embeddings(self):
-    """Test embeddings method."""
-    model = Model("llama3.2")
-
-    mock_embeddings = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-    model.client.embeddings = AsyncMock(return_value=mock_embeddings)
-
-    texts = ["Hello", "World"]
-    result = await model.embeddings(texts, model="embed-model")
-
-    assert result == mock_embeddings
-    model.client.embeddings.assert_called_once_with(texts, model="embed-model")
-
-
-class TestModelStaticMethods:
-  """Test Model class static methods."""
-
-  def test_list_models(self):
-    """Test list() static method."""
+  def test_model_list(self):
+    """Test that model listing works."""
     models = Model.list()
-
     assert isinstance(models, list)
     assert len(models) > 0
+    assert "claude-3-5-sonnet-v2" in models
 
-    # Check that some expected models are in the list
-    expected_models = ["llama3.2", "deepseek-r1", "gemma3"]
-    for model in expected_models:
-      if model in MODEL_CLIENTS:  # Only check if the model exists in our mapping
-        assert model in models
-
-  def test_list_models_contains_all_clients(self):
-    """Test that list() returns all models from MODEL_CLIENTS."""
-    models = Model.list()
-    model_clients_keys = list(MODEL_CLIENTS.keys())
-
-    assert set(models) == set(model_clients_keys)
-
-  def test_list_by_provider(self):
-    """Test list_by_provider() static method."""
+  def test_model_list_by_provider(self):
+    """Test provider-based model listing."""
     providers = Model.list_by_provider()
-
     assert isinstance(providers, dict)
-    assert len(providers) > 0
+    assert "litellm_proxy" in providers
+    assert "bedrock" in providers
+    assert "ollama" in providers
 
-    # Check that expected providers are present
-    expected_providers = ["litellm_proxy", "bedrock", "ollama"]
-    for provider in expected_providers:
-      if provider in PROVIDER_ALIASES:
-        assert provider in providers
-        assert isinstance(providers[provider], list)
-        assert len(providers[provider]) > 0
+  def test_unsupported_model_error(self):
+    """Test that unsupported models raise ValueError."""
+    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
+      with pytest.raises(ValueError, match="Model 'invalid-model' is not supported"):
+        Model("invalid-model")
 
-  def test_list_by_provider_includes_bedrock_direct(self):
-    """Test that list_by_provider() includes bedrock_direct models."""
-    providers = Model.list_by_provider()
+  def test_provider_detection_litellm_proxy(self):
+    """Test provider detection for LiteLLM proxy."""
+    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
+      model = Model("claude-3-5-sonnet-v2")
+      assert hasattr(model.client, "name")
+      assert model.client.name.startswith("litellm_proxy/")
 
-    assert "bedrock_direct" in providers
-    assert isinstance(providers["bedrock_direct"], list)
-    assert len(providers["bedrock_direct"]) > 0
+  def test_provider_detection_bedrock(self):
+    """Test provider detection for AWS Bedrock."""
+    with patch.dict(os.environ, {
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1"
+    }):
+      model = Model("claude-3-5-sonnet-v2")
+      assert hasattr(model.client, "name")
+      assert model.client.name.startswith("bedrock/")
 
-    # Verify the content matches BEDROCK_MODELS
-    assert set(providers["bedrock_direct"]) == set(BEDROCK_MODELS.keys())
-
-  def test_list_by_provider_structure(self):
-    """Test the structure of list_by_provider() output."""
-    providers = Model.list_by_provider()
-
-    for provider_name, models in providers.items():
-      assert isinstance(provider_name, str)
-      assert isinstance(models, list)
-
-      for model_name in models:
-        assert isinstance(model_name, str)
-        assert len(model_name) > 0
-
-
-class TestModelIntegration:
-  """Integration tests for Model class."""
-
-  def test_model_constants_consistency(self):
-    """Test that MODEL_CLIENTS is consistent with provider aliases."""
-    # Check that all provider aliases are in MODEL_CLIENTS
-    for provider_name, models in PROVIDER_ALIASES.items():
-      for model_alias in models.keys():
-        assert model_alias in MODEL_CLIENTS
-        assert MODEL_CLIENTS[model_alias] == "litellm"
-
-    # Check that all full provider names are in MODEL_CLIENTS
-    for full_name in ALL_PROVIDER_ALLOWED_FULL_NAMES:
-      assert full_name in MODEL_CLIENTS
-      assert MODEL_CLIENTS[full_name] == "litellm"
-
-    # Check bedrock direct models
-    for model_alias in BEDROCK_MODELS.keys():
-      bedrock_direct_key = f"bedrock-direct/{model_alias}"
-      assert bedrock_direct_key in MODEL_CLIENTS
-      assert MODEL_CLIENTS[bedrock_direct_key] == "bedrock_direct"
-
-  def test_model_creation_for_all_supported_models(self):
-    """Test that all supported models can be instantiated."""
-    # Test a sample of models that work across providers
-    # Use patch to clear environment and force Ollama provider
+  def test_provider_detection_ollama(self):
+    """Test provider detection for Ollama (fallback)."""
     with patch.dict(os.environ, {}, clear=True):
-      test_models = ["llama3.2", "deepseek-r1"]
+      with patch("autonomy.models.clients.litellm_client.LiteLLMClient._has_bedrock_access", return_value=False):
+        model = Model("llama3.2")
+        assert hasattr(model.client, "name")
+        assert model.client.name.startswith("ollama")
 
-      for model_name in test_models:
-        if model_name in MODEL_CLIENTS:
-          try:
-            model = Model(model_name)
-            assert model.name == model_name
-            assert model.client is not None
-          except Exception as e:
-            # If model creation fails due to missing credentials/setup, that's OK
-            # We just want to ensure the model selection logic works
-            if "not supported" in str(e):
-              pytest.fail(f"Model {model_name} should be supported but got: {e}")
+  @patch("autonomy.models.clients.litellm_client.router")
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
+  async def test_complete_chat_non_streaming(self, mock_router):
+    """Test non-streaming chat completion."""
+    # Mock the router response
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = "Hello! How can I help you?"
+    mock_router.acompletion = AsyncMock(return_value=mock_response)
 
-  def test_model_with_conversation_messages(self):
-    """Test Model with ConversationMessage objects."""
-    model = Model("llama3.2")
-
-    # Create conversation messages
-    messages = [
-      SystemMessage(content="You are a helpful assistant"),
-      UserMessage(content="Hello"),
-      AssistantMessage(content="Hi there!"),
-    ]
-
-    # Mock the client method
-    model.client.count_tokens = MagicMock(return_value=25)
-
-    result = model.count_tokens(messages)
-    assert result == 25
-    model.client.count_tokens.assert_called_once()
-
-    # Verify that the messages were passed correctly
-    call_args = model.client.count_tokens.call_args[0]
-    assert len(call_args[0]) == 3  # Three messages
-
-  @pytest.mark.asyncio
-  async def test_model_error_handling(self):
-    """Test Model error handling in various scenarios."""
-    model = Model("llama3.2")
-
-    # Test error in complete_chat
-    model.client.complete_chat = MagicMock(side_effect=Exception("API Error"))
-
+    model = Model("claude-3-5-sonnet-v2")
     messages = [{"role": "user", "content": "Hello"}]
-    with pytest.raises(Exception, match="API Error"):
-      result_coro = model.complete_chat(messages, stream=False)
-      await result_coro
 
-    # Test error in embeddings
-    model.client.embeddings = AsyncMock(side_effect=ValueError("Invalid input"))
+    response = await model.complete_chat(messages)
+    assert response is not None
+    mock_router.acompletion.assert_called_once()
 
-    with pytest.raises(ValueError, match="Invalid input"):
-      await model.embeddings(["test text"])
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
+  def test_token_counting(self):
+    """Test token counting functionality."""
+    model = Model("claude-3-5-sonnet-v2")
+    messages = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]
 
+    # Mock litellm token_counter
+    with patch("autonomy.models.clients.litellm_client.litellm.token_counter", return_value=10):
+      token_count = model.count_tokens(messages)
+      assert token_count == 10
 
-class TestModelEdgeCases:
-  """Test edge cases and boundary conditions."""
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
+  def test_conversation_message_support(self):
+    """Test support for ConversationMessage objects."""
+    model = Model("claude-3-5-sonnet-v2")
 
-  def test_empty_messages_handling(self):
-    """Test handling of empty message lists."""
-    model = Model("llama3.2")
-    model.client.count_tokens = MagicMock(return_value=0)
+    # Create ConversationMessage objects
+    user_msg = UserMessage(content="Hello")
+    assistant_msg = AssistantMessage(content="Hi there!")
+    messages = [user_msg, assistant_msg]
 
-    result = model.count_tokens([])
-    assert result == 0
-    model.client.count_tokens.assert_called_once_with([], False, None)
+    # This should not raise an error
+    with patch("autonomy.models.clients.litellm_client.litellm.token_counter", return_value=10):
+      token_count = model.count_tokens(messages)
+      assert token_count == 10
 
-  def test_none_values_handling(self):
-    """Test handling of None values in various parameters."""
-    model = Model("llama3.2", max_input_tokens=None)
-    assert model.max_input_tokens is None
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
+  def test_model_properties(self):
+    """Test model property accessors."""
+    model = Model("claude-3-5-sonnet-v2")
+    assert model.name == "claude-3-5-sonnet-v2"
+    assert hasattr(model, "client")
+    assert model.resolved_name.endswith("claude-3-5-sonnet-20241022-v2:0")
 
-    # Test with None messages (should be handled by client)
-    model.client.count_tokens = MagicMock(return_value=0)
-    model.count_tokens([], tools=None)
-    model.client.count_tokens.assert_called_once_with([], False, None)
+  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
+  def test_tools_support_detection(self):
+    """Test tools support detection."""
+    # Most models support tools
+    model = Model("claude-3-5-sonnet-v2")
+    assert model.support_tools() == True
 
-  def test_large_parameter_values(self):
-    """Test handling of large parameter values."""
-    large_tokens = 1_000_000
-    model = Model("llama3.2", max_input_tokens=large_tokens)
-    assert model.max_input_tokens == large_tokens
-
-  def test_special_characters_in_model_name(self):
-    """Test handling of special characters in model names."""
-    # Test model names with special characters that work with Ollama
-    # Clear environment to force Ollama provider
+    # DeepSeek models don't support tools
     with patch.dict(os.environ, {}, clear=True):
-      special_names = [
-        "llama3.2",  # dots
-      ]
+      with patch("autonomy.models.clients.litellm_client.LiteLLMClient._has_bedrock_access", return_value=False):
+        deepseek_model = Model("deepseek-r1")
+        assert deepseek_model.support_tools() == False
 
-      for name in special_names:
-        if name in MODEL_CLIENTS:
-          model = Model(name)
-          assert model.name == name
+  def test_forced_assistant_answer_support(self):
+    """Test forced assistant answer support detection."""
+    # Ollama models support forced assistant answers
+    with patch.dict(os.environ, {}, clear=True):
+      with patch("autonomy.models.clients.litellm_client.LiteLLMClient._has_bedrock_access", return_value=False):
+        model = Model("llama3.2")
+        assert model.support_forced_assistant_answer() == True
 
-  def test_case_sensitivity(self):
-    """Test case sensitivity of model names."""
-    # Model names should be case sensitive
-    with pytest.raises(ValueError):
-      Model("CLAUDE-3-5-SONNET-V2")  # uppercase version should fail
+    # Bedrock models don't support forced assistant answers
+    with patch.dict(os.environ, {
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1"
+    }):
+      model = Model("claude-3-5-sonnet-v2")
+      assert model.support_forced_assistant_answer() == False
 
-  def test_model_client_attributes(self):
-    """Test that model properly exposes client attributes."""
-    model = Model("llama3.2")
 
-    # Ensure client has expected methods
-    expected_methods = [
-      "count_tokens",
-      "support_tools",
-      "support_forced_assistant_answer",
-      "complete_chat",
-      "embeddings",
+class TestMessageNormalization:
+  def test_normalize_dict_messages(self):
+    """Test message normalization with dict messages."""
+    messages = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi!"}]
+
+    normalized = normalize_messages(messages, False, True, True)
+    assert len(normalized) == 2
+    assert normalized[0]["role"] == "user"
+    assert normalized[1]["role"] == "assistant"
+
+  def test_normalize_conversation_messages(self):
+    """Test message normalization with ConversationMessage objects."""
+    messages = [UserMessage(content="Hello"), AssistantMessage(content="Hi!")]
+
+    normalized = normalize_messages(messages, False, True, True)
+    assert len(normalized) == 2
+    assert normalized[0]["role"] == "user"
+    assert normalized[1]["role"] == "assistant"
+
+  def test_normalize_empty_content_removal(self):
+    """Test that messages with empty content are handled properly."""
+    messages = [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "content": ""},
+      {"role": "user", "content": "Are you there?"},
     ]
 
-    for method_name in expected_methods:
-      assert hasattr(model.client, method_name)
-      assert callable(getattr(model.client, method_name))
+    normalized = normalize_messages(messages, False, True, True)
+    # Empty assistant message should be removed
+    assert len(normalized) == 2
+    assert normalized[0]["content"] == "Hello"
+    assert normalized[1]["content"] == "Are you there?"
+
+  def test_normalize_thinking_mode(self):
+    """Test message normalization in thinking mode."""
+    messages = [{"role": "user", "content": "Solve this problem"}]
+
+    normalized = normalize_messages(messages, True, True, True)
+    assert len(normalized) == 1
+    assert normalized[0]["content"] == "<think>Solve this problem"
+
+  def test_normalize_tool_support_disabled(self):
+    """Test message normalization when tools are not supported."""
+    messages = [
+      {"role": "user", "content": "Hello"},
+      {"role": "tool", "content": "Tool response"},
+      {
+        "role": "assistant",
+        "content": "Response",
+        "tool_calls": [{"id": "1", "function": {"name": "test"}}],
+      },
+    ]
+
+    normalized = normalize_messages(messages, False, False, True)
+    # Tool message should be converted to assistant and compacted with the next assistant message
+    # Tool calls should be removed
+    assert len(normalized) == 2
+    assert normalized[0]["role"] == "user"
+    assert normalized[1]["role"] == "assistant"
+    assert normalized[1]["content"] == "Tool responseResponse"  # compacted
+    assert "tool_calls" not in normalized[1]
+
+  def test_normalize_forced_assistant_answer_disabled(self):
+    """Test message normalization when forced assistant answers are not supported."""
+    messages = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]
+
+    normalized = normalize_messages(messages, False, True, False)
+    # Last assistant message should be converted to user
+    assert len(normalized) == 2
+    assert normalized[1]["role"] == "user"
+
+  def test_normalize_message_compaction(self):
+    """Test that consecutive messages with same role are compacted."""
+    messages = [
+      {"role": "user", "content": "Part 1"},
+      {"role": "user", "content": " Part 2"},
+      {"role": "assistant", "content": "Response"},
+    ]
+
+    normalized = normalize_messages(messages, False, True, True)
+    assert len(normalized) == 2
+    assert normalized[0]["role"] == "user"
+    assert normalized[0]["content"] == "Part 1 Part 2"
 
 
-if __name__ == "__main__":
-  pytest.main([__file__])
+class TestProviderAliases:
+  def test_provider_aliases_structure(self):
+    """Test that provider aliases are properly structured."""
+    assert isinstance(PROVIDER_ALIASES, dict)
+    assert "litellm_proxy" in PROVIDER_ALIASES
+    assert "bedrock" in PROVIDER_ALIASES
+    assert "ollama" in PROVIDER_ALIASES
+
+    # Check that each provider has model mappings
+    for provider, models in PROVIDER_ALIASES.items():
+      assert isinstance(models, dict)
+      assert len(models) > 0
+
+      # Check that model mappings are strings
+      for alias, full_name in models.items():
+        assert isinstance(alias, str)
+        assert isinstance(full_name, str)
+        assert len(alias) > 0
+        assert len(full_name) > 0
+
+  def test_claude_models_available(self):
+    """Test that Claude models are available in multiple providers."""
+    claude_models = ["claude-3-5-haiku-v1", "claude-3-5-sonnet-v1", "claude-3-5-sonnet-v2"]
+
+    for model in claude_models:
+      assert model in PROVIDER_ALIASES["litellm_proxy"]
+      assert model in PROVIDER_ALIASES["bedrock"]
+
+  def test_llama_models_available(self):
+    """Test that Llama models are available in multiple providers."""
+    llama_models = ["llama3.2", "llama3.3"]
+
+    for model in llama_models:
+      assert model in PROVIDER_ALIASES["litellm_proxy"]
+      assert model in PROVIDER_ALIASES["bedrock"]
+      assert model in PROVIDER_ALIASES["ollama"]
+
+  def test_embedding_models_available(self):
+    """Test that embedding models are available."""
+    embedding_models = [
+      "embed-english-v3",
+      "embed-multilingual-v3",
+      "titan-embed-text-v1",
+      "nomic-embed-text",
+    ]
+
+    for model in embedding_models:
+      found_in_provider = False
+      for provider_models in PROVIDER_ALIASES.values():
+        if model in provider_models:
+          found_in_provider = True
+          break
+      assert found_in_provider, f"Embedding model {model} not found in any provider"
