@@ -349,9 +349,7 @@ class Reference:
     response = await self.send_and_receive_request(GetIdentifierRequest(scope, conversation))
     return response.identifier
 
-  async def get_conversation_state(
-    self, scope="", conversation=""
-  ) -> GetConversationStateResponse:
+  async def get_conversation_state(self, scope="", conversation="") -> GetConversationStateResponse:
     """
     Get the current state of a conversation.
 

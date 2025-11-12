@@ -56,11 +56,14 @@ class TestModel:
 
   def test_provider_detection_bedrock(self):
     """Test provider detection for AWS Bedrock."""
-    with patch.dict(os.environ, {
-      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
-      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
-      "AWS_DEFAULT_REGION": "us-east-1"
-    }):
+    with patch.dict(
+      os.environ,
+      {
+        "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+        "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+        "AWS_DEFAULT_REGION": "us-east-1",
+      },
+    ):
       model = Model("claude-3-5-sonnet-v2")
       assert hasattr(model.client, "name")
       assert model.client.name.startswith("bedrock/")
@@ -145,11 +148,14 @@ class TestModel:
         assert model.support_forced_assistant_answer() == True
 
     # Bedrock models don't support forced assistant answers
-    with patch.dict(os.environ, {
-      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
-      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
-      "AWS_DEFAULT_REGION": "us-east-1"
-    }):
+    with patch.dict(
+      os.environ,
+      {
+        "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+        "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+        "AWS_DEFAULT_REGION": "us-east-1",
+      },
+    ):
       model = Model("claude-3-5-sonnet-v2")
       assert model.support_forced_assistant_answer() == False
 

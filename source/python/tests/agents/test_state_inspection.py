@@ -30,9 +30,7 @@ class TestStateInspection:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}],
         },
       ]
     )
@@ -69,9 +67,7 @@ class TestStateInspection:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}],
         },
         {"role": "assistant", "content": "Nice to meet you, Alice!"},
       ]
@@ -115,9 +111,7 @@ class TestStateInspection:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}],
         },
       ]
     )
@@ -209,9 +203,7 @@ class TestStateInspection:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your age?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your age?"}'}],
         },
         {"role": "assistant", "content": "Thanks for sharing!"},
       ]
@@ -265,9 +257,7 @@ class TestStateInspection:
         # First conversation - will pause
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Question 1?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Question 1?"}'}],
         },
         # When conv1 is active and paused, this will be used for second message
         {"role": "assistant", "content": "Response after resume"},

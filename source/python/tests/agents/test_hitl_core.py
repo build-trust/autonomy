@@ -35,9 +35,7 @@ class TestHITLCoreFunctionality:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}],
         },
         {"role": "assistant", "content": "Nice to meet you!"},
       ]
@@ -83,7 +81,6 @@ class TestHITLCoreFunctionality:
 
     # Should have some content in the final response (model's "Nice to meet you!" response)
     assert len(final_content) > 0 or len(response2) > 0, "Should have final response content"
-
 
   def test_basic_pause_resume_streaming_enhanced(self):
     """Test pause/resume with streaming mode for both initial and resume."""
@@ -148,7 +145,6 @@ class TestHITLCoreFunctionality:
 
     assert has_content, "Should have assistant message with content after resume"
 
-
   def test_tool_invocation_parameters(self):
     """Test AskUserForInputTool with various parameter formats."""
     Node.start(
@@ -193,7 +189,6 @@ class TestHITLCoreFunctionality:
     assert spec["function"]["name"] == "ask_user_for_input", "Should have correct name"
     assert "question" in spec["function"]["parameters"]["properties"], "Should have question parameter"
 
-
   def test_state_transitions_monitoring(self):
     """Test state machine transitions during pause/resume."""
     Node.start(
@@ -228,7 +223,6 @@ class TestHITLCoreFunctionality:
     # Resume
     response2 = await agent.send("Yes", conversation="state-conv")
     assert len(response2) > 0, "Should have response when resumed"
-
 
   def test_multiple_pause_resume_cycles(self):
     """Test multiple pause/resume cycles in same conversation."""
@@ -286,7 +280,6 @@ class TestHITLCoreFunctionality:
     # Final resume
     response3 = await agent.send("Answer 2", conversation="multi-conv")
     assert len(response3) > 0, "Should have final response"
-
 
   def test_paused_timestamp_recorded(self):
     """Test that paused_at timestamp is recorded correctly."""

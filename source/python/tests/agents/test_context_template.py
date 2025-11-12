@@ -27,9 +27,7 @@ class MockMemory:
   """Mock memory for testing."""
 
   def __init__(self):
-    self.instructions = [
-      {"role": "system", "content": {"text": "You are a test assistant", "type": "text"}}
-    ]
+    self.instructions = [{"role": "system", "content": {"text": "You are a test assistant", "type": "text"}}]
     self.messages = []
 
   async def get_messages_only(self, scope: str, conversation: str):
@@ -40,9 +38,7 @@ class MockMemory:
 @pytest.mark.asyncio
 async def test_system_instructions_section():
   """Test SystemInstructionsSection basic functionality."""
-  instructions = [
-    {"role": "system", "content": {"text": "Test instruction", "type": "text"}}
-  ]
+  instructions = [{"role": "system", "content": {"text": "Test instruction", "type": "text"}}]
 
   section = SystemInstructionsSection(instructions)
   assert section.name == "system_instructions"
@@ -57,9 +53,7 @@ async def test_system_instructions_section():
 @pytest.mark.asyncio
 async def test_system_instructions_section_disabled():
   """Test that disabled section returns no messages."""
-  instructions = [
-    {"role": "system", "content": {"text": "Test instruction", "type": "text"}}
-  ]
+  instructions = [{"role": "system", "content": {"text": "Test instruction", "type": "text"}}]
 
   section = SystemInstructionsSection(instructions, enabled=False)
   messages = await section.get_messages("scope1", "conv1", {})
@@ -89,10 +83,7 @@ async def test_conversation_history_section():
 async def test_conversation_history_section_max_messages():
   """Test message count limiting."""
   memory = MockMemory()
-  memory.messages = [
-    {"role": "user", "content": {"text": f"Message {i}", "type": "text"}}
-    for i in range(10)
-  ]
+  memory.messages = [{"role": "user", "content": {"text": f"Message {i}", "type": "text"}} for i in range(10)]
 
   section = ConversationHistorySection(memory, max_messages=5)
   messages = await section.get_messages("scope1", "conv1", {})
@@ -147,10 +138,7 @@ async def test_conversation_history_section_transform():
   def uppercase_transform(msg):
     transformed = msg.copy()
     if "content" in transformed:
-      transformed["content"] = {
-        "text": transformed["content"]["text"].upper(),
-        "type": "text"
-      }
+      transformed["content"] = {"text": transformed["content"]["text"].upper(), "type": "text"}
     return transformed
 
   section = ConversationHistorySection(memory, transform_fn=uppercase_transform)
@@ -221,14 +209,14 @@ async def test_context_template_build():
     {"role": "user", "content": {"text": "Hello", "type": "text"}},
   ]
 
-  instructions = [
-    {"role": "system", "content": {"text": "Instructions", "type": "text"}}
-  ]
+  instructions = [{"role": "system", "content": {"text": "Instructions", "type": "text"}}]
 
-  template = ContextTemplate([
-    SystemInstructionsSection(instructions),
-    ConversationHistorySection(memory),
-  ])
+  template = ContextTemplate(
+    [
+      SystemInstructionsSection(instructions),
+      ConversationHistorySection(memory),
+    ]
+  )
 
   messages = await template.build_context("scope1", "conv1")
 
@@ -251,11 +239,13 @@ async def test_context_template_section_order():
       results.append(self.order_num)
       return []
 
-  template = ContextTemplate([
-    OrderTrackingSection("first", 1),
-    OrderTrackingSection("second", 2),
-    OrderTrackingSection("third", 3),
-  ])
+  template = ContextTemplate(
+    [
+      OrderTrackingSection("first", 1),
+      OrderTrackingSection("second", 2),
+      OrderTrackingSection("third", 3),
+    ]
+  )
 
   await template.build_context("scope1", "conv1")
   assert results == [1, 2, 3]
@@ -275,10 +265,12 @@ async def test_context_template_shared_context():
       value = context.get("shared_value", 0)
       return [{"role": "system", "content": {"text": f"Value: {value}", "type": "text"}}]
 
-  template = ContextTemplate([
-    WriterSection("writer"),
-    ReaderSection("reader"),
-  ])
+  template = ContextTemplate(
+    [
+      WriterSection("writer"),
+      ReaderSection("reader"),
+    ]
+  )
 
   messages = await template.build_context("scope1", "conv1")
   assert len(messages) == 1
@@ -306,9 +298,11 @@ async def test_context_template_get_section():
 @pytest.mark.asyncio
 async def test_context_template_add_section():
   """Test adding sections to template."""
-  template = ContextTemplate([
-    SystemInstructionsSection([]),
-  ])
+  template = ContextTemplate(
+    [
+      SystemInstructionsSection([]),
+    ]
+  )
 
   assert len(template.sections) == 1
 
@@ -328,10 +322,12 @@ async def test_context_template_add_section():
 @pytest.mark.asyncio
 async def test_context_template_remove_section():
   """Test removing sections from template."""
-  template = ContextTemplate([
-    SystemInstructionsSection([]),
-    AdditionalContextSection(name="to_remove"),
-  ])
+  template = ContextTemplate(
+    [
+      SystemInstructionsSection([]),
+      AdditionalContextSection(name="to_remove"),
+    ]
+  )
 
   assert len(template.sections) == 2
 
@@ -349,11 +345,13 @@ async def test_context_template_remove_section():
 @pytest.mark.asyncio
 async def test_context_template_get_section_names():
   """Test getting section names."""
-  template = ContextTemplate([
-    SystemInstructionsSection([]),
-    AdditionalContextSection(name="custom1"),
-    AdditionalContextSection(name="custom2"),
-  ])
+  template = ContextTemplate(
+    [
+      SystemInstructionsSection([]),
+      AdditionalContextSection(name="custom1"),
+      AdditionalContextSection(name="custom2"),
+    ]
+  )
 
   names = template.get_section_names()
   assert names == ["system_instructions", "custom1", "custom2"]
@@ -362,9 +360,7 @@ async def test_context_template_get_section_names():
 @pytest.mark.asyncio
 async def test_context_template_disabled_section():
   """Test that disabled sections don't contribute messages."""
-  instructions = [
-    {"role": "system", "content": {"text": "Instructions", "type": "text"}}
-  ]
+  instructions = [{"role": "system", "content": {"text": "Instructions", "type": "text"}}]
 
   section1 = SystemInstructionsSection(instructions)
   section2 = AdditionalContextSection(name="extra")
@@ -387,20 +383,18 @@ async def test_context_template_section_error_handling():
     async def get_messages(self, scope, conversation, context):
       raise ValueError("Test error")
 
-  instructions = [
-    {"role": "system", "content": {"text": "Instructions", "type": "text"}}
-  ]
+  instructions = [{"role": "system", "content": {"text": "Instructions", "type": "text"}}]
 
-  template = ContextTemplate([
-    SystemInstructionsSection(instructions),
-    FailingSection("failing"),
-    AdditionalContextSection(name="after_failure"),
-  ])
+  template = ContextTemplate(
+    [
+      SystemInstructionsSection(instructions),
+      FailingSection("failing"),
+      AdditionalContextSection(name="after_failure"),
+    ]
+  )
 
   # Add message to the last section
-  template.sections[2].add_message(
-    {"role": "system", "content": {"text": "After failure", "type": "text"}}
-  )
+  template.sections[2].add_message({"role": "system", "content": {"text": "After failure", "type": "text"}})
 
   messages = await template.build_context("scope1", "conv1")
 
@@ -422,10 +416,12 @@ async def test_create_default_template():
 
 def test_context_template_repr():
   """Test string representation of template."""
-  template = ContextTemplate([
-    SystemInstructionsSection([]),
-    AdditionalContextSection(name="custom"),
-  ])
+  template = ContextTemplate(
+    [
+      SystemInstructionsSection([]),
+      AdditionalContextSection(name="custom"),
+    ]
+  )
 
   repr_str = repr(template)
   assert "ContextTemplate" in repr_str
@@ -436,9 +432,7 @@ def test_context_template_repr():
 @pytest.mark.asyncio
 async def test_section_set_enabled():
   """Test enabling and disabling sections."""
-  section = SystemInstructionsSection([
-    {"role": "system", "content": {"text": "Test", "type": "text"}}
-  ])
+  section = SystemInstructionsSection([{"role": "system", "content": {"text": "Test", "type": "text"}}])
 
   # Initially enabled
   assert section.enabled is True
@@ -469,9 +463,7 @@ async def test_duck_typing_custom_section():
       self.enabled = True
 
     async def get_messages(self, scope, conversation, context):
-      return [
-        {"role": "system", "content": {"text": f"Duck typed: {scope}", "type": "text"}}
-      ]
+      return [{"role": "system", "content": {"text": f"Duck typed: {scope}", "type": "text"}}]
 
   # Should work fine in a template
   duck_section = DuckTypedSection("duck")

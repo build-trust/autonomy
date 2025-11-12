@@ -33,9 +33,7 @@ class TestHITLStreaming:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}],
         },
       ]
     )
@@ -89,9 +87,7 @@ class TestHITLStreaming:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your name?"}'}],
         },
         {"role": "assistant", "content": "Nice to meet you!"},
       ]
@@ -153,15 +149,11 @@ class TestHITLStreaming:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "First question?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "First question?"}'}],
         },
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Second question?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Second question?"}'}],
         },
         {"role": "assistant", "content": "All done!"},
       ]
@@ -200,8 +192,7 @@ class TestHITLStreaming:
     assert chunks3[-1].finished is True, "Final response should finish"
 
     # Verify all cycles sent chunks (no zero-chunk bug)
-    assert len(chunks1) > 0 and len(chunks2) > 0 and len(chunks3) > 0, \
-      "All pause/resume cycles should send chunks"
+    assert len(chunks1) > 0 and len(chunks2) > 0 and len(chunks3) > 0, "All pause/resume cycles should send chunks"
 
   def test_streaming_chunk_order(self):
     """Verify chunks arrive in order with correct part numbers."""
@@ -218,9 +209,7 @@ class TestHITLStreaming:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Tell me more?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Tell me more?"}'}],
         },
       ]
     )
@@ -244,16 +233,14 @@ class TestHITLStreaming:
     # Verify part numbers are sequential starting from 1
     for i, chunk in enumerate(chunks):
       expected_part_nb = i + 1
-      assert chunk.part_nb == expected_part_nb, \
-        f"Chunk {i} should have part_nb={expected_part_nb}, got {chunk.part_nb}"
+      assert chunk.part_nb == expected_part_nb, f"Chunk {i} should have part_nb={expected_part_nb}, got {chunk.part_nb}"
 
     # Last chunk should be marked finished
     assert chunks[-1].finished is True, "Last chunk should be marked finished"
 
     # All chunks except the last should NOT be finished
     for i in range(len(chunks) - 1):
-      assert chunks[i].finished is False, \
-        f"Chunk {i} should not be marked finished (only last chunk should be)"
+      assert chunks[i].finished is False, f"Chunk {i} should not be marked finished (only last chunk should be)"
 
   def test_streaming_timeout_handling(self):
     """Test that streaming properly handles timeouts."""
@@ -272,9 +259,7 @@ class TestHITLStreaming:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Quick question?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Quick question?"}'}],
         },
       ]
     )

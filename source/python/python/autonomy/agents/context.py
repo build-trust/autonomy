@@ -73,18 +73,20 @@ Context templates solve the problem of managing complex model inputs by:
 
 ```python
 from autonomy.agents.context import (
-    ContextTemplate,
-    SystemInstructionsSection,
-    ConversationHistorySection,
-    AdditionalContextSection,
+  ContextTemplate,
+  SystemInstructionsSection,
+  ConversationHistorySection,
+  AdditionalContextSection,
 )
 
 # Create sections
 instructions = [{"role": "system", "content": {...}}]
-template = ContextTemplate([
+template = ContextTemplate(
+  [
     SystemInstructionsSection(instructions),
     ConversationHistorySection(memory),
-])
+  ]
+)
 
 # Build context
 messages = await template.build_context(scope="user123", conversation="chat456")
@@ -101,49 +103,47 @@ template.get_section("rag").add_message({...})
 ```python
 # Option 1: Inherit from ContextSection (provides set_enabled, etc.)
 class KnowledgeRetrievalSection(ContextSection):
-    def __init__(self, vector_db):
-        super().__init__("knowledge_retrieval")
-        self.vector_db = vector_db
+  def __init__(self, vector_db):
+    super().__init__("knowledge_retrieval")
+    self.vector_db = vector_db
 
-    async def get_messages(self, scope, conversation, context):
-        # Retrieve relevant documents
-        docs = await self.vector_db.search(query)
-        return [format_doc_as_message(doc) for doc in docs]
+  async def get_messages(self, scope, conversation, context):
+    # Retrieve relevant documents
+    docs = await self.vector_db.search(query)
+    return [format_doc_as_message(doc) for doc in docs]
+
 
 # Option 2: Duck typing - no inheritance required
 class SimpleSection:
-    def __init__(self):
-        self.name = "simple"
-        self.enabled = True
+  def __init__(self):
+    self.name = "simple"
+    self.enabled = True
 
-    async def get_messages(self, scope, conversation, context):
-        return [{"role": "system", "content": {"text": "Hello", "type": "text"}}]
+  async def get_messages(self, scope, conversation, context):
+    return [{"role": "system", "content": {"text": "Hello", "type": "text"}}]
 ```
 
 ### Filtering History
 
 ```python
 def exclude_tool_calls(msg):
-    return "tool_calls" not in msg
+  return "tool_calls" not in msg
 
-history = ConversationHistorySection(
-    memory,
-    filter_fn=exclude_tool_calls,
-    max_messages=50
-)
+
+history = ConversationHistorySection(memory, filter_fn=exclude_tool_calls, max_messages=50)
 ```
 
 ### Dynamic Context Providers
 
 ```python
 async def current_time_provider(scope, conversation, context):
-    from datetime import datetime
-    time_str = datetime.now().isoformat()
-    return [{"role": "system", "content": {"text": f"Current time: {time_str}", "type": "text"}}]
+  from datetime import datetime
 
-template.add_section(
-    AdditionalContextSection(provider_fn=current_time_provider)
-)
+  time_str = datetime.now().isoformat()
+  return [{"role": "system", "content": {"text": f"Current time: {time_str}", "type": "text"}}]
+
+
+template.add_section(AdditionalContextSection(provider_fn=current_time_provider))
 ```
 
 ### Shared Context Between Sections
@@ -151,15 +151,16 @@ template.add_section(
 ```python
 # Section 1: Analyze and store data
 class AnalysisSection(ContextSection):
-    async def get_messages(self, scope, conversation, context):
-        context["sentiment"] = analyze_sentiment(conversation)
-        return []
+  async def get_messages(self, scope, conversation, context):
+    context["sentiment"] = analyze_sentiment(conversation)
+    return []
+
 
 # Section 2: Use stored data
 class ResponseSection(ContextSection):
-    async def get_messages(self, scope, conversation, context):
-        sentiment = context.get("sentiment", "neutral")
-        return [{"role": "system", "content": {"text": f"Sentiment: {sentiment}", "type": "text"}}]
+  async def get_messages(self, scope, conversation, context):
+    sentiment = context.get("sentiment", "neutral")
+    return [{"role": "system", "content": {"text": f"Sentiment: {sentiment}", "type": "text"}}]
 ```
 
 ## Common Patterns
@@ -168,12 +169,13 @@ class ResponseSection(ContextSection):
 
 ```python
 async def rag_provider(scope, conversation, context):
-    # Get last user message
-    query = get_last_user_message(conversation)
-    # Search vector database
-    results = await vector_db.search(query, top_k=3)
-    # Format as messages
-    return [format_result(r) for r in results]
+  # Get last user message
+  query = get_last_user_message(conversation)
+  # Search vector database
+  results = await vector_db.search(query, top_k=3)
+  # Format as messages
+  return [format_result(r) for r in results]
+
 
 template.add_section(AdditionalContextSection(provider_fn=rag_provider))
 ```
@@ -182,27 +184,22 @@ template.add_section(AdditionalContextSection(provider_fn=rag_provider))
 
 ```python
 class SummarySection(ContextSection):
-    async def get_messages(self, scope, conversation, context):
-        msg_count = context.get("conversation_message_count", 0)
-        if msg_count > 20:
-            summary = await generate_summary(scope, conversation)
-            return [{"role": "system", "content": {"text": f"Summary: {summary}", "type": "text"}}]
-        return []
+  async def get_messages(self, scope, conversation, context):
+    msg_count = context.get("conversation_message_count", 0)
+    if msg_count > 20:
+      summary = await generate_summary(scope, conversation)
+      return [{"role": "system", "content": {"text": f"Summary: {summary}", "type": "text"}}]
+    return []
 ```
 
 ### Time-Aware Context
 
 ```python
 async def time_context(scope, conversation, context):
-    from datetime import datetime
-    now = datetime.now()
-    return [{
-        "role": "system",
-        "content": {
-            "text": f"Current time: {now.strftime('%Y-%m-%d %H:%M:%S')}",
-            "type": "text"
-        }
-    }]
+  from datetime import datetime
+
+  now = datetime.now()
+  return [{"role": "system", "content": {"text": f"Current time: {now.strftime('%Y-%m-%d %H:%M:%S')}", "type": "text"}}]
 ```
 
 ## Design Principles
@@ -228,6 +225,7 @@ async def time_context(scope, conversation, context):
 Enable debug logging to see section contributions:
 ```python
 import logging
+
 logging.getLogger("context").setLevel(logging.DEBUG)
 ```
 
@@ -273,22 +271,22 @@ class ContextSection:
   Example (with inheritance):
     ```python
     class MySection(ContextSection):
-        def __init__(self):
-            super().__init__("my_section")
+      def __init__(self):
+        super().__init__("my_section")
 
-        async def get_messages(self, scope, conversation, context):
-            return [...]
+      async def get_messages(self, scope, conversation, context):
+        return [...]
     ```
 
   Example (duck typing, no inheritance):
     ```python
     class MySection:
-        def __init__(self):
-            self.name = "my_section"
-            self.enabled = True
+      def __init__(self):
+        self.name = "my_section"
+        self.enabled = True
 
-        async def get_messages(self, scope, conversation, context):
-            return [...]
+      async def get_messages(self, scope, conversation, context):
+        return [...]
     ```
   """
 
@@ -342,9 +340,9 @@ class SystemInstructionsSection(ContextSection):
 
   Example:
     ```python
-    section = SystemInstructionsSection([
-      {"role": "system", "content": {"text": "You are a helpful assistant", "type": "text"}}
-    ])
+    section = SystemInstructionsSection(
+      [{"role": "system", "content": {"text": "You are a helpful assistant", "type": "text"}}]
+    )
     ```
   """
 
@@ -384,10 +382,7 @@ class ConversationHistorySection(ContextSection):
     ```python
     section = ConversationHistorySection(memory)
     # Or with filtering:
-    section = ConversationHistorySection(
-      memory,
-      filter_fn=lambda msg: msg.get("role") != "system"
-    )
+    section = ConversationHistorySection(memory, filter_fn=lambda msg: msg.get("role") != "system")
     ```
   """
 
@@ -433,7 +428,7 @@ class ConversationHistorySection(ContextSection):
     # Apply message limit if provided
     if self.max_messages and len(messages) > self.max_messages:
       logger.debug(f"[CONTEXT→{self.name}] Limiting from {len(messages)} to {self.max_messages} messages")
-      messages = messages[-self.max_messages:]  # Keep most recent
+      messages = messages[-self.max_messages :]  # Keep most recent
 
     # Apply transformation if provided
     if self.transform_fn:
@@ -464,6 +459,7 @@ class AdditionalContextSection(ContextSection):
     ```python
     async def provide_weather(scope, conv, ctx):
       return [{"role": "system", "content": {"text": "Current weather: Sunny", "type": "text"}}]
+
 
     section = AdditionalContextSection(provider_fn=provide_weather)
     ```
@@ -555,8 +551,7 @@ class FrameworkInstructionsSection(ContextSection):
   Example:
     ```python
     section = FrameworkInstructionsSection(
-      enable_ask_for_user_input=True,
-      subagent_configs={"researcher": {...}, "writer": {...}}
+      enable_ask_for_user_input=True, subagent_configs={"researcher": {...}, "writer": {...}}
     )
     ```
   """
@@ -620,7 +615,7 @@ class FrameworkInstructionsSection(ContextSection):
       for name, config in self.subagent_configs.items():
         subagent_instr = config.get("instructions", "No description available")
         # Take first line or first 100 chars of instructions as description
-        description = subagent_instr.split('\n')[0][:100]
+        description = subagent_instr.split("\n")[0][:100]
         subagent_list.append(f"- `{name}`: {description}")
 
       instructions.append("\n".join(subagent_list))
@@ -645,11 +640,7 @@ class FrameworkInstructionsSection(ContextSection):
 
     logger.debug(f"[CONTEXT→{self.name}] Adding framework instructions")
 
-    return [{
-      "role": "system",
-      "content": {"text": framework_text, "type": "text"},
-      "phase": "system"
-    }]
+    return [{"role": "system", "content": {"text": framework_text, "type": "text"}, "phase": "system"}]
 
 
 class ContextTemplate:
@@ -668,11 +659,13 @@ class ContextTemplate:
 
   Example:
     ```python
-    template = ContextTemplate([
-      SystemInstructionsSection(instructions),
-      AdditionalContextSection(name="knowledge"),
-      ConversationHistorySection(memory),
-    ])
+    template = ContextTemplate(
+      [
+        SystemInstructionsSection(instructions),
+        AdditionalContextSection(name="knowledge"),
+        ConversationHistorySection(memory),
+      ]
+    )
 
     # Build context for a conversation
     messages = await template.build_context("user123", "conv456")
@@ -780,10 +773,7 @@ class ContextTemplate:
         logger.error(f"[CONTEXT→BUILD] Section '{section.name}' failed: {e}")
         # Continue with other sections even if one fails
 
-    logger.debug(
-      f"[CONTEXT→BUILD] Built context with {len(all_messages)} total messages "
-      f"({', '.join(section_counts)})"
-    )
+    logger.debug(f"[CONTEXT→BUILD] Built context with {len(all_messages)} total messages ({', '.join(section_counts)})")
 
     return all_messages
 
@@ -798,7 +788,7 @@ class ContextTemplate:
 
   def __repr__(self) -> str:
     """String representation of template."""
-    section_names = ', '.join(self.get_section_names())
+    section_names = ", ".join(self.get_section_names())
     return f"ContextTemplate([{section_names}])"
 
 
@@ -825,11 +815,13 @@ def create_default_template(
   Returns:
     ContextTemplate configured with default sections
   """
-  return ContextTemplate([
-    SystemInstructionsSection(instructions),
-    FrameworkInstructionsSection(
-      enable_ask_for_user_input=enable_ask_for_user_input,
-      subagent_configs=subagent_configs,
-    ),
-    ConversationHistorySection(memory),
-  ])
+  return ContextTemplate(
+    [
+      SystemInstructionsSection(instructions),
+      FrameworkInstructionsSection(
+        enable_ask_for_user_input=enable_ask_for_user_input,
+        subagent_configs=subagent_configs,
+      ),
+      ConversationHistorySection(memory),
+    ]
+  )

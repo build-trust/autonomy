@@ -103,7 +103,7 @@ class AskUserForInputTool(InvokableTool):
           "properties": {
             "question": {
               "type": "string",
-              "description": "The exact question or prompt to display to the user. Be clear and specific about what information you need."
+              "description": "The exact question or prompt to display to the user. Be clear and specific about what information you need.",
             }
           },
           "required": ["question"],

@@ -148,7 +148,9 @@ class TestConversationPauseResumeInterrupt:
     # Should have received response from interrupting message
     assert len(response2) > 0
 
-  @pytest.mark.skip(reason="Streaming resume has a bug - agent doesn't send chunks on resume. See HITL_TESTING_RESULTS.md")
+  @pytest.mark.skip(
+    reason="Streaming resume has a bug - agent doesn't send chunks on resume. See HITL_TESTING_RESULTS.md"
+  )
   def test_conversation_resume_with_streaming(self):
     """Test resuming a paused conversation with streaming enabled"""
     Node.start(

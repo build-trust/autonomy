@@ -178,11 +178,14 @@ class TestLiteLLMClientMethods:
 
   def test_support_forced_assistant_answer_with_bedrock(self):
     """Test forced assistant answer support for Bedrock (should be False)."""
-    with patch.dict(os.environ, {
-      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
-      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
-      "AWS_DEFAULT_REGION": "us-east-1"
-    }):
+    with patch.dict(
+      os.environ,
+      {
+        "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+        "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+        "AWS_DEFAULT_REGION": "us-east-1",
+      },
+    ):
       client = LiteLLMClient("llama3.2")
       assert client.support_forced_assistant_answer() is False
 

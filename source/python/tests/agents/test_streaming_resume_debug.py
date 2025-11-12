@@ -34,9 +34,7 @@ class TestStreamingResumeDebug:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}],
         },
         {"role": "assistant", "content": "Great choice! Blue is a nice color."},
       ]
@@ -50,16 +48,16 @@ class TestStreamingResumeDebug:
       enable_ask_for_user_input=True,
     )
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PHASE 1: Initial request (should pause)")
-    print("="*60)
+    print("=" * 60)
 
     # Initial request - should work and pause
     chunks1 = []
     async for chunk in agent.send_stream("Ask me a question", conversation="test"):
       chunks1.append(chunk)
       print(f"INITIAL CHUNK {len(chunks1)}: part_nb={chunk.part_nb}, finished={chunk.finished}")
-      if hasattr(chunk, 'snippet') and hasattr(chunk.snippet, 'phase'):
+      if hasattr(chunk, "snippet") and hasattr(chunk.snippet, "phase"):
         print(f"  Phase: {chunk.snippet.phase}")
 
     print(f"\nINITIAL TOTAL: Received {len(chunks1)} chunks")
@@ -76,9 +74,9 @@ class TestStreamingResumeDebug:
     )
     assert waiting_found, "Should be waiting for input"
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("PHASE 2: Resume request (CURRENTLY BROKEN)")
-    print("="*60)
+    print("=" * 60)
 
     # Resume - currently broken (receives 0 chunks, times out)
     chunks2 = []
@@ -89,7 +87,7 @@ class TestStreamingResumeDebug:
         async for chunk in agent.send_stream("My answer is blue", conversation="test"):
           chunks2.append(chunk)
           print(f"RESUME CHUNK {len(chunks2)}: part_nb={chunk.part_nb}, finished={chunk.finished}")
-          if hasattr(chunk, 'snippet'):
+          if hasattr(chunk, "snippet"):
             print(f"  Messages: {len(chunk.snippet.messages)}")
     except asyncio.TimeoutError:
       print(f"\n⚠️  TIMEOUT! Received {len(chunks2)} chunks before timeout")
@@ -116,17 +114,15 @@ class TestStreamingResumeDebug:
   async def _test_streaming_vs_nonstreaming_resume(self, node):
     """Compare streaming vs non-streaming resume to understand difference."""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TEST A: Streaming initial, Non-streaming resume (WORKAROUND)")
-    print("="*60)
+    print("=" * 60)
 
     model1 = MockModel(
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Tell me something?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Tell me something?"}'}],
         },
         {"role": "assistant", "content": "Thanks for the info!"},
       ]
@@ -154,17 +150,15 @@ class TestStreamingResumeDebug:
     assert len(messages) > 0
     print("✅ Non-streaming resume works!")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("TEST B: Streaming initial, Streaming resume (BROKEN)")
-    print("="*60)
+    print("=" * 60)
 
     model2 = MockModel(
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Tell me more?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Tell me more?"}'}],
         },
         {"role": "assistant", "content": "Got it, thanks!"},
       ]

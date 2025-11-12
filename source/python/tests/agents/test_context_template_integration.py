@@ -20,7 +20,9 @@ from autonomy.agents.context import (
   AdditionalContextSection,
 )
 
-pytestmark = pytest.mark.skip(reason="Requires Rust integration - core functionality tested in test_context_template.py")
+pytestmark = pytest.mark.skip(
+  reason="Requires Rust integration - core functionality tested in test_context_template.py"
+)
 
 
 class CustomTestContextSection(ContextSection):
@@ -39,11 +41,8 @@ class CustomTestContextSection(ContextSection):
     return [
       {
         "role": "system",
-        "content": {
-          "text": f"Test context (call #{self.call_count})",
-          "type": "text"
-        },
-        "phase": "system"
+        "content": {"text": f"Test context (call #{self.call_count})", "type": "text"},
+        "phase": "system",
       }
     ]
 
@@ -63,10 +62,7 @@ async def test_agent_uses_context_template():
   # Verify default template was created
   assert agent.context_template is not None
   assert len(agent.context_template.sections) == 2
-  assert agent.context_template.get_section_names() == [
-    "system_instructions",
-    "conversation_history"
-  ]
+  assert agent.context_template.get_section_names() == ["system_instructions", "conversation_history"]
 
   await Agent.stop(node, "test-agent")
 
@@ -87,11 +83,7 @@ async def test_agent_with_custom_section():
   agent.context_template.add_section(test_section, index=1)
 
   assert len(agent.context_template.sections) == 3
-  assert agent.context_template.get_section_names() == [
-    "system_instructions",
-    "test_section",
-    "conversation_history"
-  ]
+  assert agent.context_template.get_section_names() == ["system_instructions", "test_section", "conversation_history"]
 
   # Verify section hasn't been called yet
   assert test_section.call_count == 0
@@ -106,8 +98,10 @@ async def test_agent_with_custom_section():
 
   # Verify messages include test section content
   message_texts = [
-    msg.content if isinstance(msg.content, str)
-    else msg.content.get("text", "") if hasattr(msg, "content") and isinstance(msg.content, dict)
+    msg.content
+    if isinstance(msg.content, str)
+    else msg.content.get("text", "")
+    if hasattr(msg, "content") and isinstance(msg.content, dict)
     else str(msg.get("content", {}).get("text", ""))
     for msg in messages
   ]
@@ -140,11 +134,13 @@ async def test_agent_section_ordering():
       call_order.append(self.order_num)
       return []
 
-  agent.context_template = ContextTemplate([
-    OrderSection(1),
-    OrderSection(2),
-    OrderSection(3),
-  ])
+  agent.context_template = ContextTemplate(
+    [
+      OrderSection(1),
+      OrderSection(2),
+      OrderSection(3),
+    ]
+  )
 
   # Build context
   await agent.determine_input_context("user1", "conv1")
@@ -202,16 +198,7 @@ async def test_agent_with_provider_function():
   async def time_provider(scope, conversation, context):
     nonlocal call_count
     call_count += 1
-    return [
-      {
-        "role": "system",
-        "content": {
-          "text": f"Call {call_count}",
-          "type": "text"
-        },
-        "phase": "system"
-      }
-    ]
+    return [{"role": "system", "content": {"text": f"Call {call_count}", "type": "text"}, "phase": "system"}]
 
   agent = await Agent.start(
     node=node,
@@ -220,10 +207,7 @@ async def test_agent_with_provider_function():
   )
 
   # Add section with provider
-  provider_section = AdditionalContextSection(
-    name="time_provider",
-    provider_fn=time_provider
-  )
+  provider_section = AdditionalContextSection(name="time_provider", provider_fn=time_provider)
   agent.context_template.add_section(provider_section, index=1)
 
   # First call
@@ -262,10 +246,12 @@ async def test_agent_shared_context():
     instructions="You are a test assistant.",
   )
 
-  agent.context_template = ContextTemplate([
-    WriterSection("writer"),
-    ReaderSection("reader"),
-  ])
+  agent.context_template = ContextTemplate(
+    [
+      WriterSection("writer"),
+      ReaderSection("reader"),
+    ]
+  )
 
   await agent.determine_input_context("user1", "conv1")
 
@@ -290,17 +276,9 @@ async def test_agent_memory_integration():
   # Add a message to memory
   scope = "user1"
   conversation = "conv1"
-  test_message = {
-    "role": "user",
-    "content": {"text": "Test message", "type": "text"},
-    "phase": "executing"
-  }
+  test_message = {"role": "user", "content": {"text": "Test message", "type": "text"}, "phase": "executing"}
 
-  await agent.memory.add_message(
-    agent._memory_scope(scope),
-    conversation,
-    test_message
-  )
+  await agent.memory.add_message(agent._memory_scope(scope), conversation, test_message)
 
   # Get context
   messages = await agent.determine_input_context(scope, conversation)
@@ -308,7 +286,7 @@ async def test_agent_memory_integration():
   # Convert messages to dicts for easier inspection
   message_dicts = []
   for msg in messages:
-    if hasattr(msg, '__dict__'):
+    if hasattr(msg, "__dict__"):
       message_dicts.append(msg.__dict__)
     else:
       message_dicts.append(msg)

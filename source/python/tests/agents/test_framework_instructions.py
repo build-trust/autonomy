@@ -11,8 +11,6 @@ from autonomy.agents.agent import system_message
 
 
 @pytest.mark.asyncio
-
-
 async def test_framework_instructions_without_ask_user():
   """Test framework instructions without ask_user_for_input tool."""
   section = FrameworkInstructionsSection(enable_ask_for_user_input=False)
@@ -103,10 +101,7 @@ async def test_framework_instructions_combined_with_user():
   user_msg = {"role": "system", "content": {"text": "You are a helpful assistant.", "type": "text"}}
   framework_section = FrameworkInstructionsSection(enable_ask_for_user_input=True)
 
-  template = ContextTemplate([
-    SystemInstructionsSection([user_msg]),
-    framework_section
-  ])
+  template = ContextTemplate([SystemInstructionsSection([user_msg]), framework_section])
 
   messages = await template.build_context("scope", "conv")
 
@@ -141,13 +136,14 @@ async def test_framework_instructions_no_duplication():
   instructions = messages[0]["content"]["text"]
 
   # Split into lines and check for exact duplicates
-  lines = [line.strip() for line in instructions.split('\n') if line.strip()]
+  lines = [line.strip() for line in instructions.split("\n") if line.strip()]
 
   # Should have more than one unique line
   assert len(set(lines)) > 1
 
   # No line should appear more than twice (allowing for formatting)
   from collections import Counter
+
   line_counts = Counter(lines)
   for line, count in line_counts.items():
     assert count <= 3, f"Line appears {count} times: {line}"
@@ -163,13 +159,10 @@ async def test_framework_instructions_with_subagents():
     "writer": {
       "instructions": "You are a writing assistant specialized in creating content.",
       "model": {"name": "claude-sonnet-4-v1"},
-    }
+    },
   }
 
-  section = FrameworkInstructionsSection(
-    enable_ask_for_user_input=False,
-    subagent_configs=subagent_configs
-  )
+  section = FrameworkInstructionsSection(enable_ask_for_user_input=False, subagent_configs=subagent_configs)
   messages = await section.get_messages("scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]
@@ -187,10 +180,7 @@ async def test_framework_instructions_with_subagents():
 
 async def test_framework_instructions_without_subagents():
   """Test framework instructions without subagent configurations."""
-  section = FrameworkInstructionsSection(
-    enable_ask_for_user_input=False,
-    subagent_configs=None
-  )
+  section = FrameworkInstructionsSection(enable_ask_for_user_input=False, subagent_configs=None)
   messages = await section.get_messages("scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]
@@ -209,10 +199,7 @@ async def test_framework_instructions_all_features():
     }
   }
 
-  section = FrameworkInstructionsSection(
-    enable_ask_for_user_input=True,
-    subagent_configs=subagent_configs
-  )
+  section = FrameworkInstructionsSection(enable_ask_for_user_input=True, subagent_configs=subagent_configs)
   messages = await section.get_messages("scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]

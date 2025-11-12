@@ -33,7 +33,7 @@ pytestmark = [
   pytest.mark.integration,
   pytest.mark.skipif(
     os.environ.get("AUTONOMY_USE_DIRECT_BEDROCK") != "1",
-    reason="Requires AUTONOMY_USE_DIRECT_BEDROCK=1 and AWS credentials"
+    reason="Requires AUTONOMY_USE_DIRECT_BEDROCK=1 and AWS credentials",
   ),
 ]
 
@@ -79,12 +79,12 @@ class TestBasicPauseResume:
     # Find the waiting message
     waiting_message = None
     for msg in response1:
-      if hasattr(msg, 'phase') and msg.phase == Phase.WAITING_FOR_INPUT:
+      if hasattr(msg, "phase") and msg.phase == Phase.WAITING_FOR_INPUT:
         waiting_message = msg
         break
 
     assert waiting_message is not None, "Should have a message with WAITING_FOR_INPUT phase"
-    assert hasattr(waiting_message, 'content'), "Waiting message should have content"
+    assert hasattr(waiting_message, "content"), "Waiting message should have content"
     assert len(waiting_message.content.text) > 0, "Waiting message should have prompt text"
 
   def test_agent_resumes_after_user_response(self):
@@ -121,8 +121,7 @@ class TestBasicPauseResume:
 
     # Resume with user response
     response2 = await agent.send(
-      "Python coding - I need to learn about lists and dictionaries",
-      conversation="resume-test-conv"
+      "Python coding - I need to learn about lists and dictionaries", conversation="resume-test-conv"
     )
 
     # Check if completed or needs another cycle
@@ -135,7 +134,7 @@ class TestBasicPauseResume:
       cycle += 1
       response2 = await agent.send(
         "No more questions please, just provide your response based on what I already told you.",
-        conversation="resume-test-conv"
+        conversation="resume-test-conv",
       )
       state2 = await agent.get_conversation_state(conversation="resume-test-conv")
 
@@ -176,8 +175,7 @@ class TestStreamingPauseResume:
     try:
       async with asyncio.timeout(30):
         async for chunk in agent.send_stream(
-          "Tell me about a topic. Ask me which topic using the tool.",
-          conversation="stream-pause-conv"
+          "Tell me about a topic. Ask me which topic using the tool.", conversation="stream-pause-conv"
         ):
           chunks.append(chunk)
     except asyncio.TimeoutError:
@@ -190,7 +188,7 @@ class TestStreamingPauseResume:
     waiting_found = False
     for chunk in chunks:
       for msg in chunk.snippet.messages:
-        if hasattr(msg, 'phase') and msg.phase == Phase.WAITING_FOR_INPUT:
+        if hasattr(msg, "phase") and msg.phase == Phase.WAITING_FOR_INPUT:
           waiting_found = True
           break
 
@@ -223,10 +221,7 @@ class TestStreamingPauseResume:
 
     # Pause the agent
     chunks1 = []
-    async for chunk in agent.send_stream(
-      "Help me. Ask what I need using the tool.",
-      conversation="stream-resume-conv"
-    ):
+    async for chunk in agent.send_stream("Help me. Ask what I need using the tool.", conversation="stream-resume-conv"):
       chunks1.append(chunk)
 
     # Resume
@@ -235,10 +230,7 @@ class TestStreamingPauseResume:
 
     try:
       async with asyncio.timeout(30):
-        async for chunk in agent.send_stream(
-          "Learning Python",
-          conversation="stream-resume-conv"
-        ):
+        async for chunk in agent.send_stream("Learning Python", conversation="stream-resume-conv"):
           chunks2.append(chunk)
     except asyncio.TimeoutError:
       resume_timeout = True
@@ -251,17 +243,13 @@ class TestStreamingPauseResume:
     if state.is_paused:
       # Complete with final message
       chunks3 = []
-      async for chunk in agent.send_stream(
-        "Thanks, that's all!",
-        conversation="stream-resume-conv"
-      ):
+      async for chunk in agent.send_stream("Thanks, that's all!", conversation="stream-resume-conv"):
         chunks3.append(chunk)
 
       state = await agent.get_conversation_state(conversation="stream-resume-conv")
 
     # Should eventually complete
-    assert state.phase in ["done", "waiting_for_input"], \
-      f"Should be in terminal state, got {state.phase}"
+    assert state.phase in ["done", "waiting_for_input"], f"Should be in terminal state, got {state.phase}"
 
 
 class TestMultiplePauses:
@@ -291,10 +279,7 @@ class TestMultiplePauses:
     )
 
     # Initial request - should pause for first question
-    response1 = await agent.send(
-      "Help me plan something",
-      conversation="multi-pause-conv"
-    )
+    response1 = await agent.send("Help me plan something", conversation="multi-pause-conv")
 
     state1 = await agent.get_conversation_state(conversation="multi-pause-conv")
     assert state1.is_paused, "Should pause for first question"
@@ -310,20 +295,14 @@ class TestMultiplePauses:
       pause_count += 1
 
       # Second resume
-      response3 = await agent.send(
-        "Saturday morning",
-        conversation="multi-pause-conv"
-      )
+      response3 = await agent.send("Saturday morning", conversation="multi-pause-conv")
 
       state3 = await agent.get_conversation_state(conversation="multi-pause-conv")
 
       # May need one more cycle to complete
       if state3.is_paused:
         pause_count += 1
-        response4 = await agent.send(
-          "That's all, thanks!",
-          conversation="multi-pause-conv"
-        )
+        response4 = await agent.send("That's all, thanks!", conversation="multi-pause-conv")
         state3 = await agent.get_conversation_state(conversation="multi-pause-conv")
 
     # Should eventually complete
@@ -353,19 +332,13 @@ class TestMultiplePauses:
     )
 
     # Start first conversation
-    await agent.send(
-      "Ask me about my favorite color using the tool.",
-      conversation="conv-a"
-    )
+    await agent.send("Ask me about my favorite color using the tool.", conversation="conv-a")
 
     # Give model time to process first request
     await asyncio.sleep(0.5)
 
     # Start second conversation with different request
-    await agent.send(
-      "Ask me about my favorite food using the tool.",
-      conversation="conv-b"
-    )
+    await agent.send("Ask me about my favorite food using the tool.", conversation="conv-b")
 
     # Check both are paused independently
     state_a = await agent.get_conversation_state(conversation="conv-a")
@@ -385,8 +358,9 @@ class TestMultiplePauses:
     state_b_after = await agent.get_conversation_state(conversation="conv-b")
 
     # Conversation B should not have new messages (not affected by conv-a resume)
-    assert state_b_after.message_count == initial_b_count, \
+    assert state_b_after.message_count == initial_b_count, (
       "Conversation B should not be affected by conversation A resume"
+    )
 
 
 class TestEdgeCases:
@@ -414,10 +388,7 @@ class TestEdgeCases:
     )
 
     # Pause the agent
-    await agent.send(
-      "Ask me something using the tool.",
-      conversation="empty-response-conv"
-    )
+    await agent.send("Ask me something using the tool.", conversation="empty-response-conv")
 
     # Send empty response
     response = await agent.send("", conversation="empty-response-conv")
@@ -426,8 +397,7 @@ class TestEdgeCases:
     assert len(response) > 0, "Should handle empty response"
 
     state = await agent.get_conversation_state(conversation="empty-response-conv")
-    assert state.phase in ["waiting_for_input", "done", "executing"], \
-      "Should be in valid state after empty response"
+    assert state.phase in ["waiting_for_input", "done", "executing"], "Should be in valid state after empty response"
 
   def test_conversation_state_accuracy(self):
     """Test that conversation state accurately reflects agent status."""
@@ -455,10 +425,7 @@ class TestEdgeCases:
     assert not state0.is_paused, "New conversation should not be paused"
 
     # After pause
-    await agent.send(
-      "Ask me something using the tool.",
-      conversation="state-test-conv"
-    )
+    await agent.send("Ask me something using the tool.", conversation="state-test-conv")
 
     state1 = await agent.get_conversation_state(conversation="state-test-conv")
     assert state1.is_paused, "Should be paused"
@@ -496,10 +463,7 @@ class TestPerformance:
 
     start = time.time()
 
-    await agent.send(
-      "Ask me a question using the tool right now.",
-      conversation="perf-pause-conv"
-    )
+    await agent.send("Ask me a question using the tool right now.", conversation="perf-pause-conv")
 
     elapsed = time.time() - start
 
@@ -528,10 +492,7 @@ class TestPerformance:
     )
 
     # Pause
-    await agent.send(
-      "Ask me something using the tool.",
-      conversation="perf-resume-conv"
-    )
+    await agent.send("Ask me something using the tool.", conversation="perf-resume-conv")
 
     start = time.time()
 

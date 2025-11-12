@@ -34,9 +34,7 @@ class TestHITLEdgeCases:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Tell me more?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Tell me more?"}'}],
         },
         {"role": "assistant", "content": "Thanks!"},
       ]
@@ -124,9 +122,7 @@ class TestHITLEdgeCases:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Tell me something?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Tell me something?"}'}],
         },
         {"role": "assistant", "content": "Okay, no problem."},
       ]
@@ -169,9 +165,7 @@ class TestHITLEdgeCases:
       [
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "Waiting for you?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "Waiting for you?"}'}],
         },
         {"role": "assistant", "content": "Welcome back!"},
       ]

@@ -85,9 +85,7 @@ class TestHITLMemory:
         {"role": "assistant", "content": "Got it, blue is your favorite color."},
         {
           "role": "assistant",
-          "tool_calls": [
-            {"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}
-          ],
+          "tool_calls": [{"name": "ask_user_for_input", "arguments": '{"question": "What is your favorite color?"}'}],
         },
         {"role": "assistant", "content": "Yes, I remember you said blue!"},
       ]
@@ -126,8 +124,9 @@ class TestHITLMemory:
           final_content += msg.content.text.lower()
 
     # Agent should reference the context (blue or color)
-    assert "blue" in final_content or "color" in final_content or len(final_content) > 0, \
+    assert "blue" in final_content or "color" in final_content or len(final_content) > 0, (
       "Agent should respond with context from conversation"
+    )
 
   def test_multiple_conversations_isolated(self):
     """Verify different conversations maintain separate history."""
@@ -184,10 +183,8 @@ class TestHITLMemory:
     state2_updated = await agent.get_conversation_state(conversation="conv2")
 
     # Conv1 should have more messages now, but conv2 should be unchanged
-    assert state1_updated.message_count > state1_initial.message_count, \
-      "Conv1 message count should increase"
-    assert state2_updated.message_count == state2_initial.message_count, \
-      "Conv2 message count should remain unchanged"
+    assert state1_updated.message_count > state1_initial.message_count, "Conv1 message count should increase"
+    assert state2_updated.message_count == state2_initial.message_count, "Conv2 message count should remain unchanged"
 
   def test_history_persists_across_pause_resume_cycles(self):
     """Verify history accumulates correctly across multiple pauses."""
@@ -227,13 +224,12 @@ class TestHITLMemory:
       messages_count.append(state.message_count)
 
     # Count should increase each time (accumulating history)
-    assert messages_count == sorted(messages_count), \
-      f"Message count should increase monotonically: {messages_count}"
+    assert messages_count == sorted(messages_count), f"Message count should increase monotonically: {messages_count}"
 
     # Last count should be greater than first
-    assert messages_count[-1] > messages_count[0], \
+    assert messages_count[-1] > messages_count[0], (
       f"History should grow: started with {messages_count[0]}, ended with {messages_count[-1]}"
+    )
 
     # Should have at least 6 messages total (3 user + 3 assistant)
-    assert messages_count[-1] >= 6, \
-      f"Should have at least 6 messages after 3 exchanges, got {messages_count[-1]}"
+    assert messages_count[-1] >= 6, f"Should have at least 6 messages after 3 exchanges, got {messages_count[-1]}"
