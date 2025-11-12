@@ -22,6 +22,10 @@ The `autonomy` command line tool:
 ## General Development Guidelines
 
 - Use the `.scratch` directory for any notes, temporary tests, or experimental code that shouldn't be committed to the repository.
+  - Create a dedicated subfolder within `.scratch` for each project or task (e.g., `.scratch/feature-name`, `.scratch/bug-fix-123`)
+  - Before creating a new subfolder, check if one already exists for the current work by exploring the `.scratch` directory
+  - This keeps work organized and prevents clutter from multiple simultaneous tasks
+  - Use descriptive names for subfolders that indicate the purpose
 - When using `git diff`, always pipe output to prevent blocking on large diffs:
   - Use `git diff | cat` to view diffs without pagination
   - Use `git diff --stat | cat` to see a summary of changes
