@@ -151,15 +151,15 @@ template.add_section(AdditionalContextSection(provider_fn=current_time_provider)
 ```python
 # Section 1: Analyze and store data
 class AnalysisSection(ContextSection):
-  async def get_messages(self, scope, conversation, context):
-    context["sentiment"] = analyze_sentiment(conversation)
+  async def get_messages(self, scope, conversation, params):
+    params["sentiment"] = analyze_sentiment(conversation)
     return []
 
 
 # Section 2: Use stored data
 class ResponseSection(ContextSection):
-  async def get_messages(self, scope, conversation, context):
-    sentiment = context.get("sentiment", "neutral")
+  async def get_messages(self, scope, conversation, params):
+    sentiment = params.get("sentiment", "neutral")
     return [{"role": "system", "content": {"text": f"Sentiment: {sentiment}", "type": "text"}}]
 ```
 
@@ -168,7 +168,7 @@ class ResponseSection(ContextSection):
 ### RAG (Retrieval-Augmented Generation)
 
 ```python
-async def rag_provider(scope, conversation, context):
+async def rag_provider(scope, conversation, params):
   # Get last user message
   query = get_last_user_message(conversation)
   # Search vector database
@@ -184,8 +184,8 @@ template.add_section(AdditionalContextSection(provider_fn=rag_provider))
 
 ```python
 class SummarySection(ContextSection):
-  async def get_messages(self, scope, conversation, context):
-    msg_count = context.get("conversation_message_count", 0)
+  async def get_messages(self, scope, conversation, params):
+    msg_count = params.get("conversation_message_count", 0)
     if msg_count > 20:
       summary = await generate_summary(scope, conversation)
       return [{"role": "system", "content": {"text": f"Summary: {summary}", "type": "text"}}]
@@ -195,7 +195,7 @@ class SummarySection(ContextSection):
 ### Time-Aware Context
 
 ```python
-async def time_context(scope, conversation, context):
+async def time_context(scope, conversation, params):
   from datetime import datetime
 
   now = datetime.now()
@@ -261,7 +261,7 @@ class ContextSection:
     Any object with the following interface can be used as a section:
     - `name` attribute (str) - Section identifier
     - `enabled` attribute (bool) - Whether section is active
-    - `get_messages(scope, conversation, context)` method - Returns message list
+    - `get_messages(scope, conversation, params)` method - Returns message list
 
   This class is provided as a convenient base with default implementations,
   but inheritance is not required. You can create sections without inheriting
@@ -277,7 +277,7 @@ class ContextSection:
       def __init__(self):
         super().__init__("my_section")
 
-      async def get_messages(self, scope, conversation, context):
+      async def get_messages(self, scope, conversation, params):
         return [...]
     ```
 
@@ -288,7 +288,7 @@ class ContextSection:
         self.name = "my_section"
         self.enabled = True
 
-      async def get_messages(self, scope, conversation, context):
+      async def get_messages(self, scope, conversation, params):
         return [...]
     ```
   """
@@ -304,7 +304,7 @@ class ContextSection:
     self.name = name
     self.enabled = enabled
 
-  async def get_messages(self, scope: str, conversation: str, context: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """
     Retrieve messages for this section.
 
@@ -314,7 +314,7 @@ class ContextSection:
     Args:
       scope: User/tenant identifier for memory isolation
       conversation: Conversation thread identifier
-      context: Shared context dictionary for passing data between sections
+      params: Shared parameters dictionary for passing data between sections
 
     Returns:
       List of message dicts to include in model input
@@ -360,13 +360,14 @@ class SystemInstructionsSection(ContextSection):
     super().__init__("system_instructions", enabled)
     self.instructions = instructions
 
-  async def get_messages(self, scope: str, conversation: str, context: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Return system instructions."""
     if not self.enabled:
       return []
 
     logger.debug(f"[CONTEXT→{self.name}] Adding {len(self.instructions)} instruction message(s)")
-    return self.instructions.copy()
+
+    return self.instructions
 
 
 class ConversationHistorySection(ContextSection):
@@ -413,7 +414,7 @@ class ConversationHistorySection(ContextSection):
     self.filter_fn = filter_fn
     self.transform_fn = transform_fn
 
-  async def get_messages(self, scope: str, conversation: str, context: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Retrieve conversation history from memory."""
     if not self.enabled:
       return []
@@ -439,8 +440,8 @@ class ConversationHistorySection(ContextSection):
 
     logger.debug(f"[CONTEXT→{self.name}] Adding {len(messages)} conversation message(s)")
 
-    # Store message count in shared context for other sections to use
-    context["conversation_message_count"] = len(messages)
+    # Store message count in shared params for other sections
+    params["conversation_message_count"] = len(messages)
 
     return messages
 
@@ -513,7 +514,7 @@ class AdditionalContextSection(ContextSection):
     self._static_messages = []
     logger.debug(f"[CONTEXT→{self.name}] Cleared {count} message(s)")
 
-  async def get_messages(self, scope: str, conversation: str, context: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Retrieve additional context messages."""
     if not self.enabled:
       return []
@@ -527,7 +528,7 @@ class AdditionalContextSection(ContextSection):
     # Call provider function if available
     if self.provider_fn:
       try:
-        provided_messages = await self.provider_fn(scope, conversation, context)
+        provided_messages = await self.provider_fn(scope, conversation, params)
         if provided_messages:
           messages.extend(provided_messages)
       except Exception as e:
@@ -537,6 +538,54 @@ class AdditionalContextSection(ContextSection):
       logger.debug(f"[CONTEXT→{self.name}] Adding {len(messages)} additional message(s)")
 
     return messages
+
+
+class WorkspaceReminderSection(ContextSection):
+  """
+  Workspace reminder section.
+
+  Periodically reminds the agent to check workspace files for context.
+  Shows on first turn and then at configurable frequency.
+
+  Example:
+    ```python
+    section = WorkspaceReminderSection(frequency=5)  # Every 5 turns
+    ```
+  """
+
+  def __init__(self, frequency: int = 5, enabled: bool = True):
+    """
+    Initialize workspace reminder section.
+
+    Args:
+      frequency: Show reminder every N turns (default: 5)
+      enabled: Whether section is active (default: True)
+    """
+    super().__init__("workspace_reminder", enabled)
+    self.frequency = frequency
+
+  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
+    """Generate workspace reminder message."""
+    if not self.enabled:
+      return []
+
+    message_count = params.get("conversation_message_count", 0)
+
+    # Show on first turn and then periodically
+    if message_count == 0 or (message_count > 0 and message_count % self.frequency == 0):
+      logger.debug(f"[CONTEXT→{self.name}] Adding workspace reminder")
+      return [
+        {
+          "role": "system",
+          "content": {
+            "text": "💡 Reminder: Use list_directory and read_file to check your workspace for context. Read memory.md first and then explore other files.",
+            "type": "text",
+          },
+          "phase": "system",
+        }
+      ]
+
+    return []
 
 
 class FrameworkInstructionsSection(ContextSection):
@@ -629,8 +678,36 @@ class FrameworkInstructionsSection(ContextSection):
         f"- `search_in_files`: Search file contents using regex\n"
         f"- `remove_file`: Delete a file\n"
         f"- `remove_directory`: Delete a directory and its contents\n\n"
-        f"All paths are relative to your filesystem root ('/'). "
-        f"Security: Path validation prevents directory traversal attacks."
+        f"All paths are relative to your filesystem root ('/').\n\n"
+        f"**Workspace Best Practices:**\n\n"
+        f"Your files persist. Use them actively to be more effective.\n\n"
+        f"**Core Workflow:**\n"
+        f"1. **Before responding to requests:**\n"
+        f"   - ALWAYS read `memory.md` first for essential facts and key context\n"
+        f'   - Search your files: `search_in_files("keywords", "/")`\n'
+        f"   - Check if you've worked on this before\n"
+        f"   - Build on existing knowledge\n\n"
+        f"2. **After learning something important:**\n"
+        f"   - ALWAYS update `memory.md` with key facts, preferences, and decisions\n"
+        f"   - Keep it current with the most important information!\n"
+        f'   - Create detailed notes: `write_file("/notes/topic.md", content)`\n'
+        f"   - You can search for it later\n\n"
+        f"3. **For complex work:**\n"
+        f"   - Update `memory.md` with project context and key decisions\n"
+        f'   - Create a plan: `write_file("/plans/project.md", plan)`\n'
+        f'   - Track tasks: `write_file("/tasks.md", task_list)`\n'
+        f"   - Update as you progress\n\n"
+        f"**File Organization:**\n"
+        f"- `/memory.md` - **REQUIRED** - Quick reference for essential facts, preferences, key decisions\n"
+        f"- `/notes/` - Detailed learnings and observations (optional)\n"
+        f"- `/plans/` - Project planning (optional)\n"
+        f"- `/tasks.md` - Task tracking (optional)\n"
+        f"- Or organize however makes sense to you\n\n"
+        f"**Key Principles:**\n"
+        f"- **memory.md is your anchor for essentials - read it first, update it with key info**\n"
+        f"- **Use the full filesystem - memory.md for essentials, other files for details**\n"
+        f"- Search before acting. Document as you go. Plan before executing.\n"
+        f"- Build knowledge over time. Your workspace persists across conversations."
       )
 
     # Ask user for input tool (conditionally included)
@@ -670,7 +747,7 @@ class FrameworkInstructionsSection(ContextSection):
 
     return "\n\n".join(instructions)
 
-  async def get_messages(self, scope: str, conversation: str, context: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Generate framework instructions message."""
     if not self.enabled:
       return []
@@ -778,21 +855,22 @@ class ContextTemplate:
         return True
     return False
 
-  async def build_context(self, scope: str, conversation: str) -> List[dict]:
+  async def build_context(self, scope: str, conversation: str, params: Optional[Dict[str, Any]] = None) -> List[dict]:
     """
     Build context by combining all enabled sections.
 
     Args:
       scope: User/tenant identifier for memory isolation
       conversation: Conversation thread identifier
+      params: Optional dict of parameters to share with sections
 
     Returns:
       List of message dicts for model input
     """
     logger.debug(f"[CONTEXT→BUILD] Building context for {scope}/{conversation}")
 
-    # Shared context dictionary for sections to communicate
-    context: Dict[str, Any] = {}
+    # Shared parameters dictionary for sections to communicate
+    section_params: Dict[str, Any] = params.copy() if params else {}
 
     all_messages = []
     section_counts = []
@@ -803,7 +881,7 @@ class ContextTemplate:
         continue
 
       try:
-        messages = await section.get_messages(scope, conversation, context)
+        messages = await section.get_messages(scope, conversation, section_params)
         message_count = len(messages)
         all_messages.extend(messages)
         section_counts.append(f"{section.name}={message_count}")
@@ -838,6 +916,8 @@ def create_default_template(
   enable_filesystem: bool = False,
   filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
   subagent_configs: Optional[Dict[str, Any]] = None,
+  enable_workspace_reminder: bool = False,
+  workspace_reminder_frequency: int = 5,
 ) -> ContextTemplate:
   """
   Create a default context template with framework instructions.
@@ -845,7 +925,8 @@ def create_default_template(
   Creates a template with the standard structure:
   1. System instructions (user-provided)
   2. Framework instructions (built-in tools and capabilities)
-  3. Conversation history
+  3. Workspace reminder (optional, if enabled)
+  4. Conversation history
 
   Args:
     memory: Memory instance
@@ -854,19 +935,27 @@ def create_default_template(
     enable_filesystem: Whether filesystem tools are enabled
     filesystem_visibility: Filesystem visibility level
     subagent_configs: Optional dict of configured subagents
+    enable_workspace_reminder: Whether to add periodic workspace reminder (default: False)
+    workspace_reminder_frequency: How often to show reminder in turns (default: 5)
 
   Returns:
     ContextTemplate configured with default sections
   """
-  return ContextTemplate(
-    [
-      SystemInstructionsSection(instructions),
-      FrameworkInstructionsSection(
-        enable_ask_for_user_input=enable_ask_for_user_input,
-        enable_filesystem=enable_filesystem,
-        filesystem_visibility=filesystem_visibility,
-        subagent_configs=subagent_configs,
-      ),
-      ConversationHistorySection(memory),
-    ]
-  )
+  sections = [
+    SystemInstructionsSection(instructions),
+    FrameworkInstructionsSection(
+      enable_ask_for_user_input=enable_ask_for_user_input,
+      enable_filesystem=enable_filesystem,
+      filesystem_visibility=filesystem_visibility,
+      subagent_configs=subagent_configs,
+    ),
+  ]
+
+  # Add workspace reminder if explicitly enabled
+  if enable_workspace_reminder:
+    sections.append(WorkspaceReminderSection(frequency=workspace_reminder_frequency))
+
+  # Conversation history always comes last
+  sections.append(ConversationHistorySection(memory))
+
+  return ContextTemplate(sections)

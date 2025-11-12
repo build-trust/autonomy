@@ -229,15 +229,15 @@ async def test_agent_shared_context():
   shared_data = {}
 
   class WriterSection(ContextSection):
-    async def get_messages(self, scope, conversation, context):
-      context["test_value"] = 42
-      shared_data["context_obj"] = id(context)
+    async def get_messages(self, scope, conversation, params):
+      params["test_value"] = 42
+      shared_data["context_obj"] = id(params)
       return []
 
   class ReaderSection(ContextSection):
-    async def get_messages(self, scope, conversation, context):
-      shared_data["read_value"] = context.get("test_value", None)
-      shared_data["same_obj"] = id(context) == shared_data.get("context_obj")
+    async def get_messages(self, scope, conversation, params):
+      shared_data["read_value"] = params.get("test_value", None)
+      shared_data["same_obj"] = id(params) == shared_data.get("context_obj")
       return []
 
   agent = await Agent.start(

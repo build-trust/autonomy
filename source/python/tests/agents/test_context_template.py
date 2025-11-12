@@ -256,13 +256,13 @@ async def test_context_template_shared_context():
   """Test that sections can share data via context dict."""
 
   class WriterSection(ContextSection):
-    async def get_messages(self, scope, conversation, context):
-      context["shared_value"] = 42
+    async def get_messages(self, scope, conversation, params):
+      params["shared_value"] = 42
       return []
 
   class ReaderSection(ContextSection):
-    async def get_messages(self, scope, conversation, context):
-      value = context.get("shared_value", 0)
+    async def get_messages(self, scope, conversation, params):
+      value = params.get("shared_value", 0)
       return [{"role": "system", "content": {"text": f"Value: {value}", "type": "text"}}]
 
   template = ContextTemplate(
