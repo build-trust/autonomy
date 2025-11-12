@@ -12,6 +12,11 @@ import boto3
 
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
+from ...transcripts import (
+  log_raw_request,
+  log_raw_response,
+  detect_provider,
+)
 
 
 PROVIDER_ALIASES = {
@@ -429,6 +434,13 @@ class LiteLLMClient(InfoContext, DebugContext):
         chunks = dill.load(open(file, "rb"))
 
     if chunks is None:
+      # Log raw API request if transcripts are enabled
+      log_raw_request(
+        payload={"model": self.name, "messages": messages, "stream": True, **kwargs},
+        provider=detect_provider(self.name),
+        model_name=self.name,
+      )
+
       if _cache_inference:
         chunks = []
         async for chunk in await router.acompletion(self.name, messages=messages, stream=True, **kwargs):
@@ -474,8 +486,23 @@ class LiteLLMClient(InfoContext, DebugContext):
         response = dill.load(open(file, "rb"))
 
     if response is None:
+      # Log raw API request if transcripts are enabled
+      log_raw_request(
+        payload={"model": self.name, "messages": messages, "stream": False, **kwargs},
+        provider=detect_provider(self.name),
+        model_name=self.name,
+      )
+
       response = await router.acompletion(self.name, messages=messages, stream=False, **kwargs)
       self.logger.debug(f"Got a response from model '{self.original_name}': {response}")
+
+      # Log raw API response if transcripts are enabled
+      try:
+        response_dict = response.model_dump(mode="json", exclude_unset=True)
+        log_raw_response(response=response_dict, provider=detect_provider(self.name), model_name=self.name)
+      except Exception as e:
+        self.logger.debug(f"Failed to log raw API response: {e}")
+
     self.logger.info(f"Finished processing messages with model '{self.original_name}'")
 
     if _cache_inference:

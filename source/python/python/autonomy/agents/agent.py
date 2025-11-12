@@ -36,6 +36,7 @@ import json
 import secrets
 import time
 import traceback
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
 import uuid
 
 from collections import OrderedDict
@@ -672,6 +673,44 @@ class StateMachine:
     Non-streaming mode: Return complete accumulated response
     """
 
+    # Log model response if transcripts enabled
+    if not self.stream and len(self.whole_response.messages) > 0:
+      from ..transcripts import log_model_response
+
+      # Get the last assistant message
+      for msg in reversed(self.whole_response.messages):
+        if hasattr(msg, "role") and msg.role == "assistant":
+          # Extract content
+          content_text = ""
+          if hasattr(msg, "content") and msg.content:
+            content = msg.content
+            if hasattr(content, "text") and isinstance(content.text, str):
+              content_text = content.text
+            elif isinstance(content, list):
+              parts = []
+              for item in content:
+                if hasattr(item, "text") and isinstance(item.text, str):
+                  parts.append(item.text)
+                else:
+                  parts.append(str(item))
+              content_text = "\n".join(parts)
+            elif isinstance(content, str):
+              content_text = content
+            else:
+              content_text = str(content)
+
+          # Extract tool calls
+          tool_calls = None
+          if hasattr(msg, "tool_calls") and msg.tool_calls:
+            tool_calls = []
+            for tc in msg.tool_calls:
+              if hasattr(tc, "function") and tc.function:
+                tool_calls.append({"function": {"name": tc.function.name, "arguments": tc.function.arguments}})
+
+          # Log the response
+          log_model_response(content=content_text, tool_calls=tool_calls, agent_name=self.agent.name)
+          break
+
     if self.stream:
       if not self.final_content_sent:
         yield await self.streaming_response.make_finished_snippet()
@@ -747,7 +786,9 @@ class StateMachine:
       yield Error(f"Agent execution timed out after {self.max_execution_time:.1f} seconds")
 
     elapsed_time = time.time() - self.start_time - self.total_paused_time
-    logger.info(f"State machine completed: {self.iteration} iterations in {elapsed_time:.1f}s (paused for {self.total_paused_time:.1f}s)")
+    logger.info(
+      f"State machine completed: {self.iteration} iterations in {elapsed_time:.1f}s (paused for {self.total_paused_time:.1f}s)"
+    )
 
 
 # =============================================================================
@@ -1057,8 +1098,7 @@ class Agent:
 
     # Active state machine exists - check if it matches the requested conversation
     # The active state machine stores the raw scope (not prefixed), so compare with message.scope directly
-    if (state_machine.scope == message.scope and
-        state_machine.conversation == message.conversation):
+    if state_machine.scope == message.scope and state_machine.conversation == message.conversation:
       # This is the active conversation
       is_paused = state_machine.state == State.WAITING_FOR_INPUT
       phase = state_machine.state.value  # Get string value from enum
@@ -1117,19 +1157,19 @@ class Agent:
       # Create tool result with user's response
       # Note: We don't add user messages to memory here because the response
       # should only appear as a tool result, not as a separate user message
-      user_response = "\n".join([
-        msg.content.text if hasattr(msg.content, "text") else str(msg.content)
-        for msg in messages
-        if hasattr(msg, "content") and msg.content
-      ])
+      user_response = "\n".join(
+        [
+          msg.content.text if hasattr(msg.content, "text") else str(msg.content)
+          for msg in messages
+          if hasattr(msg, "content") and msg.content
+        ]
+      )
 
       # Complete the pending ask_user_for_input tool call
       from ..nodes.message import ToolCallResponseMessage
 
       tool_result = ToolCallResponseMessage(
-        tool_call_id=machine.pending_tool_call_id or "unknown",
-        name="ask_user_for_input",
-        content=user_response
+        tool_call_id=machine.pending_tool_call_id or "unknown", name="ask_user_for_input", content=user_response
       )
       await self.remember(scope, conversation, tool_result)
 
@@ -1154,7 +1194,9 @@ class Agent:
       if machine.paused_at is not None:
         paused_duration = time.time() - machine.paused_at
         machine.total_paused_time += paused_duration
-        logger.debug(f"[STATE_MACHINE] Resuming after {paused_duration}s pause, total paused time: {machine.total_paused_time}s")
+        logger.debug(
+          f"[STATE_MACHINE] Resuming after {paused_duration}s pause, total paused time: {machine.total_paused_time}s"
+        )
         machine.paused_at = None
 
       machine.state = State.THINKING  # Continue from thinking
@@ -1300,9 +1342,22 @@ class Agent:
     # Build context using the template (applies to agent-scoped memory)
     raw_messages = await self.context_template.build_context(self._memory_scope(scope), conversation)
     logger.debug(f"[MEMORY→READ] Retrieved {len(raw_messages)} messages for model context")
+
     if logger.isEnabledFor(10):  # DEBUG level
       for idx, msg in enumerate(raw_messages):
         logger.debug(f"[MEMORY→READ] Message {idx}: role={msg.get('role', 'unknown')}")
+
+    # Log context if transcripts enabled
+    from ..transcripts import log_context
+
+    log_context(
+      messages=raw_messages,
+      tools=self.tool_specs,
+      title="CONTEXT",
+      agent_name=self.name,
+      scope=scope,
+      conversation=conversation,
+    )
 
     messages = [self.converter.conversation_message_from_dict(m) for m in raw_messages]
 
@@ -2180,7 +2235,9 @@ class Agent:
       loop = asyncio.new_event_loop()
       asyncio.set_event_loop(loop)
       try:
-        scope_tool_specs, scope_tools_dict = loop.run_until_complete(prepare_tools(all_tools, node, enable_ask_for_user_input))
+        scope_tool_specs, scope_tools_dict = loop.run_until_complete(
+          prepare_tools(all_tools, node, enable_ask_for_user_input)
+        )
 
         kwargs = {
           "node": node,

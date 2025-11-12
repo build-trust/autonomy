@@ -10,6 +10,10 @@ from botocore.exceptions import ClientError
 
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
+from ...transcripts import (
+  log_raw_request,
+  log_raw_response,
+)
 
 
 # Model mapping for Bedrock - maps friendly names to actual model IDs
@@ -256,10 +260,23 @@ class BedrockClient(InfoContext, DebugContext):
       if isinstance(message, dict):
         converted_messages.append(message)
       else:
+        # Manually construct dict and preserve all important fields
         msg_dict = {
           "role": message.role.value,
           "content": message.content.text if hasattr(message.content, "text") else str(message.content),
         }
+        # Preserve tool_call_id for ToolCallResponseMessage
+        if hasattr(message, "tool_call_id"):
+          msg_dict["tool_call_id"] = message.tool_call_id
+        # Preserve name field for tool messages
+        if hasattr(message, "name"):
+          msg_dict["name"] = message.name
+        # Preserve tool_calls for AssistantMessage
+        if hasattr(message, "tool_calls") and message.tool_calls:
+          msg_dict["tool_calls"] = [
+            {"id": tc.id, "type": tc.type, "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+            for tc in message.tool_calls
+          ]
         converted_messages.append(msg_dict)
     messages = converted_messages
 
@@ -278,8 +295,8 @@ class BedrockClient(InfoContext, DebugContext):
       elif role in ["user", "assistant"]:
         cleaned_messages.append(message)
       elif role == "tool":
-        # Convert tool messages to assistant
-        message["role"] = "assistant"
+        # Keep tool role for proper conversion later (for Claude/Anthropic)
+        # Note: tool_call_id should be preserved in the message
         cleaned_messages.append(message)
 
     # Handle thinking mode
@@ -409,10 +426,85 @@ class BedrockClient(InfoContext, DebugContext):
 
     # Build the base payload - format depends on model family
     if "anthropic" in self.model_id:
-      # Claude format
+      # Claude format - convert tool messages properly
+      formatted_messages = []
+      i = 0
+      while i < len(conversation_messages):
+        msg = conversation_messages[i]
+
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+          # Convert tool calls to Claude format
+          content = []
+          if msg.get("content"):
+            content.append({"type": "text", "text": msg["content"]})
+
+          for tool_call in msg["tool_calls"]:
+            func = tool_call.get("function", {})
+            content.append(
+              {
+                "type": "tool_use",
+                "id": tool_call.get("id"),
+                "name": func.get("name"),
+                "input": json.loads(func.get("arguments", "{}")),
+              }
+            )
+
+          formatted_messages.append({"role": "assistant", "content": content})
+          i += 1
+
+        elif msg.get("role") == "tool":
+          # Collect all consecutive tool messages and convert to a single user message
+          # with multiple tool_result blocks
+          tool_results = []
+          while i < len(conversation_messages) and conversation_messages[i].get("role") == "tool":
+            tool_msg = conversation_messages[i]
+            tool_results.append(
+              {"type": "tool_result", "tool_use_id": tool_msg.get("tool_call_id"), "content": tool_msg.get("content")}
+            )
+            i += 1
+
+          # Create a single user message with all tool results
+          formatted_messages.append({"role": "user", "content": tool_results})
+
+        elif msg.get("role") == "user":
+          # Collect user message content
+          content = []
+
+          # Handle string content
+          if isinstance(msg.get("content"), str):
+            content.append({"type": "text", "text": msg["content"]})
+          # Handle dict content (already structured)
+          elif isinstance(msg.get("content"), dict):
+            if msg["content"].get("type") == "text":
+              content.append(msg["content"])
+            else:
+              content.append({"type": "text", "text": str(msg["content"])})
+          # Handle list content
+          elif isinstance(msg.get("content"), list):
+            content.extend(msg["content"])
+          else:
+            content.append({"type": "text", "text": str(msg.get("content", ""))})
+
+          i += 1
+
+          # Check if the next messages are tool messages - if so, merge them into this user message
+          while i < len(conversation_messages) and conversation_messages[i].get("role") == "tool":
+            tool_msg = conversation_messages[i]
+            content.append(
+              {"type": "tool_result", "tool_use_id": tool_msg.get("tool_call_id"), "content": tool_msg.get("content")}
+            )
+            i += 1
+
+          formatted_messages.append({"role": "user", "content": content})
+
+        else:
+          # Handle other message types (keep as-is)
+          formatted_messages.append(msg)
+          i += 1
+
       payload = {
         "anthropic_version": "bedrock-2023-05-31",
-        "messages": conversation_messages,
+        "messages": formatted_messages,
         "max_tokens": kwargs.get("max_tokens", 4000),
       }
 
@@ -426,11 +518,13 @@ class BedrockClient(InfoContext, DebugContext):
         for tool_spec in kwargs["tool_specs"]:
           if tool_spec.get("type") == "function":
             func = tool_spec["function"]
-            tools.append({
-              "name": func["name"],
-              "description": func.get("description", ""),
-              "input_schema": func.get("parameters", {"type": "object", "properties": {}})
-            })
+            tools.append(
+              {
+                "name": func["name"],
+                "description": func.get("description", ""),
+                "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+              }
+            )
         if tools:
           payload["tools"] = tools
           self.logger.debug(f"[BEDROCK] Converted {len(tools)} tool specs to Anthropic format")
@@ -444,11 +538,13 @@ class BedrockClient(InfoContext, DebugContext):
           for tool_spec in kwargs["tools"]:
             if tool_spec.get("type") == "function":
               func = tool_spec["function"]
-              tools.append({
-                "name": func["name"],
-                "description": func.get("description", ""),
-                "input_schema": func.get("parameters", {"type": "object", "properties": {}})
-              })
+              tools.append(
+                {
+                  "name": func["name"],
+                  "description": func.get("description", ""),
+                  "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+                }
+              )
           if tools:
             payload["tools"] = tools
             self.logger.debug(f"[BEDROCK] Added {len(tools)} tools from 'tools' kwargs")
@@ -573,6 +669,11 @@ class BedrockClient(InfoContext, DebugContext):
   async def _complete_chat_non_stream(self, payload: Dict[str, Any], **kwargs):
     """Non-streaming chat completion."""
     try:
+      # Log raw API request if transcripts are enabled
+      log_raw_request(
+        payload={"model": self.final_model_id, **payload}, provider="bedrock", model_name=self.final_model_id
+      )
+
       response = await asyncio.get_event_loop().run_in_executor(
         None,
         lambda: self.bedrock_client.invoke_model(
@@ -583,6 +684,9 @@ class BedrockClient(InfoContext, DebugContext):
       )
 
       response_body = json.loads(response["body"].read())
+
+      # Log raw API response if transcripts are enabled
+      log_raw_response(response=response_body, provider="bedrock", model_name=self.final_model_id)
 
       # Extract content and tool calls from response
       text_content = ""
@@ -605,14 +709,13 @@ class BedrockClient(InfoContext, DebugContext):
           elif block.get("type") == "tool_use":
             # Extract tool use
             tool_use = block
-            tool_calls.append({
-              "id": tool_use.get("id"),
-              "type": "function",
-              "function": {
-                "name": tool_use.get("name"),
-                "arguments": json.dumps(tool_use.get("input", {}))
+            tool_calls.append(
+              {
+                "id": tool_use.get("id"),
+                "type": "function",
+                "function": {"name": tool_use.get("name"), "arguments": json.dumps(tool_use.get("input", {}))},
               }
-            })
+            )
       else:
         # For non-Anthropic models, extract text only
         text_content = self._extract_content_from_response(response_body)
@@ -633,7 +736,9 @@ class BedrockClient(InfoContext, DebugContext):
           self.content = content
           self.role = "assistant"
           self.reasoning_content = reasoning_content
-          self.tool_calls = [ToolCall(tc["id"], tc["type"], tc["function"]) for tc in tool_calls] if tool_calls else None
+          self.tool_calls = (
+            [ToolCall(tc["id"], tc["type"], tc["function"]) for tc in tool_calls] if tool_calls else None
+          )
 
       class Choice:
         def __init__(self, content: str, tool_calls: list, reasoning_content: str):
@@ -672,6 +777,11 @@ class BedrockClient(InfoContext, DebugContext):
   async def _complete_chat_stream(self, payload: Dict[str, Any], is_thinking: bool, **kwargs):
     """Streaming chat completion."""
     try:
+      # Log raw API request if transcripts are enabled
+      log_raw_request(
+        payload={"model": self.final_model_id, **payload}, provider="bedrock", model_name=self.final_model_id
+      )
+
       self.logger.debug(f"Starting Bedrock streaming for model {self.model_id}")
       # Add streaming configuration
       if "anthropic" in self.model_id:
@@ -744,7 +854,7 @@ class BedrockClient(InfoContext, DebugContext):
               current_tool_use = {
                 "id": content_block.get("id"),
                 "name": content_block.get("name"),
-                "index": chunk_data.get("index", 0)
+                "index": chunk_data.get("index", 0),
               }
               accumulated_tool_input = ""
               self.logger.debug(f"Starting tool use: {current_tool_use['name']}")
@@ -831,10 +941,7 @@ class BedrockClient(InfoContext, DebugContext):
                   self.choices = [Choice(tool_call)]
 
               tool_call = ToolCall(
-                current_tool_use["id"],
-                current_tool_use["name"],
-                json.dumps(tool_args),
-                current_tool_use["index"]
+                current_tool_use["id"], current_tool_use["name"], json.dumps(tool_args), current_tool_use["index"]
               )
               yield Chunk(tool_call)
 
