@@ -104,6 +104,9 @@ TOOL_ID_CLEANUP_BATCH_SIZE = 100
 MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT = 1000
 MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT = 100000
 
+# Filesystem defaults
+FILESYSTEM_VISIBILITY_DEFAULT = "conversation"
+
 
 # =============================================================================
 # CONFIGURATION TYPE DEFINITIONS
@@ -172,6 +175,8 @@ class AgentConfig(TypedDict):
   max_tokens_in_short_term_memory: NotRequired[int]
   enable_long_term_memory: NotRequired[bool]
   enable_ask_for_user_input: NotRequired[bool]
+  enable_filesystem: NotRequired[bool]
+  filesystem_visibility: NotRequired[str]
   subagents: NotRequired[Dict[str, SubagentConfig]]
   subagent_runner_filter: NotRequired[str]
   exposed_as: NotRequired[str]
@@ -921,6 +926,8 @@ class Agent:
     parent_agent_name: Optional[str] = None,
     context_template: Optional[ContextTemplate] = None,
     enable_ask_for_user_input: bool = False,
+    enable_filesystem: bool = False,
+    filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
   ):
     logger.info(f"Starting agent '{name}'")
     self.node = node
@@ -959,6 +966,8 @@ class Agent:
         memory,
         memory.instructions,
         enable_ask_for_user_input=enable_ask_for_user_input,
+        enable_filesystem=enable_filesystem,
+        filesystem_visibility=filesystem_visibility,
         subagent_configs=subagent_configs,
       )
     else:
@@ -1800,6 +1809,8 @@ class Agent:
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
     enable_ask_for_user_input: bool = False,
+    enable_filesystem: bool = False,
+    filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
     subagents: Optional[Dict[str, SubagentConfig]] = None,
     subagent_runner_filter: Optional[str] = None,
     exposed_as: Optional[str] = None,
@@ -1824,6 +1835,8 @@ class Agent:
       max_tokens_in_short_term_memory: Maximum tokens in short-term memory
       enable_long_term_memory: Enable persistent long-term memory (database)
       enable_ask_for_user_input: Enable ask_user_for_input tool
+      enable_filesystem: Enable filesystem tools
+      filesystem_visibility: Filesystem visibility level ("all", "agent", "scope", or "conversation")
       subagents: Optional dictionary of subagent configurations
       subagent_runner_filter: Optional filter for subagent runner selection
       exposed_as: Optional external name for HTTP exposure
@@ -1865,6 +1878,8 @@ class Agent:
       max_tokens_in_short_term_memory,
       enable_long_term_memory,
       enable_ask_for_user_input,
+      enable_filesystem,
+      filesystem_visibility,
       subagents,
       subagent_runner_filter,
       exposed_as,
@@ -1884,6 +1899,8 @@ class Agent:
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
     enable_ask_for_user_input: bool = False,
+    enable_filesystem: bool = False,
+    filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
   ):
     """
         Start multiple agents on a node for load distribution.
@@ -1906,6 +1923,8 @@ class Agent:
           max_tokens_in_short_term_memory: Maximum tokens in short-term memory
           enable_long_term_memory: Enable persistent long-term memory (database)
           enable_ask_for_user_input: Enable ask_user_for_input tool
+          enable_filesystem: Enable filesystem tools
+          filesystem_visibility: Filesystem visibility level ("all", "agent", "scope", or "conversation")
 
         Returns:
           List of AgentReference objects for the started agents
@@ -1931,6 +1950,8 @@ class Agent:
         max_tokens_in_short_term_memory,
         enable_long_term_memory,
         enable_ask_for_user_input,
+        enable_filesystem,
+        filesystem_visibility,
         None,  # subagent_configs not supported for multiple agents
         None,  # subagent_runner_filter not supported for multiple agents
         None,  # exposed_as not supported for multiple agents
@@ -1999,6 +2020,8 @@ class Agent:
     )
     enable_long_term_memory = config.get("enable_long_term_memory", False)
     enable_ask_for_user_input = config.get("enable_ask_for_user_input", False)
+    enable_filesystem = config.get("enable_filesystem", False)
+    filesystem_visibility = config.get("filesystem_visibility", FILESYSTEM_VISIBILITY_DEFAULT)
     subagents = config.get("subagents")
     subagent_runner_filter = config.get("subagent_runner_filter")
     exposed_as = config.get("exposed_as")
@@ -2017,6 +2040,8 @@ class Agent:
       max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
       enable_long_term_memory=enable_long_term_memory,
       enable_ask_for_user_input=enable_ask_for_user_input,
+      enable_filesystem=enable_filesystem,
+      filesystem_visibility=filesystem_visibility,
       subagents=subagents,
       subagent_runner_filter=subagent_runner_filter,
       exposed_as=exposed_as,
@@ -2078,6 +2103,8 @@ class Agent:
     )
     enable_long_term_memory = config.get("enable_long_term_memory", False)
     enable_ask_for_user_input = config.get("enable_ask_for_user_input", False)
+    enable_filesystem = config.get("enable_filesystem", False)
+    filesystem_visibility = config.get("filesystem_visibility", FILESYSTEM_VISIBILITY_DEFAULT)
 
     # Delegate to existing start_many() method
     return await Agent.start_many(
@@ -2093,6 +2120,8 @@ class Agent:
       max_tokens_in_short_term_memory=max_tokens_in_short_term_memory,
       enable_long_term_memory=enable_long_term_memory,
       enable_ask_for_user_input=enable_ask_for_user_input,
+      enable_filesystem=enable_filesystem,
+      filesystem_visibility=filesystem_visibility,
     )
 
   @staticmethod
@@ -2109,6 +2138,8 @@ class Agent:
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
     enable_ask_for_user_input: bool = False,
+    enable_filesystem: bool = False,
+    filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
     subagent_configs: Optional[Dict[str, SubagentConfig]] = None,
     subagent_runner_filter: Optional[str] = None,
     exposed_as: Optional[str] = None,
@@ -2132,6 +2163,8 @@ class Agent:
       max_tokens_in_short_term_memory: Maximum tokens in short-term memory
       enable_long_term_memory: Enable persistent long-term memory (database)
       enable_ask_for_user_input: Enable ask_user_for_input tool
+      enable_filesystem: Enable filesystem tools
+      filesystem_visibility: Filesystem visibility level ("all", "agent", "scope", or "conversation")
       subagent_configs: Optional dictionary of subagent configurations
       subagent_runner_filter: Optional filter for subagent runner selection
       exposed_as: Optional external name for HTTP exposure
@@ -2144,6 +2177,12 @@ class Agent:
 
     if tools is None:
       tools = []
+
+    # Add builtin filesystem tools if enabled (BEFORE factory detection)
+    if enable_filesystem:
+      from ..tools.filesystem import FilesystemTools
+
+      tools = [FilesystemTools(visibility=filesystem_visibility)] + tools
 
     # Separate static tools from tool factories
     # Static tools: Shared across all workers (same instance for everyone)
@@ -2260,6 +2299,9 @@ class Agent:
           kwargs["context_template"] = context_template
         if enable_ask_for_user_input:
           kwargs["enable_ask_for_user_input"] = enable_ask_for_user_input
+        if enable_filesystem:
+          kwargs["enable_filesystem"] = enable_filesystem
+          kwargs["filesystem_visibility"] = filesystem_visibility
 
         agent_instance = Agent(**kwargs)
 

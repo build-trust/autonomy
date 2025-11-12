@@ -4,6 +4,11 @@ Built-in tools automatically available to all agents.
 These tools are registered with every agent instance and provide
 core functionality for human-in-the-loop interactions, debugging,
 subagent management, and other standard operations.
+
+Note: FilesystemTools are also available as builtin tools when enabled via
+the enable_filesystem parameter. Unlike the tools in this file (which are
+static and shared), FilesystemTools is a tool factory that creates isolated
+instances per scope/conversation based on the configured visibility level.
 """
 
 import json

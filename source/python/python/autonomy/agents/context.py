@@ -246,6 +246,9 @@ from ..memory.memory import Memory
 
 logger = get_logger("context")
 
+# Filesystem defaults
+FILESYSTEM_VISIBILITY_DEFAULT = "conversation"
+
 
 class ContextSection:
   """
@@ -559,6 +562,8 @@ class FrameworkInstructionsSection(ContextSection):
   def __init__(
     self,
     enable_ask_for_user_input: bool = False,
+    enable_filesystem: bool = False,
+    filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
     subagent_configs: Optional[Dict[str, Any]] = None,
     enabled: bool = True,
   ):
@@ -567,11 +572,15 @@ class FrameworkInstructionsSection(ContextSection):
 
     Args:
       enable_ask_for_user_input: Whether ask_user_for_input tool is enabled
+      enable_filesystem: Whether filesystem tools are enabled
+      filesystem_visibility: Filesystem visibility level
       subagent_configs: Optional dict of configured subagents
       enabled: Whether section is active (default: True)
     """
     super().__init__("framework_instructions", enabled)
     self.enable_ask_for_user_input = enable_ask_for_user_input
+    self.enable_filesystem = enable_filesystem
+    self.filesystem_visibility = filesystem_visibility
     self.subagent_configs = subagent_configs or {}
 
   def _generate_framework_instructions(self) -> str:
@@ -593,6 +602,36 @@ class FrameworkInstructionsSection(ContextSection):
       "- `get_current_time_utc`: Returns current UTC time in ISO 8601 format\n"
       "- `get_current_time`: Returns current local time in ISO 8601 format"
     )
+
+    # Filesystem tools (conditionally included)
+    if self.enable_filesystem:
+      visibility_descriptions = {
+        "conversation": "Files are isolated per conversation. Each conversation has its own separate filesystem.",
+        "scope": "Files are shared across conversations for the same user/tenant but isolated from other users.",
+        "agent": "Files are shared across all users and conversations for this agent.",
+        "all": "Files are shared across all agents and users in the system.",
+      }
+
+      visibility_info = visibility_descriptions.get(
+        self.filesystem_visibility, "Files have custom visibility settings."
+      )
+
+      instructions.append(
+        f"### Filesystem Tools\n"
+        f"You have access to filesystem operations with **{self.filesystem_visibility}-level visibility**.\n"
+        f"{visibility_info}\n\n"
+        f"Available operations:\n"
+        f"- `list_directory`: List files and directories\n"
+        f"- `read_file`: Read file contents (supports partial reading with start/end lines)\n"
+        f"- `write_file`: Create or overwrite files\n"
+        f"- `edit_file`: Edit files by replacing specific strings\n"
+        f"- `find_files`: Search for files by name pattern (glob)\n"
+        f"- `search_in_files`: Search file contents using regex\n"
+        f"- `remove_file`: Delete a file\n"
+        f"- `remove_directory`: Delete a directory and its contents\n\n"
+        f"All paths are relative to your filesystem root ('/'). "
+        f"Security: Path validation prevents directory traversal attacks."
+      )
 
     # Ask user for input tool (conditionally included)
     if self.enable_ask_for_user_input:
@@ -796,6 +835,8 @@ def create_default_template(
   memory: Memory,
   instructions: List[dict],
   enable_ask_for_user_input: bool = False,
+  enable_filesystem: bool = False,
+  filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
   subagent_configs: Optional[Dict[str, Any]] = None,
 ) -> ContextTemplate:
   """
@@ -810,6 +851,8 @@ def create_default_template(
     memory: Memory instance
     instructions: System instruction messages
     enable_ask_for_user_input: Whether ask_user_for_input tool is enabled
+    enable_filesystem: Whether filesystem tools are enabled
+    filesystem_visibility: Filesystem visibility level
     subagent_configs: Optional dict of configured subagents
 
   Returns:
@@ -820,6 +863,8 @@ def create_default_template(
       SystemInstructionsSection(instructions),
       FrameworkInstructionsSection(
         enable_ask_for_user_input=enable_ask_for_user_input,
+        enable_filesystem=enable_filesystem,
+        filesystem_visibility=filesystem_visibility,
         subagent_configs=subagent_configs,
       ),
       ConversationHistorySection(memory),
