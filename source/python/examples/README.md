@@ -4,12 +4,9 @@ This directory contains examples demonstrating various features of the Autonomy 
 
 ## Running Examples
 
-Make sure you have ollama running and serving models locally, or configure AWS Bedrock access.
-
 From inside the `source/python` directory, run:
 
 ```bash
-AUTONOMY_USE_DIRECT_BEDROCK=1 \
 AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 \
 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
 CLUSTER="$(autonomy cluster show)" \
@@ -64,10 +61,7 @@ uv run --active examples/009_context_logging.py
 - Transcript logging to see exactly what goes to the model
 - Conversation memory across turns
 
-**With AWS Bedrock:**
 ```bash
-AWS_PROFILE=PowerUserAccess-demo-a \
-AUTONOMY_USE_DIRECT_BEDROCK=1 \
 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
 AUTONOMY_TRANSCRIPTS=1 \
 CLUSTER="$(autonomy cluster show)" \
@@ -111,6 +105,37 @@ AUTONOMY_TRANSCRIPTS_RAW_ONLY=1 \
 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
 uv run --active examples/010_agent_transcripts.py 2>/dev/null
 ```
+
+### Example 011 - Code Review Assistant with Filesystem Tools
+```bash
+AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+AUTONOMY_TRANSCRIPTS=1 \
+uv run --active examples/011_code_review_assistant.py
+```
+
+**Demonstrates:**
+- Complex multi-step task execution
+- Filesystem tools for reading and analyzing code
+- Creating structured documentation
+- Multi-turn conversations with state preservation
+- Agent reasoning across multiple files
+- Organizing information in different formats
+
+```bash
+AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+AUTONOMY_TRANSCRIPTS=1 \
+CLUSTER="$(autonomy cluster show)" \
+uv run --active examples/011_code_review_assistant.py
+```
+
+This example shows a code review agent that:
+- Analyzes a Python codebase for issues
+- Identifies security vulnerabilities and performance problems
+- Generates comprehensive review reports
+- Creates action item checklists
+- Produces executive summaries for stakeholders
+
+The agent uses filesystem tools to explore project structure, read code files, search for patterns, and create multiple review documents in an organized way.
 
 ## Transcript Logging
 

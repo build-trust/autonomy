@@ -210,7 +210,7 @@ def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional
         region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
         if not region:
           session = boto3.Session()
-          region = session.region_name
+          region = session.region_name or "us-west-2"
         sts_client = boto3.client("sts", region_name=region)
         account_id = sts_client.get_caller_identity()["Account"]
 
