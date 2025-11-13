@@ -1,37 +1,46 @@
 ---
-title: "Start Here"
+title: "What is Autonomy?"
 mode: "wide"
 icon: "rabbit"
-description: "Autonomy - ship autonomous AI products"
+description: "A platform to ship autonomous products."
 ---
 
-## What is Autonomy?
+Autonomy provides developer tools and cloud infrastructure to build, deploy, and scale products that autonomously accomplish goals.
 
-Autonomy is a platform to ship autonomous AI products. It provides everything you need to build, deploy, and scale applications powered by intelligent AI agents.
+1. The **Autonomy Framework** is an open-source python framework to develop apps and products that leverage teams of collaborating AI agents to autonomously get things done.
+2. The **Autonomy Computer** is a cloud-based runtime to run, connect, and scale apps built using the Autonomy Framework. It provides managed infrastructure to deploy highly scalable and secure autonomous products.
+3. The **Autonomy Command** is a command-line program to build apps using the Autonomy Framework and run them on the Autonomy Computer.
 
-<iframe
-  width="100%"
-  height="400"
-  src="https://www.youtube.com/embed/-fPcRCgqluk"
-  title="Autonomy Introduction"
-  frameborder="0"
-  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-  allowfullscreen
-></iframe>
-
-Autonomy consists of three parts:
-
-**Autonomy Framework** - An open-source Python framework for developing applications that leverage teams of collaborating AI agents to autonomously accomplish goals.
-
-**Autonomy Computer** - A cloud-based runtime that runs, connects, and scales apps built with the Autonomy Framework. It provides managed infrastructure for highly scalable and secure autonomous products.
-
-**Autonomy Command** - A command-line tool to build apps using the Autonomy Framework and deploy them to the Autonomy Computer.
+<iframe width="100%" height="400" src="https://www.youtube.com/embed/-fPcRCgqluk" title="Autonomy Introduction" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen />
 
 ---
 
-## Core Concepts
+## Concepts
 
 ### Agents
+
+Agents are intelligent actors. They use large language models to understand context, reason through problems, and make autonomous decisions. They gather information and take actions by invoking tools.
+
+- They can plan and take multiple steps.
+- They remember.
+- They can call tools to:
+  - Take actions.
+  - Sense their environment.
+  - Retrieve data. 
+
+Agents are intelligent actors that autonomously accomplish goals. Apps, running on the Autonomy Computer, can create millions of parallel collaborating agents in seconds.Each agent:
+
+- Has a unique identity.
+- Uses a large language model to understand, reason, and make autonomous decisions.
+- Has memory, so it can retain and recall information over time, to make better autonomous decisions.
+- Invokes tools to gather new information and take actions.
+- Makes plans that break down complex tasks into small iterative steps.
+- Can retrieve knowledge beyond the training data of its language model.
+- Collaborates with and can delegate work to other agents.
+
+Autonomy Agents are built using the actor model and have all the properties of actors.
+
+. Apps, running on the Autonomy Computer, can create millions of parallel collaborating agents in seconds.
 
 Intelligent actors that autonomously accomplish goals using large language models, memory, tools, and planning. Each agent has a unique identity, isolated state, and can collaborate with other agents. Built on the actor model, agents can be created in seconds and scaled to millions of parallel instances across the Autonomy Computer.
 
@@ -79,11 +88,7 @@ Cluster (your dedicated cloud environment)
                 └── Workers (message processors)
 ```
 
-**Cluster** - Your dedicated cloud infrastructure with a unique ID
-**Zone** - A single deployed application defined by `autonomy.yaml`
-**Pod** - A logical group of containers running on the same machine
-**Container** - Docker containers running your code or services
-**Node** - The Autonomy runtime where agents and workers execute
+**Cluster** - Your dedicated cloud infrastructure with a unique ID **Zone** - A single deployed application defined by `autonomy.yaml` **Pod** - A logical group of containers running on the same machine **Container** - Docker containers running your code or services **Node** - The Autonomy runtime where agents and workers execute
 
 ---
 
