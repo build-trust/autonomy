@@ -8,11 +8,11 @@ Autonomy provides developer tools and cloud infrastructure to build, deploy, and
 
 ### Autonomy Framework
 
-The Autonomy Framework is an open-source python framework to develop apps that use thousands of collaborating **autonomous agents** to quickly and reliably get things done.
+The Autonomy Framework is an **open-source python framework** to develop apps that use thousands of collaborating **autonomous agents** to quickly and reliably get things done.
 
 Your apps can **curate context** and create **deep work agents** that excel at long and complex tasks. Each agent can access a **dedicated filesystem** to plan and take **notes**.
 
-Agents can delegate work to other agents and create many **sub-agents** that concentrate on sub tasks. **Parallel agents**, each focused on a small part, achieve the overall goal faster. They are also more successful because the context they provide their language model contains much less noise.
+Agents can delegate work to other agents and create many **sub-agents** that concentrate on sub-tasks. **Parallel agents**, each focused on a small part, achieve the overall goal faster. They are also more successful because the context they provide their language model contains much less noise.
 
 ### Autonomy Computer
 
@@ -20,4 +20,6 @@ The Autonomy Computer is a **cloud-based runtime** to deploy, connect, and scale
 
 Using a simple yaml config, you can spin up a **dedicated cluster of nodes** in seconds. These nodes are automatically connected together using high throughput, mutually authenticated, and encrypted **messaging channels**.
 
-You can provision tools in containers right alongside the nodes that are running your agents
+Agents take actions by invoking tools. The Autonomy Computer can **provision necessary tools** in containers right alongside the nodes that are running your agents. These tools can be python functions, simple binaries, or MCP servers.
+
+The runtime is designed for **multi-tenant** and **streaming** workloads. Agents are implemented as **stateful concurrent actors** that asynchronously send and receive messages. This 
