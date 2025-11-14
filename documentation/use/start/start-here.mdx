@@ -20,6 +20,6 @@ The Autonomy Computer is a **cloud-based runtime** to deploy, connect, and scale
 
 Using a simple yaml config, you can spin up a **dedicated cluster of nodes** in seconds. These nodes are automatically connected together using high throughput, mutually authenticated, and encrypted **messaging channels**.
 
-Agents take actions by invoking tools. The Autonomy Computer can **provision necessary tools** in containers right alongside the nodes that are running your agents. These tools can be python functions, simple binaries, or MCP servers.
+Agents invoke tools to take actions and gather data. The Autonomy Computer can **provision tools** in containers right alongside the nodes that are running your agents. These tools can be python functions, simple binaries, or MCP servers. You can also create **private links to enterprise data**.
 
-The runtime is designed for **multi-tenant** and **streaming** workloads. Agents are implemented as **stateful concurrent actors** that asynchronously send and receive messages. This 
+The runtime is designed for **multi-tenant**, **streaming** workloads. Agents run as **stateful concurrent actors** that asynchronously send and receive messages. This enables effortless horizontal scaling and fan-out through powerful patterns like **distributed agentic map-reduce.**
