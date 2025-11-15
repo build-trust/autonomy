@@ -1,0 +1,55 @@
+---
+title: "Build with a Coding Agent"
+icon: "robot"
+mode: "wide"
+description: "Use a coding agent like Claude Code to build and ship a multi-agent Autonomy app."
+---
+
+Use a coding agent to build and deploy an example app for news editors.
+
+An orchestrator agent breaks an article down into claims. Each claim is assigned to a parallel deep research agent that researches that claim on the Internet. A reporting agent produces a final report based on the research.
+
+The app is built and deployed to Autonomy without typing any code.
+
+It gets a public URL, a streaming API, and a nice user interface. The required infra, models, memory, and MCP servers are automagically provisioned. In 10 minutes, we have a bootstrapped codebase and a deployed multi-agent product to share with customers.
+
+Open your favorite coding agent and give it the following prompt:
+
+```
+Use curl to fetch and read this doc and included links
+on creating a new autonomy application:
+https://autonomy.computer/docs/_for-coding-agents.md
+
+Use the above documentation to create a new Autonomy that news editors
+can use for fact checking news stories.
+
+The workflow is:
+- The editor pastes an article into a text box
+- An agent then breaks the article into a set of claims
+- Each claim is then assigned to a parallel fact checking agent
+- Fact checking agents research the claim on the internet using
+  the brave search MCP server
+- All the research is given to a report generating agent that creates
+  a final fact check report.
+
+Also create a very simple web UI for the app using nextjs and shadcn/ui
+
+Deploy and test the app in Autonomy
+
+Before creating and deploying the app, create a README with an
+architecture diagram of the app.
+```
+
+Your coding agent will:
+
+- Refer the Autonomy documentation to learn how to create, deploy, and debug Autonomy apps
+- Create a README describing the architecture of the application
+- Write Python code for claim extraction, fact-checking, and reporter agents
+- Write code to create parallel fact-checking deep research agents
+- Set up the Brave Search MCP server and create streaming APIs
+- Build a Next.js user interface
+- Deploy the application to the Autonomy Computer and test it.
+
+---
+
+<iframe width="100%" height="460" src="https://www.youtube.com/embed/WZ_bMqwZECw?si=-8G7nP5ClI8MCc5R&amp" title="Get started with Autonomy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>

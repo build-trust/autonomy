@@ -1,24 +1,31 @@
 ---
 title: "What is Autonomy?"
 icon: "rabbit"
+mode: "wide"
 description: "A platform to ship autonomous products."
 ---
 
-Autonomy provides developer tools and cloud infrastructure to build, deploy, and scale products that autonomously accomplish goals.
+Autonomy is a foundation to build and scale products that use teams of **deep work agents** to autonomously perform long and complex tasks. Each agent can plan, take notes on a filesystem, **curate context** on every turn, and delegate work to **parallel sub-agents**.
+
+---
+
+<iframe width="100%" height="460" src="https://www.youtube.com/embed/-fPcRCgqluk" title="Autonomy Introduction" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen />
+
+---
 
 ### Autonomy Framework
 
 The Autonomy Framework is an **open-source python framework** to develop apps that use thousands of collaborating **autonomous agents** to quickly and reliably get things done.
 
-Your apps can **curate context** and create **deep work agents** that excel at long and complex tasks. Each agent can access a **dedicated filesystem** to plan and take **notes**.
+Your apps can easily create **deep work agents** that excel at long and complex tasks. Each agent can access a **dedicated filesystem** to save plans, take **notes**, and record memories.
 
-Agents can delegate work to other agents and create many **sub-agents** that concentrate on sub-tasks. **Parallel agents**, each focused on a small part, achieve the overall goal faster. They are also more successful because the context they provide their language model contains much less noise.
+Agents can create many **sub-agents** that concentrate on sub-tasks. **Parallel agents**, each focused on a small part, achieve the overall goal faster. They are also more successful because the context that they provide to their language model contains much less noise.
 
 ### Autonomy Computer
 
-The Autonomy Computer is a **cloud-based runtime** to deploy, connect, and scale apps built using the Autonomy Framework. It provides all the infrastructure that you need to run highly scalable and secure autonomous AI products.
+The Autonomy Computer is a **cloud-based runtime** to deploy, connect, and scale apps built using the Autonomy Framework. It provides infrastructure to run highly scalable and secure autonomous AI products.
 
-Using a simple yaml config, you can spin up a **dedicated cluster of nodes** in seconds. These nodes are automatically connected together using high throughput, mutually authenticated, and encrypted **messaging channels**.
+Using a simple yaml config, you can spin up a **dedicated cluster of nodes** in seconds. These nodes are automatically connected together using high throughput, encrypted **messaging channels**.
 
 Agents invoke tools to take actions and gather data. The Autonomy Computer can **provision tools** in containers right alongside the nodes that are running your agents. These tools can be python functions, simple binaries, or MCP servers. You can also create **private links to enterprise data**.
 
@@ -26,45 +33,40 @@ The runtime is designed for **multi-tenant**, **streaming** workloads. Agents ru
 
 ### Autonomy Command
 
-The Autonomy Command is command-line tool to build apps using the Autonomy Framework and deploy them to the Autonomy Computer.
+The Autonomy Command is command-line tool to build apps using the Autonomy Framework and deploy them to the Autonomy Computer. 
 
 ---
 
-<Panel>
-<iframe width="100%" height="400" src="https://www.youtube.com/embed/-fPcRCgqluk" title="Autonomy Introduction" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen />
-</Panel>
+## Get Started
 
----
-
-### Get Started
+Follow these steps to set up Autonomy and deploy your first autonomous app:
 
 <Steps>
-  <Step title="Create an account">
+  <Step title="Create an Account">
     [Sign up](https://my.autonomy.computer) for an account with Autonomy to create your new Cluster.
   </Step>
-  <Step title="Install docker">
-    Ensure [Docker](https://www.docker.com/get-started/) is installed and running on your workstation. You can confirm that docker is correctly set up by running `docker ps` in your terminal.
+  <Step title="Set up Docker">
+    Check that [Docker](https://www.docker.com/get-started/) is installed and running on your workstation. You can confirm that docker is correctly set up by running `docker ps` in your terminal.
   </Step>
-  <Step title="Install Autonomy Command">
+  <Step title="Install the Autonomy command">
     Install the `autonomy` command by running the following in your terminal:
 
     ```bash
     curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
     ```
+    
+    It will download the right binary and make it available in your terminal.
   </Step>
+  <Step title="Build and deploy a new app">
+      <CardGroup cols={2}>
+        <Card href="/start/build-with-a-coding-agent"
+            title="Build with a Coding Agent" icon="robot" iconType="solid">
+          Use a coding agent like Claude Code or Cursor to build and ship a multi-agent Autonomy app in 10 minutes. 
+        </Card>
+        <Card href="/start/build-manually" title="Build manually, step-by-step" icon="code" iconType="solid">
+          Create and deploy an Autonomy app step-by-step to understand how all the pieces fit together. 
+        </Card>
+      </CardGroup>
+  </Step>
+
 </Steps>
-
----
-
-## Next Steps
-
-Ready to build your first autonomous AI application? Choose your path:
-
-<CardGroup cols={2}>
-  <Card title="Build with a Coding Agent" icon="robot" iconType="solid" href="/start/build-with-coding-agent">
-    Use a coding agent like Claude Code or Cursor to build and ship a multi-agent Autonomy app in 10 minutes. 
-  </Card>
-  <Card title="Build manually, step-by-step" icon="code" iconType="solid">
-    Create and deploy an Autonomy app step-by-step to understand how all the pieces fit together. 
-  </Card>
-</CardGroup>

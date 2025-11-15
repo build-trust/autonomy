@@ -1,0 +1,625 @@
+---
+title: "Build Manually"
+icon: "code"
+mode: "wide"
+description: "Create and deploy an Autonomy app step-by-step to understand how all the pieces fit together."
+---
+
+This guide walks you through building and deploying your first Autonomy application **manually**, step-by-step. You'll create a simple chat agent with a web interface to understand how all the pieces work together.
+
+By the end of this guide, you'll have a working Autonomy app running in the cloud with a streaming chat interface.
+
+---
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+<Steps>
+  <Step title="Create an Autonomy Account">
+    [Sign up](https://my.autonomy.computer) for an account with Autonomy. This creates your dedicated Cluster in the Autonomy Computer.
+  </Step>
+  <Step title="Set up Docker">
+    Install [Docker](https://www.docker.com/get-started/) and ensure it's running. Verify by running:
+    ```bash
+    docker ps
+    ```
+    You should see a list of containers (even if empty) without errors.
+  </Step>
+  <Step title="Install the Autonomy Command">
+    Install the `autonomy` command-line tool:
+    ```bash
+    curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
+    ```
+    Verify installation:
+    ```bash
+    autonomy --version
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Step 1: Create Your Project Directory
+
+Create a new directory for your app. We'll call it `hello`:
+
+```bash
+mkdir hello
+cd hello
+```
+
+<Note>
+All subsequent commands should be run from inside this `hello` directory.
+</Note>
+
+---
+
+## Step 2: Create the Configuration File
+
+Create a file named `autonomy.yaml` in the `hello` directory with the following content:
+
+```yaml autonomy.yaml
+name: hello
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+<Accordion title="Understanding autonomy.yaml">
+This configuration file defines your **Zone** in Autonomy Computer:
+
+- **`name: hello`** - The zone name (must be ≤10 characters)
+- **`pods`** - List of pods (groups of containers that run together)
+- **`public: true`** - Makes the pod accessible via HTTPS
+- **`containers`** - List of containers in the pod
+- **`image: main`** - References the Docker image we'll create
+
+Think of a Zone as your app's dedicated infrastructure. The Autonomy Computer will provision everything needed to run it.
+</Accordion>
+
+---
+
+## Step 3: Create the Docker Image Directory
+
+Create the directory structure for your Docker image:
+
+```bash
+mkdir -p images/main
+```
+
+Your project structure now looks like:
+```
+hello/
+├── autonomy.yaml
+└── images/
+    └── main/
+```
+
+---
+
+## Step 4: Create the Dockerfile
+
+Create `images/main/Dockerfile` with the following content:
+
+```dockerfile images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+<Accordion title="Understanding the Dockerfile">
+- **`FROM ghcr.io/build-trust/autonomy-python`** - Base image with Python and the Autonomy Framework pre-installed
+- **`COPY . .`** - Copies all files from `images/main/` into the container
+- **`ENTRYPOINT ["python", "main.py"]`** - Runs `main.py` when the container starts
+</Accordion>
+
+---
+
+## Step 5: Create the Agent Code
+
+Create `images/main/main.py` with the following content:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="henry",
+        instructions="You are Henry, an expert legal assistant",
+        model=Model("claude-sonnet-4-v1")
+    )
+
+
+Node.start(main)
+```
+
+<Accordion title="Understanding the agent code">
+This Python script:
+
+1. **Imports Autonomy components** - `Agent`, `Model`, and `Node`
+2. **Defines an async main function** that:
+   - Starts an agent named "henry"
+   - Gives it instructions to act as a legal assistant
+   - Configures it to use Claude Sonnet 4
+3. **Starts a Node** - This creates the runtime that hosts your agent
+
+**Built-in Tools**: Your agent automatically has access to:
+- `get_current_time_utc` - Get current UTC time
+- `get_current_time` - Get current time in any timezone
+
+The Node also automatically starts an HTTP server that provides API endpoints to interact with your agent.
+</Accordion>
+
+---
+
+## Step 6: Create the Web Interface
+
+Create `images/main/index.html` with the following content:
+
+```html images/main/index.html
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body {
+            margin: 10% 15%;
+            line-height: 1.8;
+            overflow-y: scroll;
+            overflow-x: hidden;
+            font: 21px "Courier New", Courier, monospace;
+            padding: 0;
+        }
+
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 3rem 1rem;
+        }
+
+        pre {
+            padding-top: 30px;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+        }
+
+        textarea {
+            width: 100%;
+            max-width: 1080px;
+            box-sizing: border-box;
+            border: 1px solid #e9e9e9;
+            border-radius: 5px;
+            box-shadow: 2px 2px 10px #f4f4f4;
+            font-size: inherit;
+            padding: 1rem;
+            display: block;
+            height: calc(3 * 1.8em + 14.8px);
+        }
+    </style>
+    <title>Henry - Legal Assistant</title>
+</head>
+<body>
+    <main>
+        <textarea id="in" autofocus placeholder="How can I help you..."></textarea>
+        <pre id="out"></pre>
+    </main>
+
+    <script>
+    async function appendCharByChar(text, delay = 5) {
+      for (const char of text) {
+        out.textContent += char;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    async function processLine(line) {
+        if (line.trim()) {
+            const parsed = JSON.parse(line);
+            for (const message of parsed.messages) {
+                if (message && message.content && message.content.text) {
+                    await appendCharByChar(message.content.text);
+                }
+            }
+        }
+    }
+
+    async function send(message) {
+        const input = document.getElementById("in");
+        input.disabled = true;
+
+        const out = document.getElementById("out");
+        out.textContent = "";
+
+        const response = await fetch("/agents/henry?stream=true", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: message }),
+        });
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        for await (const chunk of response.body) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          if (!out.textContent) input.value = "";
+          for (const line of lines) await processLine(line);
+        }
+        await processLine(buffer);
+
+        input.disabled = false;
+        input.focus();
+    }
+
+    document.getElementById("in").addEventListener("keydown", async e => {
+        if (e.key === "Enter" && !e.shiftKey && !e.target.disabled && e.target.value.trim()) {
+            e.preventDefault();
+            await send(e.target.value);
+        }
+    });
+    </script>
+</body>
+</html>
+```
+
+<Accordion title="Understanding the web interface">
+This HTML file creates a simple chat interface that:
+
+1. **Displays a text input** where users type messages
+2. **Calls the agent's streaming API** at `/agents/henry?stream=true`
+3. **Shows responses with a typewriter effect** character by character
+4. **Handles streaming JSON** responses from the agent
+
+When you deploy your app, this page will be automatically served at the root URL of your zone.
+</Accordion>
+
+Your complete project structure now looks like:
+
+```
+hello/
+├── autonomy.yaml
+└── images/
+    └── main/
+        ├── Dockerfile
+        ├── main.py
+        └── index.html
+```
+
+---
+
+## Step 7: Enroll with Your Cluster
+
+Connect your workstation to your Autonomy Cluster:
+
+```bash
+autonomy cluster enroll --no-input
+```
+
+This command will:
+1. Display a code
+2. Open your browser for authentication
+3. Complete enrollment once you sign in
+
+<Note>
+You only need to do this once per workstation.
+</Note>
+
+---
+
+## Step 8: Deploy Your App
+
+Deploy your zone to the Autonomy Computer:
+
+```bash
+autonomy zone deploy
+```
+
+This command will:
+1. Build your Docker images
+2. Push them to your cluster
+3. Deploy your zone with all pods and containers
+4. Display your zone's public URL
+
+<Warning>
+The deployment takes **2-3 minutes** to fully start. During this time:
+- Docker images are building and uploading (30-60s)
+- Kubernetes is scheduling pods (60-90s)
+- Containers are starting (90-120s)
+- The first request will have a "cold start" delay (10-30s)
+
+**Wait at least 2 minutes before testing your app.**
+</Warning>
+
+---
+
+## Step 9: Wait for Deployment
+
+After deploying, wait for the pods to be ready:
+
+```bash
+echo "Waiting for deployment to complete..."
+sleep 120
+```
+
+<Accordion title="Why the wait?">
+**Deployment Timeline:**
+
+| Stage | Time | What's Happening |
+|-------|------|------------------|
+| Build & Push | 30-60s | Docker images building and uploading |
+| Pod Scheduling | 60-90s | Kubernetes scheduling pods |
+| Container Start | 90-120s | Containers pulling images, starting |
+| **First Request** | **120-180s** | **Cold start - nodes establishing connections** |
+| Warm Requests | ~1-5s | Normal operation |
+
+The first request after deployment takes longer because:
+- Nodes need to establish connections
+- Agent systems need to initialize
+- This is normal for distributed systems
+
+Subsequent requests are much faster (1-5 seconds).
+</Accordion>
+
+---
+
+## Step 10: Get Your Zone's URL
+
+Your zone's URL follows this pattern:
+
+```
+https://${CLUSTER}-${ZONE}.cluster.autonomy.computer
+```
+
+To find your cluster and zone names, run:
+
+```bash
+autonomy cluster show
+autonomy zone list
+```
+
+For example, if your cluster is `abc123` and zone is `hello`, your URL is:
+```
+https://abc123-hello.cluster.autonomy.computer
+```
+
+---
+
+## Step 11: Test the Agent API
+
+Test that your agent is responding to API calls:
+
+**Non-streaming request:**
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"What is a contract?"}' \
+  "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
+```
+
+**Streaming request:**
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"What is a contract?"}' \
+  "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry?stream=true"
+```
+
+<Note>
+Replace `${CLUSTER}` and `${ZONE}` with your actual cluster and zone names.
+</Note>
+
+---
+
+## Step 12: Open Your App in a Browser
+
+Open your web interface:
+
+```
+https://${CLUSTER}-${ZONE}.cluster.autonomy.computer
+```
+
+You should see the chat interface. Try asking Henry questions like:
+- "What are the key elements of a contract?"
+- "What is consideration in contract law?"
+- "Explain breach of contract"
+
+---
+
+## Step 13: View Logs (Optional)
+
+To view logs from your deployed zone, you need to create a portal to the logs server:
+
+```bash
+# Start a portal to logs in background
+autonomy zone inlet --to logs > logs_portal.log 2>&1 &
+LOGS_PID=$!
+
+# Wait for portal to start
+sleep 3
+
+# Extract the port
+LOGS_PORT=$(grep -o "localhost:[0-9]*" logs_portal.log | cut -d: -f2 | head -1)
+if [ -z "$LOGS_PORT" ]; then
+    LOGS_PORT=32101
+fi
+
+echo "Logs available at http://127.0.0.1:$LOGS_PORT"
+```
+
+**View logs in browser:**
+```bash
+open "http://127.0.0.1:$LOGS_PORT"
+```
+
+**Stream logs in terminal:**
+```bash
+POD_NAME=main-pod
+CONTAINER_NAME=main
+FULL_POD_NAME=$(timeout 10s curl -s "127.0.0.1:$LOGS_PORT/" | grep -o 'main-pod-[a-z0-9]*-[a-z0-9]*' | head -1)
+timeout 30s curl -N "127.0.0.1:$LOGS_PORT/pods/$FULL_POD_NAME/containers/$CONTAINER_NAME" | head -50
+```
+
+**Stop the portal when done:**
+```bash
+kill $LOGS_PID
+```
+
+<Warning>
+Never run `autonomy zone inlet --to logs` without backgrounding it (the `&` at the end) - it will block your terminal indefinitely.
+</Warning>
+
+---
+
+## What You've Built
+
+Congratulations! You've created and deployed a complete Autonomy application that includes:
+
+<CardGroup cols={2}>
+  <Card title="An Autonomous Agent" icon="robot">
+    Henry, an expert legal assistant powered by Claude Sonnet 4
+  </Card>
+  <Card title="A Streaming API" icon="satellite-dish">
+    HTTP endpoints that provide real-time agent responses
+  </Card>
+  <Card title="A Web Interface" icon="browser">
+    A simple chat UI with typewriter-style streaming
+  </Card>
+  <Card title="Cloud Deployment" icon="cloud">
+    Running on Autonomy Computer with HTTPS and automatic scaling
+  </Card>
+</CardGroup>
+
+---
+
+## Understanding the Architecture
+
+Let's break down what you've deployed:
+
+<Steps>
+  <Step title="Cluster">
+    Your dedicated infrastructure in Autonomy Computer. You got this when you signed up.
+  </Step>
+  <Step title="Zone">
+    Your app's isolated environment within the cluster. Defined by `autonomy.yaml`.
+  </Step>
+  <Step title="Pod">
+    A group of containers that work together. Your `main-pod` is marked as `public: true`, giving it a public URL.
+  </Step>
+  <Step title="Container">
+    Your Docker container running the agent code. Built from `images/main/Dockerfile`.
+  </Step>
+  <Step title="Node">
+    The Autonomy runtime inside the container. Hosts agents and provides the HTTP server.
+  </Step>
+  <Step title="Agent">
+    Your autonomous AI assistant. Created by `Agent.start()` in your Python code.
+  </Step>
+</Steps>
+
+---
+
+## Next Steps
+
+Now that you have a working app, explore more advanced features:
+
+<CardGroup cols={2}>
+  <Card href="/agents/tools" title="Add Tools to Your Agent" icon="wrench">
+    Give your agent capabilities like web search, file access, and API calls
+  </Card>
+  <Card href="/agents/memory" title="Add Memory" icon="brain">
+    Enable your agent to remember conversation history and context
+  </Card>
+  <Card href="/agents/models" title="Try Different Models" icon="microchip">
+    Experiment with different LLMs like Claude, Llama, and DeepSeek
+  </Card>
+  <Card href="/collaboration/flows" title="Create Multi-Agent Workflows" icon="diagram-project">
+    Build sophisticated systems with multiple specialized agents
+  </Card>
+</CardGroup>
+
+---
+
+## Common Issues and Solutions
+
+<AccordionGroup>
+  <Accordion title="Error: Zone name too long">
+    Zone names must be 10 characters or less. Edit `autonomy.yaml` and change the `name` field to something shorter.
+  </Accordion>
+  
+  <Accordion title="Error: Docker not running">
+    Start Docker Desktop or your Docker daemon. Verify with `docker ps`.
+  </Accordion>
+  
+  <Accordion title="Error: autonomy command not found">
+    Run `source "$HOME/.autonomy/env"` to add the command to your PATH.
+  </Accordion>
+  
+  <Accordion title="Error: Connection refused when testing">
+    Wait 2-3 minutes after deployment. The first request has a cold start delay of 10-30 seconds.
+  </Accordion>
+  
+  <Accordion title="Agent not responding">
+    Check the logs using the portal method shown in Step 13. Look for errors in the pod startup or agent initialization.
+  </Accordion>
+  
+  <Accordion title="Web interface shows blank page">
+    Verify that `index.html` is in `images/main/` and was included in the Docker build. Redeploy with `autonomy zone deploy`.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Update Your App
+
+To make changes to your app:
+
+1. **Edit your files** (e.g., change the agent instructions in `main.py`)
+2. **Redeploy** with `autonomy zone deploy`
+3. **Wait 2-3 minutes** for the new version to be ready
+4. **Test** your changes
+
+<Tip>
+Each deployment creates a new version of your zone. The old version is automatically replaced.
+</Tip>
+
+---
+
+## Delete Your Zone
+
+When you're done experimenting, delete your zone to free up resources:
+
+```bash
+autonomy zone delete --yes
+```
+
+<Warning>
+This permanently deletes your zone and all its data. Make sure you've saved any important information first.
+</Warning>
+
+---
+
+## Learn More
+
+<CardGroup cols={3}>
+  <Card href="/use/_for-coding-agents" title="Technical Reference" icon="book">
+    Comprehensive docs for building Autonomy apps
+  </Card>
+  <Card href="/use/_for-coding-agents/architecture" title="Architecture Guide" icon="building">
+    Deep dive into Autonomy Computer's architecture
+  </Card>
+  <Card href="/start/discord" title="Join Discord" icon="discord">
+    Get help from the Autonomy community
+  </Card>
+</CardGroup>

@@ -13,8 +13,12 @@
       {
         "group": "GET STARTED",
         "pages": [
-          "start/start-here", 
-          "start/ide-setup",
+          "start/start-here",
+          {
+            "group": "Ship your first app",
+            "icon": "rocket",
+            "pages": ["start/build-with-a-coding-agent", "start/build-manually"]
+          },
           "start/discord",
           "start/pricing"
         ]
@@ -32,17 +36,11 @@
       },
       {
         "group": "COLLABORATION",
-        "pages": [
-          "collaboration/messages",
-          "collaboration/flows"
-        ]
+        "pages": ["collaboration/messages", "collaboration/flows"]
       },
       {
         "group": "ENTERPRISE CONNECTIONS",
-        "pages": [
-          "integration/private_link",
-          "integration/mcp"
-        ]
+        "pages": ["integration/private_link", "integration/mcp"]
       }
     ]
   },
@@ -56,15 +54,15 @@
         "label": "Autonomy Website",
         "href": "https://autonomy.computer"
       },
-        {
+      {
         "label": "OSS Code",
         "href": "https://github.com/build-trust/autonomy"
       },
-        {
+      {
         "label": "Support",
         "href": "https://autonomy.computer/contact/form"
       },
-        {
+      {
         "label": "Discord Community",
         "href": "https://autonomy.computer/discord"
       }
@@ -79,7 +77,7 @@
     "socials": {
       "linkedin": "https://www.linkedin.com/company/autonomy-computer",
       "github": "https://github.com/build-trust/autonomy",
-      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng", 
+      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng",
       "discord": "https://autonomy.computer/discord"
     }
   },
