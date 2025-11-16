@@ -56,14 +56,15 @@ class TestModel:
 
   def test_provider_detection_bedrock(self):
     """Test provider detection for AWS Bedrock."""
-    with patch.dict(
-      os.environ,
-      {
-        "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
-        "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
-        "AWS_DEFAULT_REGION": "us-east-1",
-      },
-    ):
+    # Create a clean environment without LITELLM_PROXY_API_BASE
+    env_without_proxy = {k: v for k, v in os.environ.items() if k != "LITELLM_PROXY_API_BASE"}
+    env_without_proxy.update({
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1",
+    })
+
+    with patch.dict(os.environ, env_without_proxy, clear=True):
       model = Model("claude-3-5-sonnet-v2")
       assert hasattr(model.client, "name")
       assert model.client.name.startswith("bedrock/")

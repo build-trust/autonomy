@@ -62,6 +62,9 @@ class DefaultModelClient(InfoContext, DebugContext):
     messages: List[dict] | List[ConversationMessage],
     stream: bool = False,
     is_thinking: bool = False,
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
     **kwargs,
   ):
     """

@@ -117,6 +117,9 @@ class Model(InfoContext, DebugContext):
     messages: List[dict] | List[ConversationMessage],
     stream: bool = False,
     is_thinking: bool = False,
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
     **kwargs,
   ):
     """
@@ -125,10 +128,15 @@ class Model(InfoContext, DebugContext):
     :param messages: List of messages to send to the model
     :param stream: Whether to stream the response
     :param is_thinking: Whether the model is in thinking mode
+    :param agent_name: Optional agent name for transcript correlation
+    :param scope: Optional scope identifier for transcript correlation
+    :param conversation: Optional conversation identifier for transcript correlation
     :param kwargs: Additional parameters for the model
     :return: Model response (streamed or complete)
     """
-    result = self.client.complete_chat(messages, stream, is_thinking, **kwargs)
+    result = self.client.complete_chat(
+      messages, stream, is_thinking, agent_name=agent_name, scope=scope, conversation=conversation, **kwargs
+    )
 
     if stream:
       # For streaming, return the async generator directly

@@ -635,6 +635,9 @@ class BedrockClient(InfoContext, DebugContext):
     messages: List[dict] | List[ConversationMessage],
     stream: bool = False,
     is_thinking: bool = False,
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
     **kwargs,
   ):
     """Complete chat using direct Bedrock API."""
@@ -658,20 +661,35 @@ class BedrockClient(InfoContext, DebugContext):
     self.logger.debug(f"[BEDROCK] Full payload keys: {list(payload.keys())}")
 
     if stream:
-      return self._complete_chat_stream(payload, is_thinking, **kwargs)
+      return self._complete_chat_stream(
+        payload, is_thinking, agent_name=agent_name, scope=scope, conversation=conversation, **kwargs
+      )
     else:
 
       async def _complete():
-        return await self._complete_chat_non_stream(payload, **kwargs)
+        return await self._complete_chat_non_stream(
+          payload, agent_name=agent_name, scope=scope, conversation=conversation, **kwargs
+        )
 
       return _complete()
 
-  async def _complete_chat_non_stream(self, payload: Dict[str, Any], **kwargs):
+  async def _complete_chat_non_stream(
+    self,
+    payload: Dict[str, Any],
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
+    **kwargs,
+  ):
     """Non-streaming chat completion."""
     try:
       # Log raw API request if transcripts are enabled
       log_raw_request(
-        payload={"model": self.final_model_id, **payload}, provider="bedrock", model_name=self.final_model_id
+        payload={"model": self.final_model_id, **payload},
+        model_name=self.final_model_id,
+        agent_name=agent_name,
+        scope=scope,
+        conversation=conversation,
       )
 
       response = await asyncio.get_event_loop().run_in_executor(
@@ -686,7 +704,13 @@ class BedrockClient(InfoContext, DebugContext):
       response_body = json.loads(response["body"].read())
 
       # Log raw API response if transcripts are enabled
-      log_raw_response(response=response_body, provider="bedrock", model_name=self.final_model_id)
+      log_raw_response(
+        response=response_body,
+        model_name=self.final_model_id,
+        agent_name=agent_name,
+        scope=scope,
+        conversation=conversation,
+      )
 
       # Extract content and tool calls from response
       text_content = ""
@@ -774,12 +798,24 @@ class BedrockClient(InfoContext, DebugContext):
       self.logger.error(f"Unexpected error in Bedrock completion: {e}")
       raise
 
-  async def _complete_chat_stream(self, payload: Dict[str, Any], is_thinking: bool, **kwargs):
+  async def _complete_chat_stream(
+    self,
+    payload: Dict[str, Any],
+    is_thinking: bool,
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
+    **kwargs,
+  ):
     """Streaming chat completion."""
     try:
       # Log raw API request if transcripts are enabled
       log_raw_request(
-        payload={"model": self.final_model_id, **payload}, provider="bedrock", model_name=self.final_model_id
+        payload={"model": self.final_model_id, **payload},
+        model_name=self.final_model_id,
+        agent_name=agent_name,
+        scope=scope,
+        conversation=conversation,
       )
 
       self.logger.debug(f"Starting Bedrock streaming for model {self.model_id}")
@@ -795,12 +831,16 @@ class BedrockClient(InfoContext, DebugContext):
           ),
         )
 
-        async for chunk in self._process_anthropic_stream(response["body"], is_thinking):
+        async for chunk in self._process_anthropic_stream(
+          response["body"], is_thinking, agent_name=agent_name, scope=scope, conversation=conversation
+        ):
           self.logger.debug(f"Yielding Bedrock chunk: {type(chunk)}")
           yield chunk
       else:
         # For non-Claude models that don't support streaming, fall back to non-streaming
-        result = await self._complete_chat_non_stream(payload, **kwargs)
+        result = await self._complete_chat_non_stream(
+          payload, agent_name=agent_name, scope=scope, conversation=conversation, **kwargs
+        )
 
         # Simulate streaming by yielding the complete response as chunks
         content = result.choices[0].message.content
@@ -831,12 +871,23 @@ class BedrockClient(InfoContext, DebugContext):
       self.logger.error(f"Streaming error: {e}")
       raise
 
-  async def _process_anthropic_stream(self, stream, is_thinking: bool):
+  async def _process_anthropic_stream(
+    self,
+    stream,
+    is_thinking: bool,
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
+  ):
     """Process Anthropic/Claude streaming response."""
     current_thinking = is_thinking
     chunk_count = 0
     current_tool_use = None
     accumulated_tool_input = ""
+
+    # Accumulate response for logging
+    accumulated_content = ""
+    accumulated_tool_calls = []
 
     for event in stream:
       if "chunk" in event:
@@ -902,6 +953,7 @@ class BedrockClient(InfoContext, DebugContext):
                   self.choices = [Choice(content)]
 
               if content:  # Only yield if there's actual content
+                accumulated_content += content
                 self.logger.debug(f"Yielding content chunk: {repr(content[:50])}")
                 yield Chunk(content)
 
@@ -943,6 +995,17 @@ class BedrockClient(InfoContext, DebugContext):
               tool_call = ToolCall(
                 current_tool_use["id"], current_tool_use["name"], json.dumps(tool_args), current_tool_use["index"]
               )
+
+              # Add to accumulated tool calls for logging
+              accumulated_tool_calls.append({
+                "id": current_tool_use["id"],
+                "type": "function",
+                "function": {
+                  "name": current_tool_use["name"],
+                  "arguments": json.dumps(tool_args)
+                }
+              })
+
               yield Chunk(tool_call)
 
               # Reset tool use state
@@ -968,6 +1031,29 @@ class BedrockClient(InfoContext, DebugContext):
                 self.choices = [Choice()]
 
             yield Chunk()
+
+            # Log the accumulated response
+            response_dict = {
+              "choices": [{
+                "message": {
+                  "role": "assistant",
+                  "content": accumulated_content if accumulated_content else None
+                },
+                "finish_reason": "stop"
+              }]
+            }
+
+            # Add tool calls if any
+            if accumulated_tool_calls:
+              response_dict["choices"][0]["message"]["tool_calls"] = accumulated_tool_calls
+
+            log_raw_response(
+              response=response_dict,
+              model_name=self.final_model_id,
+              agent_name=agent_name,
+              scope=scope,
+              conversation=conversation,
+            )
 
   def _extract_content_from_response(self, response_body: Dict[str, Any]) -> str:
     """Extract text content from Bedrock response based on model type."""

@@ -15,7 +15,6 @@ from ...nodes.message import ConversationMessage
 from ...transcripts import (
   log_raw_request,
   log_raw_response,
-  detect_provider,
 )
 
 
@@ -399,6 +398,9 @@ class LiteLLMClient(InfoContext, DebugContext):
     messages: List[dict] | List[ConversationMessage],
     stream: bool = False,
     is_thinking: bool = False,
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
     **kwargs,
   ):
     """
@@ -407,6 +409,9 @@ class LiteLLMClient(InfoContext, DebugContext):
     :param messages: List of messages to send to the model. Each message should be a dictionary with 'role' and 'content' keys.
     :param stream: When True, the response will be streamed back as it is generated. If False, the full response will be returned at once.
     :param is_thinking: Must be true when the thinking has already started but not completed yet.
+    :param agent_name: Optional agent name for transcript correlation
+    :param scope: Optional scope identifier for transcript correlation
+    :param conversation: Optional conversation identifier for transcript correlation
     :param kwargs: Additional parameters to pass to the model, such as temperature, max_tokens, etc.
     :rtype The response from the model, either as a full response or a stream of responses.
     """
@@ -416,15 +421,27 @@ class LiteLLMClient(InfoContext, DebugContext):
     messages, kwargs = self.prepare_llm_call(messages, is_thinking, **kwargs)
 
     if stream:
-      return self._complete_chat_stream(messages, is_thinking, **kwargs)
+      return self._complete_chat_stream(
+        messages, is_thinking, agent_name=agent_name, scope=scope, conversation=conversation, **kwargs
+      )
     else:
 
       async def _complete():
-        return await self._complete_chat(messages, **kwargs)
+        return await self._complete_chat(
+          messages, agent_name=agent_name, scope=scope, conversation=conversation, **kwargs
+        )
 
       return _complete()
 
-  async def _complete_chat_stream(self, messages: List[dict], is_thinking: bool, **kwargs):
+  async def _complete_chat_stream(
+    self,
+    messages: List[dict],
+    is_thinking: bool,
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
+    **kwargs,
+  ):
     chunks = None
 
     if _cache_inference:
@@ -437,8 +454,10 @@ class LiteLLMClient(InfoContext, DebugContext):
       # Log raw API request if transcripts are enabled
       log_raw_request(
         payload={"model": self.name, "messages": messages, "stream": True, **kwargs},
-        provider=detect_provider(self.name),
         model_name=self.name,
+        agent_name=agent_name,
+        scope=scope,
+        conversation=conversation,
       )
 
       if _cache_inference:
@@ -462,7 +481,41 @@ class LiteLLMClient(InfoContext, DebugContext):
 
       chunks = chunk_generator()
 
+    # Accumulate response for logging
+    accumulated_content = ""
+    accumulated_tool_calls = []
+    last_chunk = None
+
     async for chunk in chunks:
+      last_chunk = chunk
+
+      # Accumulate content
+      if chunk.choices[0].delta.content:
+        accumulated_content += chunk.choices[0].delta.content
+
+      # Accumulate tool calls
+      if hasattr(chunk.choices[0].delta, "tool_calls") and chunk.choices[0].delta.tool_calls:
+        for tc in chunk.choices[0].delta.tool_calls:
+          # Get or create tool call at this index
+          tc_index = tc.index if hasattr(tc, "index") else 0
+          while len(accumulated_tool_calls) <= tc_index:
+            accumulated_tool_calls.append(None)
+
+          if accumulated_tool_calls[tc_index] is None:
+            # First chunk for this tool call
+            accumulated_tool_calls[tc_index] = {
+              "id": tc.id if hasattr(tc, "id") and tc.id else f"call_{tc_index}",
+              "type": "function",
+              "function": {
+                "name": tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown",
+                "arguments": tc.function.arguments if hasattr(tc, "function") and hasattr(tc.function, "arguments") else ""
+              }
+            }
+          else:
+            # Accumulate arguments
+            if hasattr(tc, "function") and hasattr(tc.function, "arguments") and tc.function.arguments:
+              accumulated_tool_calls[tc_index]["function"]["arguments"] += tc.function.arguments
+
       if chunk.choices[0].delta.content and "<think>" in chunk.choices[0].delta.content:
         is_thinking = True
         chunk.choices[0].delta.content = chunk.choices[0].delta.content.replace("<think>", "")
@@ -477,7 +530,38 @@ class LiteLLMClient(InfoContext, DebugContext):
 
       yield chunk
 
-  async def _complete_chat(self, messages: List[dict], **kwargs):
+    # Log the accumulated response
+    if last_chunk and last_chunk.choices[0].finish_reason:
+      response_dict = {
+        "choices": [{
+          "message": {
+            "role": "assistant",
+            "content": accumulated_content if accumulated_content else None
+          },
+          "finish_reason": last_chunk.choices[0].finish_reason
+        }]
+      }
+
+      # Add tool calls if any
+      if accumulated_tool_calls:
+        response_dict["choices"][0]["message"]["tool_calls"] = [tc for tc in accumulated_tool_calls if tc is not None]
+
+      log_raw_response(
+        response=response_dict,
+        model_name=self.name,
+        agent_name=agent_name,
+        scope=scope,
+        conversation=conversation,
+      )
+
+  async def _complete_chat(
+    self,
+    messages: List[dict],
+    agent_name: Optional[str] = None,
+    scope: Optional[str] = None,
+    conversation: Optional[str] = None,
+    **kwargs,
+  ):
     response = None
     if _cache_inference:
       request_hash = self._hash_completion_request(self.name, messages, False, kwargs)
@@ -489,8 +573,10 @@ class LiteLLMClient(InfoContext, DebugContext):
       # Log raw API request if transcripts are enabled
       log_raw_request(
         payload={"model": self.name, "messages": messages, "stream": False, **kwargs},
-        provider=detect_provider(self.name),
         model_name=self.name,
+        agent_name=agent_name,
+        scope=scope,
+        conversation=conversation,
       )
 
       response = await router.acompletion(self.name, messages=messages, stream=False, **kwargs)
@@ -499,7 +585,13 @@ class LiteLLMClient(InfoContext, DebugContext):
       # Log raw API response if transcripts are enabled
       try:
         response_dict = response.model_dump(mode="json", exclude_unset=True)
-        log_raw_response(response=response_dict, provider=detect_provider(self.name), model_name=self.name)
+        log_raw_response(
+          response=response_dict,
+          model_name=self.name,
+          agent_name=agent_name,
+          scope=scope,
+          conversation=conversation,
+        )
       except Exception as e:
         self.logger.debug(f"Failed to log raw API response: {e}")
 
