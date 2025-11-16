@@ -50,12 +50,16 @@ class TestLiteLLMClientInitialization:
     # Should resolve to litellm_proxy format
     assert "litellm_proxy/" in client.name
 
-  @patch.dict(os.environ, {"AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token"})
   def test_bedrock_detection(self):
     """Test Bedrock detection via AWS credentials."""
-    client = LiteLLMClient("llama3.2")
-    # Should resolve to bedrock format
-    assert "bedrock/" in client.name
+    # Create a clean environment without LITELLM_PROXY_API_BASE
+    env_without_proxy = {k: v for k, v in os.environ.items() if k != "LITELLM_PROXY_API_BASE"}
+    env_without_proxy["AWS_WEB_IDENTITY_TOKEN_FILE"] = "/tmp/token"
+
+    with patch.dict(os.environ, env_without_proxy, clear=True):
+      client = LiteLLMClient("llama3.2")
+      # Should resolve to bedrock format
+      assert "bedrock/" in client.name
 
   def test_ollama_fallback(self):
     """Test fallback to Ollama when no other provider detected."""
