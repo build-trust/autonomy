@@ -678,44 +678,6 @@ class StateMachine:
     Non-streaming mode: Return complete accumulated response
     """
 
-    # Log model response if transcripts enabled
-    if not self.stream and len(self.whole_response.messages) > 0:
-      from ..transcripts import log_model_response
-
-      # Get the last assistant message
-      for msg in reversed(self.whole_response.messages):
-        if hasattr(msg, "role") and msg.role == "assistant":
-          # Extract content
-          content_text = ""
-          if hasattr(msg, "content") and msg.content:
-            content = msg.content
-            if hasattr(content, "text") and isinstance(content.text, str):
-              content_text = content.text
-            elif isinstance(content, list):
-              parts = []
-              for item in content:
-                if hasattr(item, "text") and isinstance(item.text, str):
-                  parts.append(item.text)
-                else:
-                  parts.append(str(item))
-              content_text = "\n".join(parts)
-            elif isinstance(content, str):
-              content_text = content
-            else:
-              content_text = str(content)
-
-          # Extract tool calls
-          tool_calls = None
-          if hasattr(msg, "tool_calls") and msg.tool_calls:
-            tool_calls = []
-            for tc in msg.tool_calls:
-              if hasattr(tc, "function") and tc.function:
-                tool_calls.append({"function": {"name": tc.function.name, "arguments": tc.function.arguments}})
-
-          # Log the response
-          log_model_response(content=content_text, tool_calls=tool_calls, agent_name=self.agent.name)
-          break
-
     if self.stream:
       if not self.final_content_sent:
         yield await self.streaming_response.make_finished_snippet()
@@ -1356,18 +1318,6 @@ class Agent:
       for idx, msg in enumerate(raw_messages):
         logger.debug(f"[MEMORY→READ] Message {idx}: role={msg.get('role', 'unknown')}")
 
-    # Log context if transcripts enabled
-    from ..transcripts import log_context
-
-    log_context(
-      messages=raw_messages,
-      tools=self.tool_specs,
-      title="CONTEXT",
-      agent_name=self.name,
-      scope=scope,
-      conversation=conversation,
-    )
-
     messages = [self.converter.conversation_message_from_dict(m) for m in raw_messages]
 
     return messages
@@ -1444,7 +1394,9 @@ class Agent:
         try:
           # Execute streaming with timeout protection
           async with asyncio.timeout(timeout_seconds):
-            async for chunk in self.model.complete_chat(messages, stream=True, tools=self.tool_specs):
+            async for chunk in self.model.complete_chat(
+              messages, stream=True, tools=self.tool_specs, agent_name=self.name, scope=scope, conversation=conversation
+            ):
               chunk_count += 1
               logger.debug(f"[MODEL→STREAM] Processing chunk {chunk_count}")
               if logger.isEnabledFor(10):  # DEBUG level
@@ -1591,7 +1543,9 @@ class Agent:
       # =========================================================================
       else:
         logger.debug("[MODEL→NON-STREAM] Calling model (non-streaming)")
-        response = await self.model.complete_chat(messages, stream=False, tools=self.tool_specs)
+        response = await self.model.complete_chat(
+          messages, stream=False, tools=self.tool_specs, agent_name=self.name, scope=scope, conversation=conversation
+        )
 
         if logger.isEnabledFor(10):  # DEBUG level
           logger.debug(f"[MODEL←NON-STREAM] Raw response: {response}")
