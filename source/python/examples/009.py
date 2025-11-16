@@ -1,7 +1,7 @@
 """
-Example 009: Context Logging with Multi-Step Tool Usage
+Example 009: Transcript Logging with Multi-Step Tool Usage
 
-This example demonstrates how to use context logging to inspect the exact
+This example demonstrates how to use transcript logging to inspect the exact
 context sent to the model during multi-step agent execution with tool calls.
 
 The agent will:
@@ -10,14 +10,23 @@ The agent will:
 3. Reason through the results
 4. Provide a final answer
 
-RECOMMENDED: Use transcript mode for clean output (no logging noise):
-  AWS_PROFILE=PowerUserAccess-demo-a AUTONOMY_USE_DIRECT_BEDROCK=1 AUTONOMY_USE_IN_MEMORY_DATABASE=1 AUTONOMY_TRANSCRIPTS=1 CLUSTER="$(autonomy cluster show)" uv run --active examples/009_context_logging.py
+RECOMMENDED: Enable transcript logging to capture conversation flow:
+  AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+  AUTONOMY_TRANSCRIPTS_DIR=/tmp/transcripts \
+  uv run --active examples/009.py
 
-With raw API payloads:
-  AWS_PROFILE=PowerUserAccess-demo-a AUTONOMY_USE_DIRECT_BEDROCK=1 AUTONOMY_USE_IN_MEMORY_DATABASE=1 AUTONOMY_TRANSCRIPTS=1 AUTONOMY_TRANSCRIPTS_RAW=1 CLUSTER="$(autonomy cluster show)" uv run --active examples/009_context_logging.py
+After running, inspect the transcript:
+  # View the entire conversation
+  cat /tmp/transcripts/travel-planner_default_default.jsonl | jq '.'
 
-Or use in-memory database for testing:
-  AWS_PROFILE=PowerUserAccess-demo-a AUTONOMY_USE_DIRECT_BEDROCK=1 AUTONOMY_USE_IN_MEMORY_DATABASE=1 AUTONOMY_TRANSCRIPTS=1 uv run --active examples/009_context_logging.py
+  # View only assistant messages
+  cat /tmp/transcripts/travel-planner_default_default.jsonl | jq 'select(.role=="assistant")'
+
+  # View tool calls
+  cat /tmp/transcripts/travel-planner_default_default.jsonl | jq 'select(.tool_calls)'
+
+  # Count messages by role
+  cat /tmp/transcripts/travel-planner_default_default.jsonl | jq -r '.role' | sort | uniq -c
 """
 
 from autonomy import Agent, Model, Node, Tool, info
@@ -164,25 +173,23 @@ async def get_travel_tips(destination: str) -> str:
 
 async def main(node):
   info("=" * 80)
-  info("EXAMPLE 009: Context Logging with Multi-Step Tool Usage")
+  info("EXAMPLE 009: Transcript Logging with Multi-Step Tool Usage")
   info("=" * 80)
   info("")
 
   # Check if transcript logging is enabled
   import os
 
-  transcript_enabled = os.environ.get("AUTONOMY_TRANSCRIPTS", "0") == "1"
-  transcript_raw = os.environ.get("AUTONOMY_TRANSCRIPTS_RAW", "0") == "1"
+  transcript_dir = os.environ.get("AUTONOMY_TRANSCRIPTS_DIR")
 
-  if transcript_enabled:
-    info("✓ Transcript Mode ENABLED")
-    info("  You will see human-readable context and model responses")
-    if transcript_raw:
-      info("  You will also see raw API payloads and responses")
+  if transcript_dir:
+    info("✓ Transcript Logging ENABLED")
+    info(f"  Directory: {transcript_dir}")
+    info(f"  Conversation file: travel-planner_default_default.jsonl")
+    info(f"  Format: JSONL (one message per line)")
   else:
     info("✗ Transcript logging is DISABLED")
-    info("  To enable: AUTONOMY_TRANSCRIPTS=1")
-    info("  To also see raw API: AUTONOMY_TRANSCRIPTS=1 AUTONOMY_TRANSCRIPTS_RAW=1")
+    info("  To enable: AUTONOMY_TRANSCRIPTS_DIR=/tmp/transcripts")
 
   info("")
   info("-" * 80)
@@ -277,33 +284,45 @@ async def main(node):
   info("  ✓ Tool results being added to context")
   info("")
 
-  if transcript_enabled:
-    info("You saw the complete context logged before each model call, including:")
-    info("  • System instructions (agent's capabilities)")
-    info("  • Available tools")
-    info("  • Conversation history (all messages)")
-    info("  • Tool calls and results")
+  if transcript_dir:
+    transcript_file = f"{transcript_dir}/travel-planner_default_default.jsonl"
+    info(f"✓ Transcript saved to: {transcript_file}")
     info("")
-    if transcript_raw:
-      info("You also saw raw API payloads showing:")
-      info("  • Provider-specific transformations")
-      info("  • Actual JSON sent to the model API")
-      info("  • Raw responses from the model")
-      info("")
+    info("To analyze the transcript, use:")
+    info("")
+    info("  # View all messages")
+    info(f"  cat {transcript_file} | jq '.'")
+    info("")
+    info("  # View only user messages")
+    info(f"  cat {transcript_file} | jq 'select(.role==\"user\")'")
+    info("")
+    info("  # View only assistant messages")
+    info(f"  cat {transcript_file} | jq 'select(.role==\"assistant\")'")
+    info("")
+    info("  # View tool calls")
+    info(f"  cat {transcript_file} | jq 'select(.tool_calls) | .tool_calls[]'")
+    info("")
+    info("  # View tool results")
+    info(f"  cat {transcript_file} | jq 'select(.role==\"tool\")'")
+    info("")
+    info("  # Count messages by role")
+    info(f"  cat {transcript_file} | jq -r '.role' | sort | uniq -c")
+    info("")
+    info("  # Extract all tool names used")
+    info(f"  cat {transcript_file} | jq -r 'select(.tool_calls) | .tool_calls[].function.name' | sort | uniq")
+    info("")
   else:
-    info("To see transcript logging, run with:")
-    info("  AUTONOMY_TRANSCRIPTS=1 uv run --active examples/009_context_logging.py")
-    info("")
-    info("To also see raw API payloads:")
-    info("  AUTONOMY_TRANSCRIPTS=1 AUTONOMY_TRANSCRIPTS_RAW=1 uv run --active examples/009_context_logging.py")
+    info("To enable transcript logging, run with:")
+    info("  AUTONOMY_TRANSCRIPTS_DIR=/tmp/transcripts uv run --active examples/009.py")
     info("")
 
   info("Transcript logging helps you:")
   info("  • Debug unexpected agent behavior")
   info("  • Understand what information the model sees")
-  info("  • Validate context templates")
-  info("  • Optimize context size")
-  info("  • Inspect raw API payloads")
+  info("  • Validate conversation flow")
+  info("  • Analyze tool usage patterns")
+  info("  • Inspect raw API payloads (JSONL format)")
+  info("  • Replay conversations for testing")
   info("")
 
 

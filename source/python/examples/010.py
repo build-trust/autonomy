@@ -1,5 +1,5 @@
 """
-Example 011: Code Review Assistant with Filesystem Tools
+Example 010: Code Review Assistant with Filesystem Tools
 
 This example demonstrates a complex multi-step task using an agent with
 filesystem capabilities. The agent acts as a code review assistant that:
@@ -23,16 +23,10 @@ storage, consider using visibility="scope" or "conversation" for better isolatio
 
 RECOMMENDED: Run with transcript mode for detailed output:
   AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
-  AUTONOMY_TRANSCRIPTS=1 \
-  uv run --active examples/011_code_review_assistant.py
+  AUTONOMY_TRANSCRIPTS_DIR=/tmp/transcripts \
+  uv run --active examples/010.py
 
-With AWS Bedrock:
-  AWS_PROFILE=PowerUserAccess-demo-a \
-  AUTONOMY_USE_DIRECT_BEDROCK=1 \
-  AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
-  AUTONOMY_TRANSCRIPTS=1 \
-  CLUSTER="$(autonomy cluster show)" \
-  uv run --active examples/011_code_review_assistant.py
+
 """
 
 from autonomy import Agent, Model, Node, info
@@ -211,7 +205,7 @@ python src/main.py
 
 async def main(node):
   info("=" * 80)
-  info("EXAMPLE 011: Code Review Assistant with Filesystem Tools")
+  info("EXAMPLE 010: Code Review Assistant with Filesystem Tools")
   info("=" * 80)
   info("")
 
