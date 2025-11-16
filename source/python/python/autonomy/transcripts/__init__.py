@@ -3,8 +3,6 @@
 from .transcript import (
   TranscriptConfig,
   get_transcript_config,
-  log_context,
-  log_model_response,
   log_raw_request,
   log_raw_response,
   detect_provider,
@@ -14,8 +12,6 @@ from .transcript import (
 __all__ = [
   "TranscriptConfig",
   "get_transcript_config",
-  "log_context",
-  "log_model_response",
   "log_raw_request",
   "log_raw_response",
   "detect_provider",

@@ -3,26 +3,40 @@ Agent transcript logging utilities.
 
 This module provides utilities for logging agent/model interactions (transcripts).
 Transcripts show what's sent to the model (input) and what's returned (output),
-in both human-readable and raw API format.
+with one file per conversation in JSONL format.
 
 Environment Variables:
-  AUTONOMY_TRANSCRIPTS=1          - Enable transcript logging (human-readable)
-  AUTONOMY_TRANSCRIPTS_RAW=1      - Also show raw API payloads/responses
-  AUTONOMY_TRANSCRIPTS_RAW_ONLY=1 - Show ONLY raw JSON (no human-readable)
-  AUTONOMY_TRANSCRIPTS_FILE=/path - Write output to file (appends)
+  AUTONOMY_TRANSCRIPTS_DIR=/path  - Directory for per-conversation transcript files (required)
+    • Files are named: {agent}_{scope}_{conversation}.jsonl
+    • Uses "none" as placeholder for missing scope or conversation
+    • Each file contains JSONL format (one message per line)
+    • Directory is automatically created if it doesn't exist (including parent directories)
+    • Each message is a complete JSON object on its own line
+
+JSONL Record Format:
+  One message per line:
+    {"role": "user", "content": "..."}
+    {"role": "assistant", "content": "...", "tool_calls": [...]}
+    {"role": "tool", "name": "tool_name", "content": "..."}
 
 Examples:
-  # Human-readable context and responses
-  AUTONOMY_TRANSCRIPTS=1 python script.py
+  # Enable per-conversation transcripts
+  AUTONOMY_TRANSCRIPTS_DIR=/tmp/transcripts python script.py
 
-  # Human-readable + raw API payloads
-  AUTONOMY_TRANSCRIPTS=1 AUTONOMY_TRANSCRIPTS_RAW=1 python script.py
+  # View a specific conversation
+  cat /tmp/transcripts/agent_scope_conv.jsonl | jq '.'
 
-  # Only raw JSON (for piping to jq, etc.)
-  AUTONOMY_TRANSCRIPTS_RAW_ONLY=1 python script.py 2>/dev/null | jq
+  # Filter by role
+  cat /tmp/transcripts/*.jsonl | jq 'select(.role=="assistant")'
 
-  # Save to file
-  AUTONOMY_TRANSCRIPTS=1 AUTONOMY_TRANSCRIPTS_FILE=/tmp/transcript.log python script.py
+  # Get all tool calls
+  cat /tmp/transcripts/*.jsonl | jq 'select(.tool_calls) | .tool_calls[]'
+
+  # Count messages by role
+  cat /tmp/transcripts/*.jsonl | jq -r '.role' | sort | uniq -c
+
+  # Watch conversations in real-time
+  tail -f /tmp/transcripts/*.jsonl | jq '.'
 """
 
 import json
@@ -35,19 +49,15 @@ class TranscriptConfig:
 
   def __init__(self):
     """Initialize transcript configuration from environment variables."""
-    self.enabled = os.environ.get("AUTONOMY_TRANSCRIPTS") == "1"
-    self.raw = os.environ.get("AUTONOMY_TRANSCRIPTS_RAW") == "1"
-    self.raw_only = os.environ.get("AUTONOMY_TRANSCRIPTS_RAW_ONLY") == "1"
-    self.file = os.environ.get("AUTONOMY_TRANSCRIPTS_FILE")
+    self.directory = os.environ.get("AUTONOMY_TRANSCRIPTS_DIR")
 
-    # If raw_only is set, it implies raw is enabled but human-readable is disabled
-    if self.raw_only:
-      self.raw = True
-      self.enabled = False
+    # Track output messages to avoid duplicates (per conversation)
+    # Key: f"{agent}_{scope}_{conversation}_{model}", Value: count of messages output
+    self.message_counts = {}
 
   def should_log(self) -> bool:
     """Should we log anything at all?"""
-    return self.enabled or self.raw or self.raw_only
+    return self.directory is not None
 
 
 # Global config instance
@@ -62,224 +72,75 @@ def get_transcript_config() -> TranscriptConfig:
   return _config
 
 
-def _output(text: str, config: TranscriptConfig) -> None:
+def _get_conversation_file_path(
+  config: TranscriptConfig,
+  agent_name: Optional[str] = None,
+  scope: Optional[str] = None,
+  conversation: Optional[str] = None,
+) -> Optional[str]:
   """
-  Output text to stdout and/or file based on config.
+  Get the file path for a specific conversation.
+
+  Args:
+    config: Transcript configuration
+    agent_name: Optional agent name
+    scope: Optional scope identifier
+    conversation: Optional conversation identifier
+
+  Returns:
+    File path string if directory is configured and agent_name is provided, else None
+    Uses "none" as placeholder for missing scope or conversation.
+  """
+  if not config.directory:
+    return None
+
+  if not agent_name:
+    return None
+
+  # Sanitize identifiers for file system, use "none" for missing values
+  safe_agent = agent_name.replace("/", "_").replace("\\", "_")
+  safe_scope = (scope or "none").replace("/", "_").replace("\\", "_")
+  safe_conversation = (conversation or "none").replace("/", "_").replace("\\", "_")
+
+  # Create file name
+  filename = f"{safe_agent}_{safe_scope}_{safe_conversation}.jsonl"
+  return os.path.join(config.directory, filename)
+
+
+def _output(
+  text: str,
+  config: TranscriptConfig,
+  agent_name: Optional[str] = None,
+  scope: Optional[str] = None,
+  conversation: Optional[str] = None,
+) -> None:
+  """
+  Output text to per-conversation file.
 
   Args:
     text: Text to output
     config: Transcript configuration
+    agent_name: Agent name (required for file output)
+    scope: Scope identifier (optional, uses "none" if not provided)
+    conversation: Conversation identifier (optional, uses "none" if not provided)
   """
-  # Print to stdout (unless raw_only mode with file output)
-  if not (config.raw_only and config.file):
-    print(text)
+  # Get conversation file path
+  conversation_file = _get_conversation_file_path(config, agent_name, scope, conversation)
 
-  # Write to file if configured
-  if config.file:
+  # Write to per-conversation file if we have all required identifiers
+  if conversation_file:
     try:
-      os.makedirs(os.path.dirname(config.file) if os.path.dirname(config.file) else ".", exist_ok=True)
-      with open(config.file, "a", encoding="utf-8") as f:
+      os.makedirs(config.directory, exist_ok=True)
+      with open(conversation_file, "a", encoding="utf-8") as f:
         f.write(text)
         f.write("\n")
     except Exception as e:
       from ..logs import get_logger
 
       logger = get_logger("transcripts")
-      logger.error(f"Failed to write to transcript file {config.file}: {e}")
+      logger.error(f"Failed to write to conversation transcript file {conversation_file}: {e}")
 
 
-def log_context(
-  messages: List[dict],
-  tools: Optional[List[dict]] = None,
-  title: str = "CONTEXT",
-  agent_name: Optional[str] = None,
-  scope: Optional[str] = None,
-  conversation: Optional[str] = None,
-) -> None:
-  """
-  Log the context (messages + tools) in human-readable format.
-
-  Args:
-    messages: List of message dicts
-    tools: Optional list of tool specifications
-    title: Title for the output
-    agent_name: Optional agent name
-    scope: Optional scope identifier
-    conversation: Optional conversation identifier
-  """
-  config = get_transcript_config()
-
-  if not config.enabled:
-    return
-
-  lines = []
-  separator = "=" * 80
-  msg_separator = "-" * 80
-
-  # Header
-  lines.append("")
-  lines.append(separator)
-  header = f"{title} ({len(messages)} messages"
-  if tools:
-    header += f", {len(tools)} tools"
-  header += ")"
-  if agent_name:
-    header += f" [agent={agent_name}]"
-  if scope:
-    header += f" [scope={scope}]"
-  if conversation:
-    header += f" [conversation={conversation}]"
-  lines.append(header)
-  lines.append(separator)
-  lines.append("")
-
-  # Messages section
-  lines.append("MESSAGES:")
-  lines.append("")
-
-  for idx, msg in enumerate(messages, 1):
-    role = msg.get("role", "UNKNOWN").upper()
-    lines.append(f"[{idx}] {role}")
-
-    # Handle content (string or dict)
-    content = msg.get("content", "")
-    if isinstance(content, dict):
-      if "text" in content:
-        for line in content["text"].splitlines():
-          lines.append(f"  {line}")
-      else:
-        for line in json.dumps(content, indent=2).splitlines():
-          lines.append(f"  {line}")
-    elif isinstance(content, str):
-      for line in content.splitlines():
-        lines.append(f"  {line}")
-    else:
-      for line in json.dumps(content, indent=2).splitlines():
-        lines.append(f"  {line}")
-
-    # Handle tool calls
-    if "tool_calls" in msg:
-      lines.append("")
-      lines.append("  Tool Calls:")
-      for tool_call in msg["tool_calls"]:
-        if isinstance(tool_call, dict):
-          func_name = tool_call.get("function", {}).get("name", "unknown")
-          func_args = tool_call.get("function", {}).get("arguments", "{}")
-          lines.append(f"    - {func_name}:")
-
-          # Parse and format arguments
-          try:
-            args_obj = json.loads(func_args) if isinstance(func_args, str) else func_args
-            for line in json.dumps(args_obj, indent=2).splitlines():
-              lines.append(f"      {line}")
-          except:
-            lines.append(f"      {func_args}")
-
-    # Handle tool results
-    if "tool_call_id" in msg:
-      lines.append(f"  Tool Call ID: {msg.get('tool_call_id')}")
-      if "name" in msg:
-        lines.append(f"  Tool Name: {msg.get('name')}")
-
-    lines.append(msg_separator)
-    lines.append("")
-
-  # Tools section
-  if tools:
-    lines.append("")
-    lines.append("AVAILABLE TOOLS:")
-    lines.append("")
-
-    for tool_idx, tool in enumerate(tools, 1):
-      tool_name = tool.get("function", {}).get("name", "unknown")
-      tool_desc = tool.get("function", {}).get("description", "")
-      tool_params = tool.get("function", {}).get("parameters", {})
-
-      lines.append(f"[TOOL {tool_idx}] {tool_name}")
-      if tool_desc:
-        for line in tool_desc.splitlines():
-          lines.append(f"  {line}")
-      lines.append("")
-      lines.append("  Parameters:")
-      for line in json.dumps(tool_params, indent=2).splitlines():
-        lines.append(f"    {line}")
-      lines.append(msg_separator)
-      lines.append("")
-
-  # Footer
-  lines.append(separator)
-  lines.append("")
-
-  _output("\n".join(lines), config)
-
-
-def log_model_response(
-  content: str,
-  tool_calls: Optional[List[Dict]] = None,
-  agent_name: Optional[str] = None,
-  model_name: Optional[str] = None,
-) -> None:
-  """
-  Log the model's response in human-readable format.
-
-  Args:
-    content: The response text from the model
-    tool_calls: Optional list of tool calls made by the model
-    agent_name: Optional agent name
-    model_name: Optional model name
-  """
-  config = get_transcript_config()
-
-  if not config.enabled:
-    return
-
-  lines = []
-  separator = "=" * 80
-
-  lines.append("")
-  lines.append(separator)
-
-  title = "MODEL RESPONSE"
-  if agent_name:
-    title += f" [agent={agent_name}]"
-  if model_name:
-    title += f" [model={model_name}]"
-
-  lines.append(title)
-  lines.append(separator)
-  lines.append("")
-
-  # Content
-  if content:
-    lines.append("Content:")
-    for line in content.splitlines():
-      lines.append(f"  {line}")
-    lines.append("")
-
-  # Tool calls
-  if tool_calls:
-    lines.append("Tool Calls:")
-    lines.append("")
-    for idx, tool_call in enumerate(tool_calls, 1):
-      tool_name = tool_call.get("function", {}).get("name", "unknown")
-      tool_args = tool_call.get("function", {}).get("arguments", "{}")
-
-      lines.append(f"[{idx}] {tool_name}")
-
-      # Parse and format arguments
-      try:
-        args_obj = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
-        for line in json.dumps(args_obj, indent=2).splitlines():
-          lines.append(f"  {line}")
-      except:
-        lines.append(f"  {tool_args}")
-
-      lines.append("")
-
-  lines.append(separator)
-  lines.append("")
-
-  _output("\n".join(lines), config)
 
 
 def detect_provider(model_name: str) -> str:
@@ -383,103 +244,152 @@ def format_provider_payload(payload: Dict[str, Any], provider: str) -> tuple[Dic
     return payload, ["No transformations (unknown provider)"]
 
 
-def log_raw_request(payload: Dict[str, Any], provider: str, model_name: str, agent_name: Optional[str] = None) -> None:
+def log_raw_request(
+  payload: Dict[str, Any],
+  model_name: str,
+  agent_name: Optional[str] = None,
+  scope: Optional[str] = None,
+  conversation: Optional[str] = None,
+) -> None:
   """
   Log the raw API request payload.
 
+  Outputs each message as a separate JSONL line to the per-conversation file.
+
   Args:
     payload: The raw API payload (dict)
-    provider: Provider name (e.g., "anthropic", "openai", "bedrock")
     model_name: Full model name
     agent_name: Optional agent name
+    scope: Optional scope identifier
+    conversation: Optional conversation identifier
   """
   config = get_transcript_config()
 
-  if not config.raw:
+  if not config.should_log():
     return
+
+  # Detect provider from model name for transformations
+  provider = detect_provider(model_name)
 
   # Format for the specific provider and get transformations
   formatted_payload, transformations = format_provider_payload(payload, provider)
 
-  # In raw_only mode, output pure JSON
-  if config.raw_only:
-    _output(json.dumps(formatted_payload, indent=2, ensure_ascii=False), config)
-  else:
-    # Format with headers and transformations
-    lines = []
-    separator = "=" * 80
+  # Track which messages we've already output to avoid duplicates
+  conv_key = f"{agent_name}_{scope}_{conversation}_{model_name}"
+  messages_already_output = config.message_counts.get(conv_key, 0)
 
-    lines.append("")
-    lines.append(separator)
+  # Collect all messages in order
+  all_messages = []
 
-    if agent_name:
-      lines.append(f"RAW API REQUEST → {provider.upper()} ({model_name}) [agent={agent_name}]")
-    else:
-      lines.append(f"RAW API REQUEST → {provider.upper()} ({model_name})")
+  # Add system message if present (Anthropic/Bedrock format)
+  if "system" in formatted_payload:
+    all_messages.append({"role": "system", "content": formatted_payload["system"]})
 
-    lines.append(separator)
-    lines.append("")
+  # Add all messages from request
+  if "messages" in formatted_payload:
+    all_messages.extend(formatted_payload["messages"])
 
-    # Add transformations info
-    if transformations:
-      lines.append("Transformations applied:")
-      for transform in transformations:
-        lines.append(f"  • {transform}")
-      lines.append("")
-      lines.append("-" * 80)
-      lines.append("")
+  # Only output messages we haven't seen before
+  new_messages = all_messages[messages_already_output:]
+  for msg in new_messages:
+    _output(
+      json.dumps(msg, ensure_ascii=False),
+      config,
+      agent_name=agent_name,
+      scope=scope,
+      conversation=conversation,
+    )
 
-    # Add JSON payload
-    lines.extend(json.dumps(formatted_payload, indent=2, ensure_ascii=False).splitlines())
-
-    lines.append("")
-    lines.append(separator)
-    lines.append("")
-
-    _output("\n".join(lines), config)
+  # Update count
+  config.message_counts[conv_key] = len(all_messages)
 
 
 def log_raw_response(
-  response: Dict[str, Any], provider: str, model_name: str, agent_name: Optional[str] = None
+  response: Dict[str, Any],
+  model_name: str,
+  agent_name: Optional[str] = None,
+  scope: Optional[str] = None,
+  conversation: Optional[str] = None,
 ) -> None:
   """
   Log the raw API response.
 
+  Outputs the assistant message as a JSONL line to the per-conversation file.
+
   Args:
     response: The raw API response (dict)
-    provider: Provider name (e.g., "anthropic", "openai", "bedrock")
     model_name: Full model name
     agent_name: Optional agent name
+    scope: Optional scope identifier
+    conversation: Optional conversation identifier
   """
   config = get_transcript_config()
 
-  if not config.raw:
+  if not config.should_log():
     return
 
-  # In raw_only mode, output pure JSON
-  if config.raw_only:
-    _output(json.dumps(response, indent=2, ensure_ascii=False), config)
-  else:
-    # Format with headers
-    lines = []
-    separator = "=" * 80
+  # Track conversation key to update message count
+  conv_key = f"{agent_name}_{scope}_{conversation}_{model_name}"
 
-    lines.append("")
-    lines.append(separator)
+  # Extract assistant message from response
+  assistant_msg = None
 
-    if agent_name:
-      lines.append(f"RAW API RESPONSE ← {provider.upper()} ({model_name}) [agent={agent_name}]")
-    else:
-      lines.append(f"RAW API RESPONSE ← {provider.upper()} ({model_name})")
+  if "choices" in response and len(response["choices"]) > 0:
+    choice = response["choices"][0]
+    if "message" in choice:
+      message = choice["message"]
+      assistant_msg = {"role": "assistant"}
 
-    lines.append(separator)
-    lines.append("")
+      if "content" in message and message["content"]:
+        assistant_msg["content"] = message["content"]
 
-    # Add JSON response
-    lines.extend(json.dumps(response, indent=2, ensure_ascii=False).splitlines())
+      if "tool_calls" in message and message["tool_calls"]:
+        assistant_msg["tool_calls"] = []
 
-    lines.append("")
-    lines.append(separator)
-    lines.append("")
+        # Add tool calls to assistant message
+        for tc in message["tool_calls"]:
+          if "function" in tc:
+            assistant_msg["tool_calls"].append({
+              "id": tc.get("id", "unknown"),
+              "type": "function",
+              "function": {
+                "name": tc["function"].get("name", "unknown"),
+                "arguments": tc["function"].get("arguments", "{}")
+              }
+            })
 
-    _output("\n".join(lines), config)
+  # For Anthropic format
+  elif "content" in response:
+    assistant_msg = {"role": "assistant"}
+    content_parts = []
+    tool_calls = []
+
+    for block in response.get("content", []):
+      if block.get("type") == "text":
+        content_parts.append(block.get("text", ""))
+      elif block.get("type") == "tool_use":
+        tool_calls.append({
+          "id": block.get("id", "unknown"),
+          "type": "function",
+          "function": {
+            "name": block.get("name", "unknown"),
+            "arguments": json.dumps(block.get("input", {}))
+          }
+        })
+
+    if content_parts:
+      assistant_msg["content"] = "\n".join(content_parts)
+
+    if tool_calls:
+      assistant_msg["tool_calls"] = tool_calls
+
+  # Output the assistant message and update count
+  if assistant_msg:
+    _output(
+      json.dumps(assistant_msg, ensure_ascii=False),
+      config,
+      agent_name=agent_name,
+      scope=scope,
+      conversation=conversation,
+    )
+    config.message_counts[conv_key] = config.message_counts.get(conv_key, 0) + 1
