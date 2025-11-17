@@ -26,6 +26,7 @@ dependencies = [
   "pypdfium2>=4.30",
   "filetype>=1.2.0",
   "webrtcvad>=2.0.10",
+  "setuptools>=80.9.0",
 ]
 
 authors = [{ name = "Autonomy Team", email = "support@autonomy.computer" }]
