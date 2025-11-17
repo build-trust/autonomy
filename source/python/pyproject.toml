@@ -15,7 +15,7 @@ dependencies = [
   "dill>=0.4.0",
   "docstring-parser>=0.16",
   "fastapi>=0.103.1",
-  "litellm @ git+https://github.com/build-trust/litellm.git@ba33a4d4b165c276f7eb6a681fbe1ba23466be2f",
+  "litellm==1.79.3",
   "starlette>=0.27.0",
   "scipy>=1.15.2",
   "psycopg2-binary>=2.9.10",

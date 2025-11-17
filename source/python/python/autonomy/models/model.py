@@ -158,6 +158,40 @@ class Model(InfoContext, DebugContext):
     """
     return await self.client.embeddings(text, **kwargs)
 
+  async def text_to_speech(
+    self,
+    text: str,
+    voice: str = "alloy",
+    response_format: str = "mp3",
+    **kwargs
+  ) -> bytes:
+    """
+    Convert text to speech audio.
+
+    :param text: Text to convert to speech
+    :param voice: Voice to use (e.g., 'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer')
+    :param response_format: Audio format (e.g., 'mp3', 'opus', 'aac', 'flac', 'wav', 'pcm')
+    :param kwargs: Additional parameters
+    :return: Audio bytes
+    """
+    return await self.client.text_to_speech(text, voice, response_format, **kwargs)
+
+  async def speech_to_text(
+    self,
+    audio_file,
+    language: Optional[str] = None,
+    **kwargs
+  ) -> str:
+    """
+    Transcribe audio to text.
+
+    :param audio_file: Audio file or bytes to transcribe
+    :param language: Optional language code (e.g., 'en', 'es', 'fr')
+    :param kwargs: Additional parameters
+    :return: Transcribed text
+    """
+    return await self.client.speech_to_text(audio_file, language, **kwargs)
+
   @staticmethod
   def list() -> List[str]:
     """

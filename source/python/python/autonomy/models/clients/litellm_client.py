@@ -3,6 +3,7 @@ import json
 import hashlib
 import dill
 import threading
+import io
 from typing import List, Optional
 from copy import deepcopy
 
@@ -44,6 +45,11 @@ PROVIDER_ALIASES = {
     "titan-text-express-v1": "litellm_proxy/amazon.titan-text-express-v1",
     "titan-text-lite-v1": "litellm_proxy/amazon.titan-text-lite-v1",
     "llama3.1-8b-instruct": "litellm_proxy/lambda_ai.llama3.1-8b-instruct",
+    # Text-to-Speech models
+    "tts-1": "litellm_proxy/tts-1",
+    "tts-1-hd": "litellm_proxy/tts-1-hd",
+    # Speech-to-Text models
+    "whisper-1": "litellm_proxy/whisper-1",
   },
   "ollama": {
     "deepseek-r1": "ollama_chat/deepseek-r1",
@@ -117,8 +123,19 @@ litellm.modify_params = True
 
 # Create model list for router
 model_list = []
+litellm_proxy_api_base = os.environ.get("LITELLM_PROXY_API_BASE")
+litellm_proxy_api_key = os.environ.get("LITELLM_PROXY_API_KEY")
+
 for model_name in ALL_PROVIDER_ALLOWED_FULL_NAMES:
-  model_list.append({"model_name": model_name, "litellm_params": {"model": model_name}})
+  litellm_params = {"model": model_name}
+
+  # Add proxy settings if using litellm proxy
+  if litellm_proxy_api_base and "litellm_proxy/" in model_name:
+    litellm_params["api_base"] = litellm_proxy_api_base
+    if litellm_proxy_api_key:
+      litellm_params["api_key"] = litellm_proxy_api_key
+
+  model_list.append({"model_name": model_name, "litellm_params": litellm_params})
 
 router = Router(model_list=model_list, default_max_parallel_requests=400)
 
@@ -320,6 +337,15 @@ class LiteLLMClient(InfoContext, DebugContext):
     self.max_input_tokens = max_input_tokens
     self.kwargs = kwargs
     self.kwargs["drop_params"] = True
+
+    # Add litellm proxy settings if using proxy
+    if self.name.startswith("litellm_proxy/"):
+      litellm_proxy_api_base = os.environ.get("LITELLM_PROXY_API_BASE")
+      litellm_proxy_api_key = os.environ.get("LITELLM_PROXY_API_KEY")
+      if litellm_proxy_api_base:
+        self.kwargs["api_base"] = litellm_proxy_api_base
+      if litellm_proxy_api_key:
+        self.kwargs["api_key"] = litellm_proxy_api_key
 
     # Extract the model identifier for both bedrock and litellm_proxy paths
     model_identifier = None
@@ -630,6 +656,69 @@ class LiteLLMClient(InfoContext, DebugContext):
         f.write(dill.dumps(embedding))
 
     return [embedding["embedding"] for embedding in embedding.data]
+
+  async def text_to_speech(
+    self,
+    text: str,
+    voice: str = "alloy",
+    response_format: str = "mp3",
+    **kwargs
+  ) -> bytes:
+    """
+    Convert text to speech using LiteLLM's speech endpoint.
+
+    :param text: Text to convert to speech
+    :param voice: Voice to use (e.g., 'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer')
+    :param response_format: Audio format (e.g., 'mp3', 'opus', 'aac', 'flac', 'wav', 'pcm')
+    :param kwargs: Additional parameters
+    :return: Audio bytes
+    """
+    # parameters provided in kwargs will override the default parameters
+    merged_kwargs = {**self.kwargs, **kwargs}
+
+    response = await router.aspeech(
+      model=self.name,
+      input=text,
+      voice=voice,
+      response_format=response_format,
+      **merged_kwargs
+    )
+
+    # Return audio bytes
+    return response.content
+
+  async def speech_to_text(
+    self,
+    audio_file,
+    language: Optional[str] = None,
+    **kwargs
+  ) -> str:
+    """
+    Transcribe audio to text using LiteLLM's transcription endpoint.
+
+    :param audio_file: Audio file or bytes to transcribe
+    :param language: Optional language code (e.g., 'en', 'es', 'fr')
+    :param kwargs: Additional parameters
+    :return: Transcribed text
+    """
+    # parameters provided in kwargs will override the default parameters
+    merged_kwargs = {**self.kwargs, **kwargs}
+
+    if language:
+      merged_kwargs["language"] = language
+
+    # Convert bytes to file-like object if needed
+    if isinstance(audio_file, bytes):
+      audio_file = io.BytesIO(audio_file)
+      audio_file.name = "audio.mp3"  # Give it a name for content-type detection
+
+    response = await router.atranscription(
+      model=self.name,
+      file=audio_file,
+      **merged_kwargs
+    )
+
+    return response.text
 
   async def _store_cache(self, file, data):
     os.makedirs(".recorded_inference", exist_ok=True)
