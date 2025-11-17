@@ -47,7 +47,7 @@ class VoiceModel:
     output_audio_format: str = "pcm16",
     temperature: float = 0.8,
     max_response_output_tokens: int = 4096,
-    **kwargs
+    **kwargs,
   ):
     """
     Initialize a VoiceModel instance.
@@ -76,7 +76,7 @@ class VoiceModel:
       "type": "server_vad",
       "threshold": 0.5,
       "prefix_padding_ms": 300,
-      "silence_duration_ms": 500
+      "silence_duration_ms": 500,
     }
 
     # Session configuration
@@ -90,13 +90,10 @@ class VoiceModel:
       "turn_detection": self.vad_config,
       "temperature": self.temperature,
       "max_response_output_tokens": self.max_response_output_tokens,
-      **kwargs
+      **kwargs,
     }
 
-    logger.info(
-      f"VoiceModel initialized: model={name}, voice={voice}, "
-      f"vad_type={self.vad_config.get('type')}"
-    )
+    logger.info(f"VoiceModel initialized: model={name}, voice={voice}, vad_type={self.vad_config.get('type')}")
 
   async def create_session(self) -> "VoiceSession":
     """
@@ -195,19 +192,13 @@ class VoiceSession:
     try:
       logger.info(f"Connecting to realtime API: {url}")
 
-      self.websocket = await websockets.connect(
-        url,
-        additional_headers=headers
-      )
+      self.websocket = await websockets.connect(url, additional_headers=headers)
 
       self.connected = True
       logger.info("✅ WebSocket connection established")
 
       # Send session configuration
-      await self.websocket.send(json.dumps({
-        "type": "session.update",
-        "session": self.model.session_config
-      }))
+      await self.websocket.send(json.dumps({"type": "session.update", "session": self.model.session_config}))
 
       logger.info("✅ Session configuration sent")
 
@@ -228,12 +219,9 @@ class VoiceSession:
     if not self.connected or not self.websocket:
       raise RuntimeError("Session not connected. Call connect() first.")
 
-    audio_base64 = base64.b64encode(audio_chunk).decode('utf-8')
+    audio_base64 = base64.b64encode(audio_chunk).decode("utf-8")
 
-    await self.websocket.send(json.dumps({
-      "type": "input_audio_buffer.append",
-      "audio": audio_base64
-    }))
+    await self.websocket.send(json.dumps({"type": "input_audio_buffer.append", "audio": audio_base64}))
 
     logger.debug(f"Sent audio chunk: {len(audio_chunk)} bytes")
 

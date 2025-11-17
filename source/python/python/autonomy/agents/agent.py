@@ -48,6 +48,7 @@ from ..helpers.validate_address import validate_address
 from ..logs import get_logger
 from ..memory.memory import Memory
 from ..models.model import Model
+from ..models.voice import Voice
 from ..models.voice_model import VoiceModel
 from ..nodes.node import Node
 from ..tools.protocol import InvokableTool
@@ -88,24 +89,44 @@ logger = get_logger("agent")
 # AGENT VOICE MODEL REGISTRY
 # =============================================================================
 
-# Global registry mapping agent names to their VoiceModel configurations
-# This enables the HTTP server to access voice model config for each agent
+# Global registry mapping agent names to their Voice configurations
+# This enables the HTTP server to access voice config for each agent
+_agent_voices: Dict[str, Voice] = {}
+
+# Legacy registry for VoiceModel (deprecated, for backwards compatibility)
 _agent_voice_models: Dict[str, VoiceModel] = {}
 
 
+def _register_agent_voice(name: str, voice: Optional[Voice]) -> None:
+  """Register a voice configuration for an agent."""
+  if voice is not None:
+    _agent_voices[name] = voice
+
+
+def _unregister_agent_voice(name: str) -> None:
+  """Unregister a voice configuration for an agent."""
+  _agent_voices.pop(name, None)
+
+
+def get_agent_voice(name: str) -> Optional[Voice]:
+  """Get the voice configuration for an agent by name."""
+  return _agent_voices.get(name)
+
+
+# Legacy functions (deprecated, for backwards compatibility)
 def _register_agent_voice_model(name: str, voice_model: Optional[VoiceModel]) -> None:
-  """Register a voice model for an agent."""
+  """Register a voice model for an agent. DEPRECATED: Use _register_agent_voice instead."""
   if voice_model is not None:
     _agent_voice_models[name] = voice_model
 
 
 def _unregister_agent_voice_model(name: str) -> None:
-  """Unregister a voice model for an agent."""
+  """Unregister a voice model for an agent. DEPRECATED: Use _unregister_agent_voice instead."""
   _agent_voice_models.pop(name, None)
 
 
 def get_agent_voice_model(name: str) -> Optional[VoiceModel]:
-  """Get the voice model for an agent by name."""
+  """Get the voice model for an agent by name. DEPRECATED: Use get_agent_voice instead."""
   return _agent_voice_models.get(name)
 
 
@@ -193,7 +214,8 @@ class AgentConfig(TypedDict):
   instructions: str
   name: NotRequired[str]
   model: NotRequired[Model]
-  voice_model: NotRequired[VoiceModel]
+  voice: NotRequired[Voice]
+  voice_model: NotRequired[VoiceModel]  # Deprecated, use 'voice' instead
   tools: NotRequired[List]
   context_template: NotRequired[ContextTemplate]
   max_iterations: NotRequired[int]
@@ -914,7 +936,8 @@ class Agent:
     subagent_configs: Optional[Dict[str, SubagentConfig]] = None,
     parent_agent_name: Optional[str] = None,
     context_template: Optional[ContextTemplate] = None,
-    voice_model: Optional[VoiceModel] = None,
+    voice: Optional[Voice] = None,
+    voice_model: Optional[VoiceModel] = None,  # Deprecated, use 'voice' instead
     enable_ask_for_user_input: bool = False,
     enable_filesystem: bool = False,
     filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
@@ -925,7 +948,8 @@ class Agent:
     self.tool_specs = tool_specs
     self.name = name
     self.model = model
-    self.voice_model = voice_model
+    self.voice = voice
+    self.voice_model = voice_model  # Deprecated, use 'voice' instead
 
     self.memory = memory
     memory.set_instructions(system_message(instructions))
@@ -1776,8 +1800,9 @@ class Agent:
       node: Node instance where the agent is running
       name: Name of the agent to stop
     """
-    # Unregister the voice model when stopping the agent
-    _unregister_agent_voice_model(name)
+    # Unregister the voice configuration when stopping the agent
+    _unregister_agent_voice(name)
+    _unregister_agent_voice_model(name)  # Legacy cleanup
     await node.stop_worker(name)
 
   @staticmethod
@@ -1786,7 +1811,8 @@ class Agent:
     instructions: str,
     name: Optional[str] = None,
     model: Optional[Model] = None,
-    voice_model: Optional[VoiceModel] = None,
+    voice: Optional[Voice] = None,
+    voice_model: Optional[VoiceModel] = None,  # Deprecated, use 'voice' instead
     tools: Optional[List] = None,
     context_template: Optional[ContextTemplate] = None,
     max_iterations: Optional[int] = None,
@@ -1811,7 +1837,8 @@ class Agent:
       instructions: System instructions defining agent behavior
       name: Unique agent name (auto-generated if None)
       model: LLM to use (defaults to claude-sonnet-4-v1)
-      voice_model: Optional VoiceModel for real-time voice conversations
+      voice: Optional Voice configuration for voice I/O (STT/TTS settings)
+      voice_model: DEPRECATED - Use 'voice' instead. Optional VoiceModel for real-time voice conversations
       tools: List of tools and/or tool factories. Can contain:
         - InvokableTool instances (static, shared across all scopes)
         - ToolFactory instances (create scope-specific tools automatically)
@@ -1857,6 +1884,7 @@ class Agent:
       name,
       instructions,
       model,
+      voice,
       voice_model,
       tools,
       context_template,
@@ -1930,6 +1958,7 @@ class Agent:
         name,
         instructions,
         model,
+        None,  # voice not supported for multiple agents
         None,  # voice_model not supported for multiple agents
         tools,
         context_template,
@@ -2014,7 +2043,8 @@ class Agent:
     subagents = config.get("subagents")
     subagent_runner_filter = config.get("subagent_runner_filter")
     exposed_as = config.get("exposed_as")
-    voice_model = config.get("voice_model")
+    voice = config.get("voice")
+    voice_model = config.get("voice_model")  # Legacy support
 
     # Delegate to existing start() method
     return await Agent.start(
@@ -2022,6 +2052,7 @@ class Agent:
       instructions=instructions,
       name=name,
       model=model,
+      voice=voice,
       voice_model=voice_model,
       tools=tools,
       context_template=context_template,
@@ -2121,6 +2152,7 @@ class Agent:
     name: str,
     instructions: str,
     model: Model,
+    voice: Optional[Voice],
     voice_model: Optional[VoiceModel],
     tools: Optional[List],
     context_template: Optional[ContextTemplate],
@@ -2147,7 +2179,8 @@ class Agent:
       name: Unique agent name
       instructions: System instructions defining agent behavior
       model: LLM to use for reasoning
-      voice_model: Optional VoiceModel for real-time voice conversations
+      voice: Optional Voice configuration for voice I/O (STT/TTS settings)
+      voice_model: DEPRECATED - Optional VoiceModel for real-time voice conversations
       tools: List of tools and/or tool factories
       context_template: Optional custom context template for organizing model input
       max_iterations: Maximum state machine iterations
@@ -2290,6 +2323,8 @@ class Agent:
           kwargs["subagent_runner_filter"] = subagent_runner_filter
         if context_template is not None:
           kwargs["context_template"] = context_template
+        if voice is not None:
+          kwargs["voice"] = voice
         if voice_model is not None:
           kwargs["voice_model"] = voice_model
         if enable_ask_for_user_input:
@@ -2342,8 +2377,9 @@ class Agent:
     await node.start_spawner(name, agent_creator, key_extractor, None, exposed_as)
     logger.debug(f"Successfully started agent {name}")
 
-    # Register the voice model for HTTP endpoint access
-    _register_agent_voice_model(name, voice_model)
+    # Register the voice configuration for HTTP endpoint access
+    _register_agent_voice(name, voice)
+    _register_agent_voice_model(name, voice_model)  # Legacy support
 
     return AgentReference(name, node, exposed_as)
 

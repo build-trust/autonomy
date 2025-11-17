@@ -129,14 +129,10 @@ def generate_log_file(file_number, base_dir, has_critical=False):
         "Ransomware signature detected in uploaded file",
         "Cross-site scripting (XSS) attack prevented",
         "Directory traversal attempt detected and blocked",
-        "Suspicious process execution blocked by security policy"
+        "Suspicious process execution blocked by security policy",
       ]
       message = random.choice(messages)
-      critical_incidents.append({
-        "file": filename,
-        "timestamp": timestamp_str,
-        "message": message
-      })
+      critical_incidents.append({"file": filename, "timestamp": timestamp_str, "message": message})
     elif level_roll < 0.6:
       # 60% INFO
       level = "INFO"
@@ -150,7 +146,7 @@ def generate_log_file(file_number, base_dir, has_critical=False):
         "File uploaded successfully",
         "Configuration reloaded",
         "Health check passed",
-        "Metrics collected and sent"
+        "Metrics collected and sent",
       ]
       message = random.choice(messages)
     elif level_roll < 0.85:
@@ -166,7 +162,7 @@ def generate_log_file(file_number, base_dir, has_critical=False):
         "Deprecated API endpoint called",
         "Unusually high CPU usage detected",
         "Cache miss rate above threshold",
-        "Connection pool nearly exhausted"
+        "Connection pool nearly exhausted",
       ]
       message = random.choice(messages)
     else:
@@ -182,7 +178,7 @@ def generate_log_file(file_number, base_dir, has_critical=False):
         "Out of memory exception caught",
         "Null pointer exception in module X",
         "Failed to send email notification",
-        "Configuration file parsing error"
+        "Configuration file parsing error",
       ]
       message = random.choice(messages)
 
@@ -263,10 +259,12 @@ def find_transcript_files(agent_id=None):
   ]
 
   # Also check current directory and temp
-  search_dirs.extend([
-    os.path.join(tempfile.gettempdir(), "autonomy_transcripts"),
-    os.path.join(os.getcwd(), ".autonomy", "transcripts"),
-  ])
+  search_dirs.extend(
+    [
+      os.path.join(tempfile.gettempdir(), "autonomy_transcripts"),
+      os.path.join(os.getcwd(), ".autonomy", "transcripts"),
+    ]
+  )
 
   # Deduplicate search directories (e.g., if AUTONOMY_TRANSCRIPTS_DIR=/tmp/autonomy_transcripts)
   seen_dirs = set()
@@ -309,16 +307,16 @@ def analyze_internal_execution(transcript_files, num_files, project_path):
     Dictionary with internal execution metrics
   """
   results = {
-    "files_accessed": [],           # Ordered list of file numbers accessed
-    "unique_files": set(),           # Set of unique file numbers
-    "duplicates": [],                # Files accessed multiple times
-    "gaps": [],                      # Expected files never accessed
-    "total_tool_calls": 0,           # Total filesystem tool calls
-    "file_read_calls": 0,            # Specific read operations
-    "suspect_skips": [],             # Large jumps in sequence (>10 files)
-    "sequence_monotonic": True,      # Access order is non-decreasing
-    "total_events": 0,               # Total JSONL events processed
-    "fabricated_files": set(),       # Files mentioned but never read
+    "files_accessed": [],  # Ordered list of file numbers accessed
+    "unique_files": set(),  # Set of unique file numbers
+    "duplicates": [],  # Files accessed multiple times
+    "gaps": [],  # Expected files never accessed
+    "total_tool_calls": 0,  # Total filesystem tool calls
+    "file_read_calls": 0,  # Specific read operations
+    "suspect_skips": [],  # Large jumps in sequence (>10 files)
+    "sequence_monotonic": True,  # Access order is non-decreasing
+    "total_events": 0,  # Total JSONL events processed
+    "fabricated_files": set(),  # Files mentioned but never read
   }
 
   if not transcript_files:
@@ -406,34 +404,34 @@ def generate_internal_execution_report(internal_results, output_path):
 **Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 ## Transcript Events
-- Total events processed: {internal_results['total_events']}
-- Total tool calls: {internal_results['total_tool_calls']}
-- File read operations: {internal_results['file_read_calls']}
+- Total events processed: {internal_results["total_events"]}
+- Total tool calls: {internal_results["total_tool_calls"]}
+- File read operations: {internal_results["file_read_calls"]}
 
 ## File Access Pattern
-- Unique files accessed: {len(internal_results['unique_files'])}
-- Sequence monotonic: {'✓ Yes' if internal_results['sequence_monotonic'] else '❌ No'}
-- Duplicate accesses: {len(set(internal_results['duplicates']))} files
-- Missing files (gaps): {len(internal_results['gaps'])}
+- Unique files accessed: {len(internal_results["unique_files"])}
+- Sequence monotonic: {"✓ Yes" if internal_results["sequence_monotonic"] else "❌ No"}
+- Duplicate accesses: {len(set(internal_results["duplicates"]))} files
+- Missing files (gaps): {len(internal_results["gaps"])}
 
 ### Details
 """
 
-  if internal_results['gaps']:
-    gap_preview = internal_results['gaps'][:20]
+  if internal_results["gaps"]:
+    gap_preview = internal_results["gaps"][:20]
     report += f"\n**Missing files:** {gap_preview}{'...' if len(internal_results['gaps']) > 20 else ''}\n"
   else:
     report += "\n**Missing files:** None\n"
 
-  if internal_results['duplicates']:
-    dup_preview = sorted(set(internal_results['duplicates']))[:10]
+  if internal_results["duplicates"]:
+    dup_preview = sorted(set(internal_results["duplicates"]))[:10]
     report += f"**Duplicate accesses:** {dup_preview}{'...' if len(set(internal_results['duplicates'])) > 10 else ''}\n"
 
-  if internal_results['suspect_skips']:
+  if internal_results["suspect_skips"]:
     report += f"\n**Suspect skips (jumps > 10):** {internal_results['suspect_skips']}\n"
 
-  if internal_results['fabricated_files']:
-    fab_preview = sorted(list(internal_results['fabricated_files']))[:10]
+  if internal_results["fabricated_files"]:
+    fab_preview = sorted(list(internal_results["fabricated_files"]))[:10]
     report += f"\n**Fabricated file mentions:** {fab_preview}{'...' if len(internal_results['fabricated_files']) > 10 else ''}\n"
 
   report += f"""
@@ -441,7 +439,9 @@ def generate_internal_execution_report(internal_results, output_path):
 
 """
 
-  if internal_results['sequence_monotonic'] and not internal_results['gaps'] and not internal_results['fabricated_files']:
+  if (
+    internal_results["sequence_monotonic"] and not internal_results["gaps"] and not internal_results["fabricated_files"]
+  ):
     report += "✓ **PASS** - Agent executed sequentially, accessed all files, no fabrications detected.\n"
   else:
     report += "❌ **FAIL** - Issues detected in internal execution pattern.\n"
@@ -483,7 +483,7 @@ def validate_results(project_path, expected_incidents, num_files):
     "files_processed": set(),
     "checkpoints_found": [],
     "format_consistent": True,
-    "success": False
+    "success": False,
   }
 
   # Check if incident report exists
@@ -565,8 +565,8 @@ def validate_results(project_path, expected_incidents, num_files):
 
   # Determine overall success
   results["success"] = (
-    len(results["files_processed"]) >= num_files * 0.95 and  # At least 95% completion
-    abs(incident_delta) <= results["expected_incidents"] * 0.1  # Within 10% accuracy
+    len(results["files_processed"]) >= num_files * 0.95  # At least 95% completion
+    and abs(incident_delta) <= results["expected_incidents"] * 0.1  # Within 10% accuracy
   )
 
   return results
@@ -577,39 +577,39 @@ def generate_validation_report(results, internal_results, output_path):
   report = f"""# Persistence Test Validation Report
 
 **Test Date:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-**Iterations:** {results['total_files']}
-**Result:** {'✓ PASS' if results['success'] else '❌ FAIL'}
+**Iterations:** {results["total_files"]}
+**Result:** {"✓ PASS" if results["success"] else "❌ FAIL"}
 
 ## Summary
 
-- **Files Processed:** {len(results['files_processed'])}/{results['total_files']} ({len(results['files_processed'])/results['total_files']*100:.1f}%)
-- **Expected Incidents:** {results['expected_incidents']}
-- **Found Incidents:** {results['found_incidents']}
-- **Accuracy:** {results['found_incidents']/max(results['expected_incidents'], 1)*100:.1f}%
-- **Checkpoints Found:** {len(results['checkpoints_found'])}
+- **Files Processed:** {len(results["files_processed"])}/{results["total_files"]} ({len(results["files_processed"]) / results["total_files"] * 100:.1f}%)
+- **Expected Incidents:** {results["expected_incidents"]}
+- **Found Incidents:** {results["found_incidents"]}
+- **Accuracy:** {results["found_incidents"] / max(results["expected_incidents"], 1) * 100:.1f}%
+- **Checkpoints Found:** {len(results["checkpoints_found"])}
 
 ## Internal Execution (from Transcripts)
 
-- **Files Actually Read:** {len(internal_results.get('unique_files', set()))} (from transcript analysis)
-- **Sequential Access:** {'✓ Yes' if internal_results.get('sequence_monotonic', False) else '❌ No'}
-- **Missing Files:** {len(internal_results.get('gaps', []))}
-- **Fabricated Mentions:** {len(internal_results.get('fabricated_files', set()))}
+- **Files Actually Read:** {len(internal_results.get("unique_files", set()))} (from transcript analysis)
+- **Sequential Access:** {"✓ Yes" if internal_results.get("sequence_monotonic", False) else "❌ No"}
+- **Missing Files:** {len(internal_results.get("gaps", []))}
+- **Fabricated Mentions:** {len(internal_results.get("fabricated_files", set()))}
 
 ## Detailed Results
 
 ### Completion
-{'✓ All files processed successfully' if len(results['files_processed']) == results['total_files'] else f"⚠ Missing {results['total_files'] - len(results['files_processed'])} files"}
+{"✓ All files processed successfully" if len(results["files_processed"]) == results["total_files"] else f"⚠ Missing {results['total_files'] - len(results['files_processed'])} files"}
 
 ### Accuracy
-{'✓ Perfect incident detection' if results['found_incidents'] == results['expected_incidents'] else f"⚠ Incident count mismatch (delta: {results['found_incidents'] - results['expected_incidents']})"}
+{"✓ Perfect incident detection" if results["found_incidents"] == results["expected_incidents"] else f"⚠ Incident count mismatch (delta: {results['found_incidents'] - results['expected_incidents']})"}
 
 ### Checkpoints
-{'✓ Progress checkpoints present' if results['checkpoints_found'] else '⚠ No checkpoints found'}
-{f"Found checkpoints at: {results['checkpoints_found']}" if results['checkpoints_found'] else ''}
+{"✓ Progress checkpoints present" if results["checkpoints_found"] else "⚠ No checkpoints found"}
+{f"Found checkpoints at: {results['checkpoints_found']}" if results["checkpoints_found"] else ""}
 
 ## Conclusion
 
-{'The agent successfully maintained consistency and accuracy across all iterations.' if results['success'] else 'The agent showed signs of drift, missed files, or inaccurate reporting.'}
+{"The agent successfully maintained consistency and accuracy across all iterations." if results["success"] else "The agent showed signs of drift, missed files, or inaccurate reporting."}
 
 ---
 *Generated by 012.py*
@@ -735,7 +735,7 @@ async def main(node):
       f"Extract all CRITICAL incidents and maintain the incident_report.md file as specified "
       f"in your instructions. Add checkpoint summaries every {CHECKPOINT_INTERVAL} files. "
       f"When complete, verify you processed all {NUM_ITERATIONS} files and provide a final summary.",
-      timeout=TIMEOUT
+      timeout=TIMEOUT,
     )
 
     end_time = datetime.now()
@@ -743,7 +743,7 @@ async def main(node):
 
     info(f"🤖 Agent: {response}")
     info("")
-    info(f"⏱️  Execution time: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+    info(f"⏱️  Execution time: {duration:.1f} seconds ({duration / 60:.1f} minutes)")
     info("")
 
     info("-" * 80)
@@ -795,10 +795,10 @@ async def main(node):
     # Save metrics as JSON
     # Enhanced success criteria including internal execution
     overall_success = (
-      validation_results["success"] and
-      internal_results.get("sequence_monotonic", False) and
-      len(internal_results.get("gaps", [])) == 0 and
-      len(internal_results.get("fabricated_files", set())) == 0
+      validation_results["success"]
+      and internal_results.get("sequence_monotonic", False)
+      and len(internal_results.get("gaps", [])) == 0
+      and len(internal_results.get("fabricated_files", set())) == 0
     )
 
     metrics = {
@@ -814,12 +814,12 @@ async def main(node):
       "fabricated_files": len(internal_results.get("fabricated_files", set())),
       "output_validation_success": validation_results["success"],
       "internal_execution_success": (
-        internal_results.get("sequence_monotonic", False) and
-        len(internal_results.get("gaps", [])) == 0 and
-        len(internal_results.get("fabricated_files", set())) == 0
+        internal_results.get("sequence_monotonic", False)
+        and len(internal_results.get("gaps", [])) == 0
+        and len(internal_results.get("fabricated_files", set())) == 0
       ),
       "overall_success": overall_success,
-      "timestamp": datetime.now().isoformat()
+      "timestamp": datetime.now().isoformat(),
     }
 
     metrics_path = os.path.join(project_path, "metrics.json")
@@ -860,11 +860,13 @@ async def main(node):
       info("The agent successfully:")
       info(f"  • Processed {len(validation_results['files_processed'])}/{NUM_ITERATIONS} log files (output)")
       info(f"  • Actually read {len(internal_results.get('unique_files', set()))}/{NUM_ITERATIONS} files (transcript)")
-      info(f"  • Identified {validation_results['found_incidents']}/{validation_results['expected_incidents']} critical incidents")
+      info(
+        f"  • Identified {validation_results['found_incidents']}/{validation_results['expected_incidents']} critical incidents"
+      )
       info(f"  • Maintained sequential access order")
       info(f"  • No fabricated file mentions")
       info(f"  • Maintained consistent format throughout")
-      info(f"  • Completed in {duration/60:.1f} minutes")
+      info(f"  • Completed in {duration / 60:.1f} minutes")
     else:
       info("❌❌❌ PERSISTENCE TEST FAILED ❌❌❌")
       info("")
@@ -877,7 +879,9 @@ async def main(node):
 
       incident_delta = validation_results["found_incidents"] - validation_results["expected_incidents"]
       if incident_delta != 0:
-        info(f"  • Incident accuracy off by {abs(incident_delta)} ({'+' if incident_delta > 0 else ''}{incident_delta})")
+        info(
+          f"  • Incident accuracy off by {abs(incident_delta)} ({'+' if incident_delta > 0 else ''}{incident_delta})"
+        )
 
       if not validation_results["checkpoints_found"]:
         info(f"  • No checkpoint summaries found")
@@ -895,12 +899,14 @@ async def main(node):
     info("")
     info("Key Metrics:")
     info(f"  • Total iterations: {NUM_ITERATIONS}")
-    info(f"  • Output completion rate: {len(validation_results['files_processed'])/NUM_ITERATIONS*100:.1f}%")
-    info(f"  • Internal access rate: {len(internal_results.get('unique_files', set()))/NUM_ITERATIONS*100:.1f}%")
-    info(f"  • Accuracy rate: {validation_results['found_incidents']/max(validation_results['expected_incidents'], 1)*100:.1f}%")
+    info(f"  • Output completion rate: {len(validation_results['files_processed']) / NUM_ITERATIONS * 100:.1f}%")
+    info(f"  • Internal access rate: {len(internal_results.get('unique_files', set())) / NUM_ITERATIONS * 100:.1f}%")
+    info(
+      f"  • Accuracy rate: {validation_results['found_incidents'] / max(validation_results['expected_incidents'], 1) * 100:.1f}%"
+    )
     info(f"  • Sequential access: {'Yes' if internal_results.get('sequence_monotonic', False) else 'No'}")
     info(f"  • Fabricated mentions: {len(internal_results.get('fabricated_files', set()))}")
-    info(f"  • Execution time: {duration:.1f}s ({duration/NUM_ITERATIONS:.2f}s per iteration)")
+    info(f"  • Execution time: {duration:.1f}s ({duration / NUM_ITERATIONS:.2f}s per iteration)")
     info(f"  • Checkpoints: {len(validation_results['checkpoints_found'])}")
     info("")
 

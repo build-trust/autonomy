@@ -298,7 +298,7 @@ async def main(node):
       "review report that includes: 1) Project overview, 2) Critical issues found, "
       "3) Security concerns, 4) Performance suggestions, 5) Code quality recommendations, "
       "and 6) Test coverage assessment. Save the report as 'review_report.md'.",
-      timeout=TIMEOUT
+      timeout=TIMEOUT,
     )
 
     info(f"🤖 Agent: {response1}")
@@ -317,7 +317,7 @@ async def main(node):
       "security vulnerabilities you found, ranked by severity (Critical, High, "
       "Medium, Low). For each issue, include: the file and line number, "
       "description of the vulnerability, potential impact, and recommended fix.",
-      timeout=TIMEOUT
+      timeout=TIMEOUT,
     )
 
     info(f"🤖 Agent: {response2}")
@@ -335,7 +335,7 @@ async def main(node):
       "file with a prioritized checklist of tasks to improve this codebase. "
       "Group items by category (Security, Performance, Testing, Code Quality) "
       "and use markdown checkboxes. Put the most critical items at the top.",
-      timeout=TIMEOUT
+      timeout=TIMEOUT,
     )
 
     info(f"🤖 Agent: {response3}")
@@ -355,7 +355,7 @@ async def main(node):
       "total lines of code, number of functions, number of classes, TODO/FIXME "
       "count, test coverage estimate, and number of files. Also identify which "
       "files are the most complex and might need refactoring.",
-      timeout=TIMEOUT
+      timeout=TIMEOUT,
     )
 
     info(f"🤖 Agent: {response4}")
@@ -374,7 +374,7 @@ async def main(node):
       "Include: overall code quality rating (1-10), top 3 concerns, estimated "
       "effort to address critical issues, and recommended next steps. Keep it "
       "concise and business-focused.",
-      timeout=TIMEOUT
+      timeout=TIMEOUT,
     )
 
     info(f"🤖 Agent: {response5}")

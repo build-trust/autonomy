@@ -997,14 +997,13 @@ class BedrockClient(InfoContext, DebugContext):
               )
 
               # Add to accumulated tool calls for logging
-              accumulated_tool_calls.append({
-                "id": current_tool_use["id"],
-                "type": "function",
-                "function": {
-                  "name": current_tool_use["name"],
-                  "arguments": json.dumps(tool_args)
+              accumulated_tool_calls.append(
+                {
+                  "id": current_tool_use["id"],
+                  "type": "function",
+                  "function": {"name": current_tool_use["name"], "arguments": json.dumps(tool_args)},
                 }
-              })
+              )
 
               yield Chunk(tool_call)
 
@@ -1034,13 +1033,12 @@ class BedrockClient(InfoContext, DebugContext):
 
             # Log the accumulated response
             response_dict = {
-              "choices": [{
-                "message": {
-                  "role": "assistant",
-                  "content": accumulated_content if accumulated_content else None
-                },
-                "finish_reason": "stop"
-              }]
+              "choices": [
+                {
+                  "message": {"role": "assistant", "content": accumulated_content if accumulated_content else None},
+                  "finish_reason": "stop",
+                }
+              ]
             }
 
             # Add tool calls if any

@@ -141,8 +141,6 @@ def _output(
       logger.error(f"Failed to write to conversation transcript file {conversation_file}: {e}")
 
 
-
-
 def detect_provider(model_name: str) -> str:
   """
   Detect the provider from the model name.
@@ -349,14 +347,16 @@ def log_raw_response(
         # Add tool calls to assistant message
         for tc in message["tool_calls"]:
           if "function" in tc:
-            assistant_msg["tool_calls"].append({
-              "id": tc.get("id", "unknown"),
-              "type": "function",
-              "function": {
-                "name": tc["function"].get("name", "unknown"),
-                "arguments": tc["function"].get("arguments", "{}")
+            assistant_msg["tool_calls"].append(
+              {
+                "id": tc.get("id", "unknown"),
+                "type": "function",
+                "function": {
+                  "name": tc["function"].get("name", "unknown"),
+                  "arguments": tc["function"].get("arguments", "{}"),
+                },
               }
-            })
+            )
 
   # For Anthropic format
   elif "content" in response:
@@ -368,14 +368,13 @@ def log_raw_response(
       if block.get("type") == "text":
         content_parts.append(block.get("text", ""))
       elif block.get("type") == "tool_use":
-        tool_calls.append({
-          "id": block.get("id", "unknown"),
-          "type": "function",
-          "function": {
-            "name": block.get("name", "unknown"),
-            "arguments": json.dumps(block.get("input", {}))
+        tool_calls.append(
+          {
+            "id": block.get("id", "unknown"),
+            "type": "function",
+            "function": {"name": block.get("name", "unknown"), "arguments": json.dumps(block.get("input", {}))},
           }
-        })
+        )
 
     if content_parts:
       assistant_msg["content"] = "\n".join(content_parts)

@@ -158,13 +158,7 @@ class Model(InfoContext, DebugContext):
     """
     return await self.client.embeddings(text, **kwargs)
 
-  async def text_to_speech(
-    self,
-    text: str,
-    voice: str = "alloy",
-    response_format: str = "mp3",
-    **kwargs
-  ) -> bytes:
+  async def text_to_speech(self, text: str, voice: str = "alloy", response_format: str = "mp3", **kwargs) -> bytes:
     """
     Convert text to speech audio.
 
@@ -176,12 +170,7 @@ class Model(InfoContext, DebugContext):
     """
     return await self.client.text_to_speech(text, voice, response_format, **kwargs)
 
-  async def speech_to_text(
-    self,
-    audio_file,
-    language: Optional[str] = None,
-    **kwargs
-  ) -> str:
+  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs) -> str:
     """
     Transcribe audio to text.
 

@@ -534,8 +534,10 @@ class LiteLLMClient(InfoContext, DebugContext):
               "type": "function",
               "function": {
                 "name": tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown",
-                "arguments": tc.function.arguments if hasattr(tc, "function") and hasattr(tc.function, "arguments") else ""
-              }
+                "arguments": tc.function.arguments
+                if hasattr(tc, "function") and hasattr(tc.function, "arguments")
+                else "",
+              },
             }
           else:
             # Accumulate arguments
@@ -559,13 +561,12 @@ class LiteLLMClient(InfoContext, DebugContext):
     # Log the accumulated response
     if last_chunk and last_chunk.choices[0].finish_reason:
       response_dict = {
-        "choices": [{
-          "message": {
-            "role": "assistant",
-            "content": accumulated_content if accumulated_content else None
-          },
-          "finish_reason": last_chunk.choices[0].finish_reason
-        }]
+        "choices": [
+          {
+            "message": {"role": "assistant", "content": accumulated_content if accumulated_content else None},
+            "finish_reason": last_chunk.choices[0].finish_reason,
+          }
+        ]
       }
 
       # Add tool calls if any
@@ -657,13 +658,7 @@ class LiteLLMClient(InfoContext, DebugContext):
 
     return [embedding["embedding"] for embedding in embedding.data]
 
-  async def text_to_speech(
-    self,
-    text: str,
-    voice: str = "alloy",
-    response_format: str = "mp3",
-    **kwargs
-  ) -> bytes:
+  async def text_to_speech(self, text: str, voice: str = "alloy", response_format: str = "mp3", **kwargs) -> bytes:
     """
     Convert text to speech using LiteLLM's speech endpoint.
 
@@ -677,22 +672,13 @@ class LiteLLMClient(InfoContext, DebugContext):
     merged_kwargs = {**self.kwargs, **kwargs}
 
     response = await router.aspeech(
-      model=self.name,
-      input=text,
-      voice=voice,
-      response_format=response_format,
-      **merged_kwargs
+      model=self.name, input=text, voice=voice, response_format=response_format, **merged_kwargs
     )
 
     # Return audio bytes
     return response.content
 
-  async def speech_to_text(
-    self,
-    audio_file,
-    language: Optional[str] = None,
-    **kwargs
-  ) -> str:
+  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs) -> str:
     """
     Transcribe audio to text using LiteLLM's transcription endpoint.
 
@@ -712,11 +698,7 @@ class LiteLLMClient(InfoContext, DebugContext):
       audio_file = io.BytesIO(audio_file)
       audio_file.name = "audio.mp3"  # Give it a name for content-type detection
 
-    response = await router.atranscription(
-      model=self.name,
-      file=audio_file,
-      **merged_kwargs
-    )
+    response = await router.atranscription(model=self.name, file=audio_file, **merged_kwargs)
 
     return response.text
 

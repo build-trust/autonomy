@@ -124,6 +124,7 @@ def test_per_conversation_files_created(reset_config, temp_transcript_dir):
   os.environ["AUTONOMY_TRANSCRIPTS_DIR"] = temp_transcript_dir
 
   import autonomy.transcripts.transcript as transcript_module
+
   transcript_module._config = None
 
   # Log messages for different conversations
@@ -158,6 +159,7 @@ def test_message_deduplication(reset_config, temp_transcript_dir):
   os.environ["AUTONOMY_TRANSCRIPTS_DIR"] = temp_transcript_dir
 
   import autonomy.transcripts.transcript as transcript_module
+
   transcript_module._config = None
 
   agent = "test_agent"
@@ -223,6 +225,7 @@ def test_response_logging_with_tool_calls(reset_config, temp_transcript_dir):
   os.environ["AUTONOMY_TRANSCRIPTS_DIR"] = temp_transcript_dir
 
   import autonomy.transcripts.transcript as transcript_module
+
   transcript_module._config = None
 
   agent = "test_agent"
@@ -233,19 +236,15 @@ def test_response_logging_with_tool_calls(reset_config, temp_transcript_dir):
   # Log response with tool calls
   log_raw_response(
     response={
-      "choices": [{
-        "message": {
-          "role": "assistant",
-          "content": "I'll help you with that.",
-          "tool_calls": [{
-            "id": "call_123",
-            "function": {
-              "name": "search",
-              "arguments": '{"query": "test"}'
-            }
-          }]
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "content": "I'll help you with that.",
+            "tool_calls": [{"id": "call_123", "function": {"name": "search", "arguments": '{"query": "test"}'}}],
+          }
         }
-      }]
+      ]
     },
     model_name=model,
     agent_name=agent,
@@ -271,6 +270,7 @@ def test_system_message_extraction(reset_config, temp_transcript_dir):
   os.environ["AUTONOMY_TRANSCRIPTS_DIR"] = temp_transcript_dir
 
   import autonomy.transcripts.transcript as transcript_module
+
   transcript_module._config = None
 
   agent = "test_agent"
@@ -280,10 +280,7 @@ def test_system_message_extraction(reset_config, temp_transcript_dir):
 
   # Log request with system message (Anthropic format)
   log_raw_request(
-    payload={
-      "system": "You are a helpful assistant.",
-      "messages": [{"role": "user", "content": "Hello"}]
-    },
+    payload={"system": "You are a helpful assistant.", "messages": [{"role": "user", "content": "Hello"}]},
     model_name=model,
     agent_name=agent,
     scope=scope,
@@ -303,8 +300,6 @@ def test_system_message_extraction(reset_config, temp_transcript_dir):
   assert messages[1] == {"role": "user", "content": "Hello"}
 
 
-
-
 def test_directory_creation(reset_config):
   """Test that the transcript directory is created if it doesn't exist."""
   temp_dir = tempfile.mkdtemp(prefix="transcript_test_parent_")
@@ -314,6 +309,7 @@ def test_directory_creation(reset_config):
     os.environ["AUTONOMY_TRANSCRIPTS_DIR"] = transcript_dir
 
     import autonomy.transcripts.transcript as transcript_module
+
     transcript_module._config = None
 
     # Directory should not exist yet
@@ -345,6 +341,7 @@ def test_none_placeholder_for_missing_identifiers(reset_config, temp_transcript_
   os.environ["AUTONOMY_TRANSCRIPTS_DIR"] = temp_transcript_dir
 
   import autonomy.transcripts.transcript as transcript_module
+
   transcript_module._config = None
 
   # Log without conversation identifier - should use "none"

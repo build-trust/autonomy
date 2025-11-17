@@ -11,7 +11,7 @@ from .logs import (
   InfoContext,
   DebugContext,
 )
-from .models import Model
+from .models import Model, Voice
 from .nodes import (
   Node,
   Mailbox,
@@ -99,6 +99,7 @@ __all__ = [
   "DebugContext",
   # from .models
   "Model",
+  "Voice",
   # from .nodes
   "Node",
   "RemoteNode",
