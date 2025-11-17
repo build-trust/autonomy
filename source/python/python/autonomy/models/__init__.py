@@ -1,4 +1,5 @@
 from .model import Model
+from .voice_model import VoiceModel, VoiceSession
 from .clients.litellm_client import (
   LiteLLMClient,
   PROVIDER_ALIASES,
@@ -9,6 +10,8 @@ from .clients.bedrock_client import BedrockClient, BEDROCK_MODELS
 
 __all__ = [
   "Model",
+  "VoiceModel",
+  "VoiceSession",
   "LiteLLMClient",
   "BedrockClient",
   "PROVIDER_ALIASES",
