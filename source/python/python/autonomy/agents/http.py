@@ -4,7 +4,7 @@ import os
 import uvicorn
 from dataclasses import asdict, is_dataclass
 from enum import Enum
-from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, status
+from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.security.api_key import APIKeyQuery
 from fastapi import Security
@@ -22,6 +22,7 @@ from ..nodes.message import (
 )
 from ..nodes.node import Node
 from ..logs.logs import InfoContext, get_logging_config
+from ..models.voice_model import VoiceModel
 
 """
     This class starts an HTTP server allowing a user to interact with a node and its agents.
@@ -233,6 +234,183 @@ class HttpServer(InfoContext):
     async def get_tool_by_name(name: str, node=Depends(self.get_node)):
       with self.info(f"Get tool: {name}", f"Retrieved tool: {name}"):
         return find_tool(node, name)
+
+    @self.app.websocket("/agents/{name}/voice")
+    async def voice_endpoint(websocket: WebSocket, name: str):
+      """WebSocket endpoint for real-time voice conversations with an agent"""
+      self.logger.info(f"🔌 WebSocket voice connection attempt for agent '{name}'")
+      self.logger.debug(f"   Client: {websocket.client}")
+
+      # Get node from WebSocket state (injected by middleware)
+      node = self.get_node_from_websocket(websocket)
+
+      try:
+        # Accept WebSocket connection
+        await websocket.accept()
+        self.logger.info(f"✅ WebSocket connection accepted for agent '{name}'")
+      except Exception as e:
+        self.logger.error(f"❌ Failed to accept WebSocket connection: {e}")
+        raise
+
+      voice_session = None
+
+      try:
+        # Verify agent exists
+        await find_agent(node, name)
+
+        # TODO: Get agent's VoiceModel configuration
+        # For now, use default configuration
+        voice_model = VoiceModel(
+          "gpt-4o-realtime-preview",
+          voice="echo",
+          instructions="You are a helpful AI assistant having a voice conversation."
+        )
+
+        # Create voice session
+        voice_session = await voice_model.create_session()
+        self.logger.info(f"✅ Voice session created for agent '{name}'")
+
+        # Send connection confirmation to client
+        await websocket.send_json({
+          "type": "connected",
+          "message": f"Connected to agent '{name}' voice interface"
+        })
+
+        # Task to receive audio from client and forward to voice model
+        async def receive_from_client():
+          try:
+            while True:
+              message = await websocket.receive_text()
+              data = json.loads(message)
+
+              if data.get("type") == "audio":
+                # Client sent audio chunk - forward to voice model
+                audio_base64 = data.get("audio", "")
+                if audio_base64:
+                  import base64
+                  audio_bytes = base64.b64decode(audio_base64)
+                  await voice_session.send_audio(audio_bytes)
+
+              elif data.get("type") == "event":
+                # Client sent custom event - forward to voice model
+                event = data.get("event", {})
+                if event:
+                  await voice_session.send_event(event)
+
+              elif data.get("type") == "close":
+                self.logger.info(f"📪 Client requested close for agent '{name}'")
+                break
+
+          except WebSocketDisconnect:
+            self.logger.info(f"📪 Client disconnected from agent '{name}'")
+          except Exception as e:
+            self.logger.error(f"❌ Error receiving from client: {e}")
+
+        # Task to receive events from voice model and forward to client
+        async def receive_from_voice_model():
+          try:
+            async for event in voice_session.receive_events():
+              event_type = event.get("type")
+
+              # Log non-audio events for debugging
+              if event_type not in ["response.audio.delta", "response.audio_transcript.delta"]:
+                self.logger.debug(f"📨 Voice model event: {event_type}")
+
+              # Forward relevant events to client
+              if event_type == "response.audio.delta":
+                # Audio chunk from assistant
+                audio_base64 = event.get("delta", "")
+                if audio_base64:
+                  await websocket.send_json({
+                    "type": "audio_chunk",
+                    "audio": audio_base64
+                  })
+
+              elif event_type == "response.audio_transcript.delta":
+                # Transcript of what assistant is saying
+                transcript_delta = event.get("delta", "")
+                if transcript_delta:
+                  await websocket.send_json({
+                    "type": "transcript",
+                    "text": transcript_delta,
+                    "role": "assistant"
+                  })
+
+              elif event_type == "conversation.item.input_audio_transcription.completed":
+                # User's speech transcription
+                user_transcript = event.get("transcript", "")
+                if user_transcript:
+                  await websocket.send_json({
+                    "type": "user_transcript",
+                    "text": user_transcript
+                  })
+                  self.logger.info(f"🗣️  User said: {user_transcript}")
+
+              elif event_type == "input_audio_buffer.speech_started":
+                await websocket.send_json({
+                  "type": "speech_started"
+                })
+                self.logger.debug("🎤 Speech started")
+
+              elif event_type == "input_audio_buffer.speech_stopped":
+                await websocket.send_json({
+                  "type": "speech_stopped"
+                })
+                self.logger.debug("⏸️  Speech stopped (VAD detected)")
+
+              elif event_type == "response.done":
+                await websocket.send_json({
+                  "type": "response_complete"
+                })
+                self.logger.debug("✅ Response complete")
+
+              elif event_type == "error":
+                error = event.get("error", {})
+                await websocket.send_json({
+                  "type": "error",
+                  "error": error.get("message", "Unknown error")
+                })
+                self.logger.error(f"❌ Voice model error: {error.get('message', 'Unknown')}")
+
+              elif event_type == "session.created":
+                self.logger.debug("✅ Voice model session created")
+
+              elif event_type == "session.updated":
+                self.logger.debug("✅ Voice model session updated")
+
+          except Exception as e:
+            self.logger.error(f"❌ Error receiving from voice model: {e}")
+
+        # Run both tasks concurrently
+        await asyncio.gather(
+          receive_from_client(),
+          receive_from_voice_model(),
+          return_exceptions=True
+        )
+
+      except Exception as e:
+        self.logger.error(f"❌ Voice WebSocket error for agent '{name}': {e}")
+        try:
+          await websocket.send_json({
+            "type": "error",
+            "error": str(e)
+          })
+        except:
+          pass
+
+      finally:
+        # Clean up voice session
+        if voice_session:
+          await voice_session.close()
+          self.logger.info(f"🔌 Voice session closed for agent '{name}'")
+
+        # Close client WebSocket
+        try:
+          await websocket.close()
+        except:
+          pass
+
+        self.logger.info(f"🔌 Voice WebSocket connection closed for agent '{name}'")
 
   def get_node(self):
     """Get node instance. Can be used as a dependency in routes."""
