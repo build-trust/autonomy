@@ -147,7 +147,6 @@ class VoiceModel:
       # LiteLLM proxy expects both api-key and Authorization headers
       headers["api-key"] = proxy_key
       headers["Authorization"] = f"Bearer {proxy_key}"
-      headers["OpenAI-Beta"] = "realtime=v1"
       logger.debug("Using LiteLLM proxy API key")
       return headers
 
