@@ -23,6 +23,7 @@ from ..nodes.message import (
 from ..nodes.node import Node
 from ..logs.logs import InfoContext, get_logging_config
 from ..models.voice_model import VoiceModel
+from .agent import get_agent_voice_model
 
 """
     This class starts an HTTP server allowing a user to interact with a node and its agents.
@@ -258,13 +259,15 @@ class HttpServer(InfoContext):
         # Verify agent exists
         await find_agent(node, name)
 
-        # TODO: Get agent's VoiceModel configuration
-        # For now, use default configuration
-        voice_model = VoiceModel(
-          "gpt-4o-realtime-preview",
-          voice="echo",
-          instructions="You are a helpful AI assistant having a voice conversation."
-        )
+        # Get agent's VoiceModel configuration, or use default
+        voice_model = get_agent_voice_model(name)
+        if voice_model is None:
+          # Use default configuration if agent doesn't have a voice model
+          voice_model = VoiceModel(
+            "gpt-4o-realtime-preview",
+            voice="echo",
+            instructions="You are a helpful AI assistant having a voice conversation."
+          )
 
         # Create voice session
         voice_session = await voice_model.create_session()
