@@ -5,15 +5,13 @@ mode: "wide"
 description: "Use a coding agent like Claude Code to build and ship a multi-agent Autonomy app."
 ---
 
-Use a coding agent to build and deploy an example app for news editors.
+Coding agents like Claude Code, Codex CLI, Gemini CLI, Cursor, Cline, Devin, Zed, etc. can
+use Autonomy documentation to ship complete autonomous applications.
 
-An orchestrator agent breaks an article down into claims. Each claim is assigned to a parallel deep research agent that researches that claim on the Internet. A reporting agent produces a final report based on the research.
-
-The app is built and deployed to Autonomy without typing any code.
-
-It gets a public URL, a streaming API, and a nice user interface. The required infra, models, memory, and MCP servers are automagically provisioned. In 10 minutes, we have a bootstrapped codebase and a deployed multi-agent product to share with customers.
-
-Open your favorite coding agent and give it the following prompt:
+To try this:
+1. Set up your favorite coding agent.
+2. Follow the initial instructions to [Get Started with Autonomy](../start/start-here#get-started).
+3. Give your coding agent the following prompt:
 
 ```
 Use curl to fetch and read this doc and included links
@@ -32,6 +30,7 @@ The workflow is:
 - All the research is given to a report generating agent that creates
   a final fact check report.
 
+Keep the app limited to one autonomy node.
 Also create a very simple web UI for the app using nextjs and shadcn/ui
 
 Deploy and test the app in Autonomy
@@ -42,12 +41,12 @@ architecture diagram of the app.
 
 Your coding agent will:
 
-- Refer the Autonomy documentation to learn how to create, deploy, and debug Autonomy apps
-- Create a README describing the architecture of the application
-- Write Python code for claim extraction, fact-checking, and reporter agents
-- Write code to create parallel fact-checking deep research agents
-- Set up the Brave Search MCP server and create streaming APIs
-- Build a Next.js user interface
+- Refer the Autonomy documentation to learn how to create, deploy, and debug Autonomy apps.
+- Create a README describing the architecture of the application.
+- Write Python code for claim extraction, fact-checking, and reporter agents.
+- Write code to create parallel fact-checking deep research agents.
+- Set up the Brave Search MCP server and create streaming APIs.
+- Build a Next.js user interface.
 - Deploy the application to the Autonomy Computer and test it.
 
 ---
