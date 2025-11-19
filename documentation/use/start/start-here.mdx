@@ -37,37 +37,7 @@ The Autonomy Command is a command-line tool to build apps using the Autonomy Fra
 
 ---
 
-## Get Started
-
-Follow these steps to set up Autonomy and deploy your first autonomous app:
-
-<Steps>
-  <Step title="Create an Account">
-    [Sign up](https://my.autonomy.computer) for an account with Autonomy to create your new cluster.
-  </Step>
-  <Step title="Set up Docker">
-    Check that [Docker](https://www.docker.com/get-started/) is installed and running on your workstation. You can confirm that Docker is correctly set up by running `docker ps` in your terminal.
-  </Step>
-
-  <Step title="Install the Autonomy command">
-    Install the `autonomy` command by running the following in your terminal:
-
-    ```bash
-    curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
-    ```
-    
-    It will download the right binary and make it available in your terminal.
-  </Step>
-  <Step title="Build and deploy a new app">
-      <CardGroup cols={2}>
-        <Card href="/start/build-with-a-coding-agent"
-            title="Build with a Coding Agent" icon="robot" iconType="solid">
-          Use a coding agent like Claude Code or Cursor to build and ship a multi-agent Autonomy app in 10 minutes.
-        </Card>
-        <Card href="/start/build-manually" title="Build manually, step-by-step" icon="code" iconType="solid">
-          Create and deploy an Autonomy app step-by-step to understand how all the pieces fit together. 
-        </Card>
-      </CardGroup>
-  </Step>
-
-</Steps>
+<Card href="/start/get-started"
+    title="Get Started" icon="rocket" iconType="solid">
+  Set up Autonomy and deploy your first autonomous app.
+</Card>

@@ -14,11 +14,9 @@
         "group": "GET STARTED",
         "pages": [
           "start/start-here",
-          {
-            "group": "Ship your first app",
-            "icon": "rocket",
-            "pages": ["start/build-with-a-coding-agent", "start/build-manually"]
-          },
+          "start/get-started",
+          "start/build-with-a-coding-agent",
+          "start/build-manually",
           "start/discord",
           "start/pricing"
         ]
