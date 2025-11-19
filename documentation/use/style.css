@@ -36,3 +36,20 @@
     margin-left: 2.5rem !important;
     margin-right: auto !important;
 }
+
+/* Override code block background to grey */
+pre.shiki,
+.code-block-background {
+    background-color: #191617 !important;
+}
+
+/* Dark mode code block background */
+html.dark pre.shiki,
+html.dark .code-block-background {
+    background-color: #191617 !important;
+}
+
+/* Ensure code block container has grey background */
+.bg-codeblock {
+    background-color: #191617 !important;
+}
