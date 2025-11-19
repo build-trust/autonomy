@@ -2,10 +2,10 @@
 title: "Architecture"
 mode: "wide"
 icon: "cloud"
-description: "Understand how your applications run on Autonomy"
+description: "Understand how your applications run on the Autonomy Computer"
 ---
 
-Autonomy uses a hierarchical architecture that lets you build everything from simple single-agent apps to distributed systems with thousands of parallel workers.
+The Autonomy Computer uses a hierarchical architecture that lets you build everything from simple single-agent apps to distributed systems with thousands of parallel collaborating agents. Your apps can create **deep work agents** that work on long and complex tasks, running as **stateful concurrent actors** that asynchronously send and receive messages.
 
 ## Architecture Overview
 
@@ -16,7 +16,7 @@ Cluster (your dedicated cloud infrastructure)
 |-- Zones (your deployed apps)
     |-- Pods (groups of containers that can communicate over localhost)
         |-- Containers
-            |-- Nodes (Python apps that are using the Autonomy Framework)
+            |-- Nodes (Python apps built using the Autonomy Framework)
             |   |-- Agents (intelligent autonomous actors)
             |   |-- Workers (stateful actors that send and receive messages)
             |
@@ -26,6 +26,7 @@ Cluster (your dedicated cloud infrastructure)
 ## Cluster
 
 Your dedicated cloud infrastructure.
+This infrastructure is geographically distributed across regions and clouds.
 
 **Key points:**
 - One cluster per account.
@@ -45,13 +46,13 @@ Your apps are accessible at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.comput
 
 ## Zone
 
-A deployed application. Each zone is defined by an `autonomy.yaml` file.
+A deployed application with **autonomous agents**. Each zone is defined by an `autonomy.yaml` file.
 
 **Key points:**
 - Name must be `≤ 10` characters, using only `a to z` and `0 to 9`.
 - Contains one or more pods.
 - Can be public (web accessible) or private.
-- Nodes in a Zone use can securely delegate work to each other.
+- Nodes in a Zone can communicate and securely delegate work to each other.
 
 **Example:**
 ```yaml
@@ -73,11 +74,11 @@ autonomy zone delete --yes        # Delete zone
 
 ## Pod
 
-A group of containers that run together on the same machine.
+A group of containers that run together.
 
 **Key points:**
 - All containers in a pod share a network namespace (use `localhost` to communicate).
-- Can be public (exposes port 8000 to internet) or private.
+- Can be public (expose port 8000 to the Internet) or private.
 - Can be cloned to create multiple instances.
 
 **Options:**
@@ -86,11 +87,21 @@ A group of containers that run together on the same machine.
 pods:
   - name: main-pod
     public: true              # Expose HTTP on port 8000
-    size: big                 # More resources (4 CPU, 2Gi vs 0.25 CPU, 256Mi)
+    size: big                 # More resources (see specifications below)
     containers:
       - name: main
         image: main
 ```
+
+**Pod Size Specifications:**
+
+| Size              | CPU  | Memory | Use Case                                        |
+|-------------------|------|--------|-------------------------------------------------|
+| Regular (default) | 0.25 | 256Mi  | Lightweight agents, simple workers              |
+| Big (`size: big`) | 4    | 2Gi    | Compute-intensive tasks, distributed processing |
+
+- **Regular pods** are the default and suitable for most agents and workers.
+- **Big pods** provide 16x more CPU and ~8x more memory for demanding workloads.
 
 **Use multiple pods to:**
 - Distribute work across multiple machines.
@@ -103,7 +114,7 @@ A container running inside a pod.
 
 **Key points:**
 - Built from `images/${IMAGE_NAME}/Dockerfile`.
-- Can run an Autonomy Node or any other service.
+- Can run an Autonomy Node or any service that a node needs (like MCP servers).
 - Multiple containers in the same pod communicate via `localhost`.
 
 **Autonomy Node container:**
@@ -130,7 +141,9 @@ containers:
 
 ## Node
 
-The Autonomy runtime that executes inside a container.
+The Autonomy actor runtime that executes inside a container.
+It hosts agents as **stateful concurrent actors** that asynchronously send
+and receive messages, enabling effortless horizontal scaling.
 
 **Key points:**
 - Created by calling `Node.start(main)` in Python.
