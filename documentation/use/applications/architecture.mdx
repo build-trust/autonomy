@@ -142,8 +142,9 @@ containers:
 ## Node
 
 The Autonomy actor runtime that executes inside a container.
-It hosts agents as **stateful concurrent actors** that asynchronously send
-and receive messages, enabling effortless horizontal scaling.
+It hosts agents as **stateful concurrent actors** that can send and asynchronously
+receive message. This enables them to collaborate with and delegate work
+to other agents.
 
 **Key points:**
 - Created by calling `Node.start(main)` in Python.
