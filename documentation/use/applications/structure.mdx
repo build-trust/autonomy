@@ -429,9 +429,9 @@ Node.start(http_server=HttpServer(app=app))
 ```
 
 **Key points:**
-- You must manually configure FastAPI with `StaticFiles` to serve the `public/` directory
-- The `ui/` directory is NOT included in the Docker image
-- Only the compiled `public/` directory goes into the image
-- Your UI framework can be anything that outputs static files
-- The FastAPI `StaticFiles` mount must be last (after all API routes)
-- The `html=True` parameter enables serving `index.html` for directory requests
+- You must manually configure FastAPI with `StaticFiles` to serve the `public/` directory.
+- The `ui/` directory is not included in the Docker image.
+- Only the compiled `public/` directory goes into the image.
+- Your UI framework can be anything that outputs static files.
+- The FastAPI `StaticFiles` mount must be last (after all API routes).
+- The `html=True` parameter enables serving `index.html` for directory requests.
