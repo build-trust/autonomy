@@ -24,6 +24,10 @@
         ]
       },
       {
+        "group": "APPLICATIONS",
+        "pages": ["applications/structure"]
+      },
+      {
         "group": "AGENTS",
         "pages": [
           "agents/agents",

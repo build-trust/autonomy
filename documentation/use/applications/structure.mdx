@@ -1,0 +1,437 @@
+---
+title: "File structure"
+icon: "folder-tree"
+mode: "wide"
+description: "How to organize an Autonomy application."
+---
+
+Every Autonomy application follows this structure:
+
+```
+my-app/
+|-- autonomy.yaml         # Zone configuration
+|-- images/               # Container images
+    |-- main/             # Main container image
+        |-- Dockerfile    # Instructions to build the image
+        |-- main.py       # Application entry point
+```
+
+---
+
+## autonomy.yaml
+
+This configuration file defines a **Zone** in Autonomy Computer.
+Think of a Zone as your app's dedicated infrastructure. The Autonomy Computer will provision everything needed to run it.
+
+```yaml autonomy.yaml
+name: hello
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+- **`name: hello`** - The zone's name (must be `≤ 10` characters, using only `a to z` and `0 to 9`).
+- **`pods`** - List of pods to create in this zone (a pod is a group of containers that run together).
+- **`public: true`** - Serve the http server on port 8000 of this pod on a public address over HTTPS.
+- **`containers`** - List of containers in the `main-pod`.
+- **`image: main`** - Create `main` container using the image defined in `images/main`.
+
+### Environment Variables and Secrets
+
+You can set environment variables in your containers:
+
+```yaml autonomy.yaml
+name: myapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+        env:
+          - LOG_LEVEL: "INFO"
+          - API_KEY: secrets.API_KEY
+```
+
+Create `secrets.yaml` for sensitive values:
+
+```yaml secrets.yaml
+API_KEY: sk-abc123xyz
+```
+
+<Warning>
+Add `secrets.yaml` to `.gitignore` to keep it out of version control.
+</Warning>
+
+### Multiple Containers
+
+Add multiple containers to a pod for tools agents need:
+
+```yaml autonomy.yaml
+name: myapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+      
+      - name: mcp
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+        args: ["--sse-port", "8001", "--pass-environment", "--",
+               "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+Containers in the same pod:
+- Share the same network namespace.
+- Can communicate via `localhost`.
+
+This pattern works for:
+- MCP servers (Model Context Protocol tools).
+- Any TCP service your agents need.
+
+### Multiple Pods
+
+Split your application across pods:
+
+```yaml autonomy.yaml
+name: myapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+
+  - name: runner-pod
+    clones: 5
+    containers:
+      - name: runner
+        image: runner
+```
+
+Use `clones` to run multiple copies of a pod for parallel processing.
+
+---
+
+## Dockerfile
+
+Autonomy provides two base images (both include the Autonomy framework pre-installed):
+
+- A variant that contains `pip`, `uv`, and `apk` package managers and the `bash`, `ash`, and `sh` shells `ghcr.io/build-trust/autonomy-python-dev`.
+- A minimal variant that removes shells and package managers for additional security and reduced size `ghcr.io/build-trust/autonomy-python`.
+
+The simplest Dockerfile uses the minimal base image:
+
+```dockerfile images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+### Adding Python Dependencies
+
+Use multi-stage builds to install packages using `pip` and `requirements.txt`:
+
+```dockerfile images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python-dev AS dev
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+FROM ghcr.io/build-trust/autonomy-python
+COPY --from=dev /app/venv venv
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+**Create `requirements.txt`:**
+```txt images/main/requirements.txt
+httpx
+markitdown
+```
+
+**Or use `uv` with `pyproject.toml`:**
+
+```dockerfile images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python-dev AS dev
+COPY pyproject.toml ./
+RUN uv pip install -r pyproject.toml
+
+FROM ghcr.io/build-trust/autonomy-python
+COPY --from=dev /app/venv venv
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+**Create `pyproject.toml`:**
+```toml images/main/pyproject.toml
+[project]
+name = "my-app"
+version = "0.1.0"
+dependencies = [
+    "httpx",
+    "markitdown",
+]
+```
+
+### Adding System Dependencies
+
+For system packages like `ffmpeg` use the dev image as your base:
+
+```dockerfile images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python-dev
+
+# Install system packages with apk (as root)
+USER root
+RUN apk add --no-cache ffmpeg imagemagick
+USER nonroot
+
+# Install Python packages
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+<Note>
+When you need system shared libraries, use `ghcr.io/build-trust/autonomy-python-dev` as your base image. 
+</Note>
+
+---
+
+## main.py
+
+Your entry point starts agents and services.
+
+### Simple Structure
+
+For a simple application with a single file:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+
+Node.start(main)
+```
+
+This Python module:
+
+1. **Imports modules from the Autonomy Framework** - `Agent`, `Model`, and `Node`
+2. **Defines an async main function** that:
+   - Starts an agent named "henry"
+   - Gives it instructions to act as a legal assistant
+   - Configures it to use Claude Sonnet 4 model
+3. **Starts an Autonomy Node** - This creates the actor runtime that hosts your agent. It also starts an http server on port 8000 with a set of built-in APIs to interact with your agent.
+
+### Multi-Module Structure
+
+For larger applications, organize code into modules:
+
+```
+images/main/
+|-- Dockerfile
+|-- main.py
+|-- agents/
+|   |-- __init__.py
+|   |-- legal_assistant.py
+|
+|-- tools/
+|   |-- __init__.py
+|   |-- document_analyzer.py
+|
+|-- utils/
+    |-- __init__.py
+    |-- helpers.py
+```
+
+**Entry point:**
+```python images/main/main.py
+from autonomy import Node
+from agents.legal_assistant import start_agents
+
+async def main(node):
+  await start_agents(node)
+
+Node.start(main)
+```
+
+**Agent module:**
+```python images/main/agents/legal_assistant.py
+from autonomy import Agent, Model
+from tools.document_analyzer import analyze_document
+
+async def start_agents(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, an expert legal assistant",
+    model=Model("claude-sonnet-4-v1"),
+    tools=[analyze_document]
+  )
+```
+
+**Tool module:**
+```python images/main/tools/document_analyzer.py
+async def analyze_document(document_text: str) -> str:
+  """Analyze a legal document and extract key information."""
+  # Your document analysis logic here
+  return f"Analysis of document: {len(document_text)} characters"
+```
+
+This structure helps you:
+- Separate concerns (agents, tools, utilities).
+- Reuse code across multiple agents.
+- Test components independently.
+- Scale your application as it grows.
+
+---
+
+## User Interface Files
+
+Autonomy apps can serve web interfaces in two ways: a simple HTML file or a full custom UI with FastAPI.
+
+### Simple UI with index.html
+
+For a basic interface, place `index.html` directly in your container image directory:
+
+```
+my-app/
+|-- autonomy.yaml
+|-- images/
+    |-- main/
+        |-- Dockerfile
+        |-- main.py
+        |-- index.html       # Automatically served at "/"
+```
+
+he Autonomy Node automatically serves `index.html` at the root path `/` when it exists in the working directory.
+This is great for simple applications and prototypes.
+
+**Example structure:**
+```html images/main/index.html
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>My Agent</title>
+</head>
+<body>
+    <textarea id="in" placeholder="Type your message..."></textarea>
+    <pre id="out"></pre>
+    <script>
+        // Interact with agent via /agents/{agent_name} endpoint
+        async function send(message) {
+            const response = await fetch("/agents/henry?stream=true", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message })
+            });
+            // Process streaming response...
+        }
+    </script>
+</body>
+</html>
+```
+
+The HTML file can call the built-in agent APIs:
+- `POST /agents/{agent_name}` - Send messages to agents
+- `GET /agents` - List all running agents
+- Add `?stream=true` for streaming responses
+
+<Note>
+**Automatic serving:** `index.html` is served automatically by the Autonomy Node. For custom UIs with multiple files, configure FastAPI with `StaticFiles` as shown below.
+</Note>
+
+### Custom UI with ui/ and public/
+
+For sophisticated interfaces using modern frameworks (Next.js, React, Vue, Svelte), you need to manually configure FastAPI to serve static files. Organize your project like this:
+
+```
+my-app/
+|-- autonomy.yaml
+|-- images/
+|   |-- main/
+|       |-- Dockerfile
+|       |-- main.py
+|       |-- public/            # Compiled static files (served by FastAPI)
+|           |-- index.html
+|           |-- assets/
+|           |-- ...
+|
+|-- ui/                        # UI framework source code
+    |-- package.json
+    |-- src/
+    |-- ...
+```
+
+**Workflow:**
+
+1. **Develop** - Write your UI code in `ui/` using your chosen framework.
+2. **Build** - Compile the UI to static files (HTML, CSS, JS).
+3. **Copy** - Move compiled files from build output to `images/main/public/`.
+4. **Configure** - Set up FastAPI to serve the `public/` directory using `StaticFiles`.
+5. **Deploy** - Copy the `public/` directory into the container image.
+
+Example `package.json` in `ui/` for Next.js:
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build-autonomy": "npm run build && rm -rf ../images/main/public/* && cp -r out/* ../images/main/public/"
+  }
+}
+```
+
+For Next.js, also configure `next.config.js` for static export:
+```js
+const nextConfig = {
+  output: 'export',
+  distDir: 'out',
+}
+
+module.exports = nextConfig
+```
+
+Example `main.py` to serve static files:
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+import os
+
+app = FastAPI()
+
+# Your custom API endpoints
+@app.post("/api/chat")
+async def chat(request: dict):
+    # Custom API logic
+    pass
+
+# IMPORTANT: Serve static files from public/ directory (must be last)
+if os.path.exists("public"):
+    app.mount("/", StaticFiles(directory="public", html=True), name="static")
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+**Key points:**
+- You must manually configure FastAPI with `StaticFiles` to serve the `public/` directory
+- The `ui/` directory is NOT included in the Docker image
+- Only the compiled `public/` directory goes into the image
+- Your UI framework can be anything that outputs static files
+- The FastAPI `StaticFiles` mount must be last (after all API routes)
+- The `html=True` parameter enables serving `index.html` for directory requests
