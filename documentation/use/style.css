@@ -1,0 +1,38 @@
+/* Override content area styles for left-aligned layout */
+
+/* Override the centered content layout */
+.peer.is-center ~ .peer-\[\.is-center\]\:max-w-3xl {
+    max-width: 50rem !important;
+    margin-left: 2.5rem !important;
+    margin-right: auto !important;
+}
+
+/* Override for larger screens */
+@media (min-width: 1536px) {
+    .\32xl\:max-w-2xl {
+        max-width: 50rem !important;
+        margin-left: 2.5rem !important;
+        margin-right: auto !important;
+    }
+}
+
+/* Ensure content wrapper respects the left alignment */
+#content-area {
+    max-width: 50rem !important;
+    margin-left: 2.5rem !important;
+    margin-right: auto !important;
+}
+
+/* Override any centered prose elements */
+.prose {
+    max-width: 50rem !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+}
+
+/* Override the main content container if needed */
+.peer.is-center ~ * {
+    max-width: 50rem !important;
+    margin-left: 2.5rem !important;
+    margin-right: auto !important;
+}

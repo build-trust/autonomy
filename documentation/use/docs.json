@@ -1,13 +1,17 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
+  "theme": "willow",
   "name": "Autonomy",
   "colors": {
-    "primary": "#52C7EA",
-    "light": "#52C7EA",
-    "dark": "#52C7EA"
+    "primary": "#f54a00",
+    "light": "#f54a00",
+    "dark": "#f54a00"
   },
   "favicon": "/logo/favicon.png",
+  "appearance": {
+    "default": "dark",
+    "strict": true
+  },
   "navigation": {
     "groups": [
       {
@@ -57,16 +61,12 @@
         "href": "https://autonomy.computer"
       },
       {
-        "label": "OSS Code",
+        "label": "Open Souce Code",
         "href": "https://github.com/build-trust/autonomy"
       },
       {
-        "label": "Support",
-        "href": "https://autonomy.computer/contact/form"
-      },
-      {
-        "label": "Discord Community",
-        "href": "https://autonomy.computer/discord"
+        "label": "Get Help",
+        "href": "mailto:support@autonomy.computer"
       }
     ],
     "primary": {
