@@ -5,8 +5,8 @@ mode: "wide"
 description: "Create and deploy an Autonomy app, step-by-step."
 ---
 
-Build and ship your first Autonomy application, step-by-step. This walkthrough
-will help you understand how the parts of a simple Autonomy app fit together.
+Build and ship your first Autonomy application step-by-step. This walkthrough
+helps you understand how the parts of a simple Autonomy app fit together.
 
 1. Follow the initial instructions to [Get Started with Autonomy](../start/start-here#get-started).
 2. Then continue on to the following steps:
@@ -41,14 +41,15 @@ pods:
         image: main
 ```
 
-This configuration file defines a **Zone** in Autonomy Computer.
-Think of a Zone as your app’s dedicated infrastructure. The Autonomy Computer will provision everything needed to run it.
+This configuration file defines a **zone** in the Autonomy Computer.
+Think of a zone as your app's dedicated infrastructure.
+The Autonomy Computer provisions everything needed to run it.
 
 - **`name: hello`** - The zone's name (must be `≤ 10` characters, using only `a to z` and `0 to 9`).
 - **`pods`** - List of pods to create in this zone (a pod is a group of containers that run together).
-- **`public: true`** - Serve the http server on port 8000 of this pod on a public address over HTTPS.
+- **`public: true`** - Serve the HTTP server on port 8000 of this pod on a public address over HTTPS.
 - **`containers`** - List of containers in the `main-pod`.
-- **`image: main`** - Create `main` container using the image defined in `images/main`.
+- **`image: main`** - Create the `main` container using the image defined in `images/main`.
 
 ---
 
@@ -70,7 +71,7 @@ hello/
 
 ---
 
-## Step 4: Create a Dockerfile for the main image:
+## Step 4: Create a Dockerfile for the main image
 
 Create `images/main/Dockerfile` with the following content:
 
@@ -86,7 +87,7 @@ ENTRYPOINT ["python", "main.py"]
 
 ---
 
-## Step 5: Create the application code:
+## Step 5: Create the application code
 
 Create `images/main/main.py` with the following content:
 
@@ -110,12 +111,12 @@ This Python module:
 2. **Defines an async main function** that:
    - Starts an agent named "henry"
    - Gives it instructions to act as a legal assistant
-   - Configures it to use Claude Sonnet 4 model.
-3. **Starts an Autonomy Node** - This creates the actor runtime that hosts your agent. It also starts an http server on port 8000 with a set of built-in APIs to interact with your agent.
+   - Configures it to use Claude Sonnet 4 model
+3. **Starts an Autonomy Node** - This creates the actor runtime that hosts your agent. It also starts an HTTP server on port 8000 with a set of built-in APIs to interact with your agent.
 
-**Built-in Tools**: Your agent automatically has access to a set of built-in tools:
-- `get_current_time_utc` - get current time in utc.
-- `get_current_time` - get current time in any timezone.
+**Built-in tools**: Your agent automatically has access to a set of built-in tools:
+- `get_current_time_utc` - Get current time in UTC.
+- `get_current_time` - Get current time in any timezone.
 
 ---
 
@@ -205,13 +206,13 @@ Create `images/main/index.html` with the following content:
 
 This HTML file creates a simple chat interface that:
 
-1. **Display an input text area** where users type messages.
-2. **Call the agent's streaming API** at `/agents/henry?stream=true`.
-3. **Show responses using a typewriter effect** character by character.
-4. **Handle streaming JSON** responses from the agent.
+1. **Displays an input text area** where users type messages.
+2. **Calls the agent's streaming API** at `/agents/henry?stream=true`.
+3. **Shows responses using a typewriter effect** character by character.
+4. **Handles streaming JSON** responses from the agent.
 
-The Autonomy Node's default http server automatically serves `index.html`
-at the root of the pods URL.
+The Autonomy Node's default HTTP server automatically serves `index.html`
+at the root of the pod's URL.
 
 The complete code structure now looks like:
 
@@ -235,10 +236,10 @@ Connect your workstation to your cluster in Autonomy Computer:
 autonomy cluster enroll --no-input
 ```
 
-This command will:
-1. Display a code.
-2. Open your browser for authentication.
-3. Complete enrollment once you sign in.
+This command:
+1. Displays a code.
+2. Opens your browser for authentication.
+3. Completes enrollment once you sign in.
 
 You only need to do this once per workstation.
 
@@ -252,12 +253,12 @@ Deploy your zone to the Autonomy Computer:
 autonomy zone deploy
 ```
 
-This command will:
-1. Build the container image.
-2. Push the image to your cluster.
-3. Deploy the zone with its pods and containers.
+This command:
+1. Builds the container image.
+2. Pushes the image to your cluster.
+3. Deploys the zone with its pods and containers.
 
-The deployment takes a couple of minute to fully start.
+The deployment takes a couple of minutes to fully start.
 
 ---
 
@@ -320,24 +321,24 @@ https://${CLUSTER}-${ZONE}.cluster.autonomy.computer
 ```
 
 You should see the chat interface. Try asking Henry questions like:
-- _"What are the key elements of a contract?"_
-- _"What is consideration in contract law?"_
-- _"Explain breach of contract"_
+- "What are the key elements of a contract?".
+- "What is consideration in contract law?".
+- "Explain breach of contract.".
 
 ---
 
 ## Step 12: View logs (optional)
 
 To view logs from your deployed zone, create a private encrypted portal to the
-logs server in your zone.
+logs server in your zone:
 
 ```bash
 autonomy zone inlet --to logs
 ```
 
-This will create a private link to the logs server on localhost and display
-the address `http://127.0.0.1:32101`. Open it in the browser to see streaming
-logs for all container in the zone.
+This creates a private link to the logs server on localhost and displays
+the address `http://127.0.0.1:32101`. Open it in your browser to see streaming
+logs for all containers in the zone.
 
 ---
 
@@ -361,7 +362,7 @@ logs for all container in the zone.
   </Accordion>
   
   <Accordion title="Agent not responding">
-    Check the logs using the portal method shown in [Step 12](#step-12:-view-logs-optional). Look for errors in the pod startup or agent initialization.
+    Check the logs using the portal method shown in [Step 12](#step-12-view-logs-optional). Look for errors in the pod startup or agent initialization.
   </Accordion>
   
   <Accordion title="Web interface shows blank page">
@@ -381,7 +382,7 @@ To make changes to your app:
 4. **Test** your changes.
 
 <Tip>
-  Each deployment deploys a new version of your zone and replaces the old version.
+  Each deployment creates a new version of your zone and replaces the old version.
 </Tip>
 
 ---

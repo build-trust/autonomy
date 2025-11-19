@@ -1,0 +1,160 @@
+---
+title: "Architecture"
+mode: "wide"
+icon: "cloud"
+description: "Understand how your applications run on Autonomy"
+---
+
+Autonomy uses a hierarchical architecture that lets you build everything from simple single-agent apps to distributed systems with thousands of parallel workers.
+
+## Architecture Overview
+
+Your applications run in this hierarchy:
+
+```
+Cluster (your dedicated cloud infrastructure)
+|-- Zones (your deployed apps)
+    |-- Pods (groups of containers that can communicate over localhost)
+        |-- Containers
+            |-- Nodes (Python apps that are using the Autonomy Framework)
+            |   |-- Agents (intelligent autonomous actors)
+            |   |-- Workers (stateful actors that send and receive messages)
+            |
+            |-- Tool servers (MCP servers, or other tools)
+```
+
+## Cluster
+
+Your dedicated cloud infrastructure.
+
+**Key points:**
+- One cluster per account.
+- Has a unique cluster ID (like `19f138000c5dcc2eaa7d8f21594fc0c3`).
+- Hosts all your zones.
+
+**Setup:**
+```bash
+# Enroll your workstation
+autonomy cluster enroll --no-input
+
+# View your cluster
+autonomy cluster show
+```
+
+Your apps are accessible at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`.
+
+## Zone
+
+A deployed application. Each zone is defined by an `autonomy.yaml` file.
+
+**Key points:**
+- Name must be `≤ 10` characters, using only `a to z` and `0 to 9`.
+- Contains one or more pods.
+- Can be public (web accessible) or private.
+- Nodes in a Zone use can securely delegate work to each other.
+
+**Example:**
+```yaml
+name: myapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+**Commands:**
+```bash
+autonomy zone deploy              # Deploy or update
+autonomy zone list                # List all zones
+autonomy zone delete --yes        # Delete zone
+```
+
+## Pod
+
+A group of containers that run together on the same machine.
+
+**Key points:**
+- All containers in a pod share a network namespace (use `localhost` to communicate).
+- Can be public (exposes port 8000 to internet) or private.
+- Can be cloned to create multiple instances.
+
+**Options:**
+
+```yaml
+pods:
+  - name: main-pod
+    public: true              # Expose HTTP on port 8000
+    size: big                 # More resources (4 CPU, 2Gi vs 0.25 CPU, 256Mi)
+    containers:
+      - name: main
+        image: main
+```
+
+**Use multiple pods to:**
+- Distribute work across multiple machines.
+- Scale horizontally with `clones`.
+- Isolate different services.
+
+## Container
+
+A container running inside a pod.
+
+**Key points:**
+- Built from `images/${IMAGE_NAME}/Dockerfile`.
+- Can run an Autonomy Node or any other service.
+- Multiple containers in the same pod communicate via `localhost`.
+
+**Autonomy Node container:**
+```yaml
+containers:
+  - name: main
+    image: main
+    env:
+      - LOG_LEVEL: "INFO"
+      - API_KEY: secrets.MY_KEY
+```
+
+**Non-Node container (like MCP server):**
+```yaml
+containers:
+  - name: brave
+    image: ghcr.io/build-trust/mcp-proxy
+    env:
+      - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+    args:
+      ["--sse-port", "8001", "--pass-environment", "--",
+       "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+## Node
+
+The Autonomy runtime that executes inside a container.
+
+**Key points:**
+- Created by calling `Node.start(main)` in Python.
+- Runs HTTP server on port 8000.
+- Can discover and communicate with other nodes.
+
+**Basic node:**
+```python
+from autonomy import Node
+
+async def main(node):
+    print(f"Node {node.name} is running")
+
+Node.start(main)
+```
+
+**Discovering other nodes:**
+```python
+from autonomy import Node, Zone
+
+async def main(node):
+    # Find all nodes in pods named "runner-pod"
+    runners = await Zone.nodes(node, filter="runner")
+    print(f"Found {len(runners)} runner nodes")
+
+Node.start(main)
+```

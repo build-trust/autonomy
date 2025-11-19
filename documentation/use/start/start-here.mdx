@@ -15,7 +15,7 @@ Autonomy is a foundation to build and scale products that use teams of **deep wo
 
 ### Autonomy Framework
 
-The Autonomy Framework is an **open-source python framework** to develop apps that use thousands of collaborating **autonomous agents** to quickly and reliably get things done.
+The Autonomy Framework is an **open-source Python framework** to develop apps that use thousands of collaborating **autonomous agents** to quickly and reliably get things done.
 
 Your apps can easily create **deep work agents** that excel at long and complex tasks. Each agent can access a **dedicated filesystem** to save plans, take **notes**, and record memories.
 
@@ -25,15 +25,15 @@ Agents can create many **sub-agents** that concentrate on sub-tasks. **Parallel 
 
 The Autonomy Computer is a **cloud-based runtime** to deploy, connect, and scale apps built using the Autonomy Framework. It provides infrastructure to run highly scalable and secure autonomous AI products.
 
-Using a simple yaml config, you can spin up a **dedicated cluster of nodes** in seconds. These nodes are automatically connected together using high throughput, encrypted **messaging channels**.
+Using a simple YAML config, you can spin up a **dedicated cluster of nodes** in seconds. These nodes are automatically connected together using high-throughput, encrypted **messaging channels**.
 
-Agents invoke tools to take actions and gather data. The Autonomy Computer can **provision tools** in containers right alongside the nodes that are running your agents. These tools can be python functions, simple binaries, or MCP servers. You can also create **private links to enterprise data**.
+Agents invoke tools to take actions and gather data. The Autonomy Computer can **provision tools** in containers right alongside the nodes that are running your agents. These tools can be Python functions, simple binaries, or MCP servers. You can also create **private links to enterprise data**.
 
 The runtime is designed for **multi-tenant**, **streaming** workloads. Agents run as **stateful concurrent actors** that asynchronously send and receive messages. This enables effortless horizontal scaling and fan-out through powerful patterns like **distributed agentic map-reduce.**
 
 ### Autonomy Command
 
-The Autonomy Command is command-line tool to build apps using the Autonomy Framework and deploy them to the Autonomy Computer. 
+The Autonomy Command is a command-line tool to build apps using the Autonomy Framework and deploy them to the Autonomy Computer.
 
 ---
 
@@ -43,11 +43,12 @@ Follow these steps to set up Autonomy and deploy your first autonomous app:
 
 <Steps>
   <Step title="Create an Account">
-    [Sign up](https://my.autonomy.computer) for an account with Autonomy to create your new Cluster.
+    [Sign up](https://my.autonomy.computer) for an account with Autonomy to create your new cluster.
   </Step>
   <Step title="Set up Docker">
-    Check that [Docker](https://www.docker.com/get-started/) is installed and running on your workstation. You can confirm that docker is correctly set up by running `docker ps` in your terminal.
+    Check that [Docker](https://www.docker.com/get-started/) is installed and running on your workstation. You can confirm that Docker is correctly set up by running `docker ps` in your terminal.
   </Step>
+
   <Step title="Install the Autonomy command">
     Install the `autonomy` command by running the following in your terminal:
 
@@ -61,7 +62,7 @@ Follow these steps to set up Autonomy and deploy your first autonomous app:
       <CardGroup cols={2}>
         <Card href="/start/build-with-a-coding-agent"
             title="Build with a Coding Agent" icon="robot" iconType="solid">
-          Use a coding agent like Claude Code or Cursor to build and ship a multi-agent Autonomy app in 10 minutes. 
+          Use a coding agent like Claude Code or Cursor to build and ship a multi-agent Autonomy app in 10 minutes.
         </Card>
         <Card href="/start/build-manually" title="Build manually, step-by-step" icon="code" iconType="solid">
           Create and deploy an Autonomy app step-by-step to understand how all the pieces fit together. 
