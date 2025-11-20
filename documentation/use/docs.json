@@ -39,12 +39,9 @@
           "agents/tools",
           "agents/planning",
           "collaboration/messages",
-          "collaboration/flows"
+          "collaboration/flows",
+          "integration/private_link"
         ]
-      },
-      {
-        "group": "ENTERPRISE CONNECTIONS",
-        "pages": ["integration/private_link", "integration/mcp"]
       }
     ]
   },
