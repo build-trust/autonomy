@@ -40,16 +40,16 @@
 /* Override code block background to grey */
 pre.shiki,
 .code-block-background {
-    background-color: #191617 !important;
+    background-color: #09090b !important;
 }
 
 /* Dark mode code block background */
 html.dark pre.shiki,
 html.dark .code-block-background {
-    background-color: #191617 !important;
+    background-color: #09090b !important;
 }
 
 /* Ensure code block container has grey background */
 .bg-codeblock {
-    background-color: #191617 !important;
+    background-color: #09090b !important;
 }
