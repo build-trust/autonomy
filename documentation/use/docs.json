@@ -27,7 +27,7 @@
       },
       {
         "group": "APPLICATIONS",
-        "pages": ["applications/structure", "applications/architecture"]
+        "pages": ["applications/structure", "applications/architecture", "applications/actors"]
       },
       {
         "group": "AGENTS",

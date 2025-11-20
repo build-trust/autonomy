@@ -1,7 +1,6 @@
 ---
 title: "File structure"
 icon: "folder-tree"
-mode: "wide"
 description: "How to organize an application built with the Autonomy Framework."
 ---
 
@@ -12,8 +11,10 @@ my-app/
 |-- autonomy.yaml         # Zone configuration
 |-- images/               # Container images
     |-- main/             # Main container image
-        |-- Dockerfile    # Instructions to build the image
-        |-- main.py       # Application entry point
+    |   |-- Dockerfile    # Instructions to build the image
+    |   |-- main.py       # Application entry point
+    |
+    |-- ...               # More images
 ```
 
 ---
@@ -299,7 +300,7 @@ This structure helps you:
 
 ---
 
-## User Interface Files
+## User Interfaces
 
 Autonomy apps can serve web user interfaces in multiple ways:
 a simple HTML file or a full custom UI.
