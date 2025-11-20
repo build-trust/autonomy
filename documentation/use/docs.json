@@ -37,12 +37,10 @@
           "agents/memory",
           "agents/knowledge",
           "agents/tools",
-          "agents/planning"
+          "agents/planning",
+          "collaboration/messages",
+          "collaboration/flows"
         ]
-      },
-      {
-        "group": "COLLABORATION",
-        "pages": ["collaboration/messages", "collaboration/flows"]
       },
       {
         "group": "ENTERPRISE CONNECTIONS",
