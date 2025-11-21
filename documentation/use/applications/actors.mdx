@@ -4,58 +4,85 @@ icon: "network-wired"
 description: "Understand the actor model and message-based communication in Autonomy."
 ---
 
-Autonomy is built on the **actor model**, a powerful pattern for building
-concurrent, distributed systems. Before diving into agents, it's helpful to
-understand actors and workers, the foundation that makes everything possible.
+Autonomy is designed on principles from the **actor model**, a powerful
+pattern for building concurrent and distributed systems. Before we dive into
+agents, it's helpful to understand this foundation of actors.
 
 Think of actors as independent members of a team. Each has their own
-workspace (state), and they communicate by passing notes (messages) to each
-other. No one shares their workspace, preventing conflicts and making the system
-naturally parallelizable and scalable.
+workspace (state), and they communicate only by passing notes (messages) to each
+other. No one shares their workspace, this prevents contention and makes 
+applications naturally parallelizable and scalable.
 
 ---
 
-## What is the Actor Model?
+**Actors** are lightweight, stateful objects that communicate using messages.
 
-The actor model is a concurrent programming pattern where:
+Each actor has:
+- **A unique address** that other actors use to send it messages.
+- **A mailbox** where incoming messages queue up and wait to be processed.
+- **Internal state** that only this actor can access or modify.
+- **Behavior**, logic that defines how this actor reacts to each message it receives.
 
-- **Actors** are lightweight, stateful, independent units that communicate using messages.
-- **No shared state** - each actor has its own isolated state.
-- **Asynchronous message passing** - actors don't block on each other to finish.
-- **One message at a time** - actors have a mailbox and process messages sequentially.
-- **Location transparency** - sending and receiving messages from a local or remote machine looks the same.
+When an actor receives a message, it can:
+1. **Send messages** to other actors (asynchronously, without waiting for responses).
+2. **Create new actors** and delegate work to them.
+3. **Update its internal state** which may affect how future messages are handled.
 
-This pattern makes it easy run thousands of concurrent stateful actors
-to make the most optimal use of CPU cores and scale horizontally across
-multiple machines.
+---
 
-Agents, for example, spend a majority of their life span waiting for calls
-to language models or tools to finish. While one agent is waiting, the actor
-runtime automatically gives the CPU core to a different actor that has a
-new message to process. This enables efficient and scalable systems.
+**No shared state**
+
+Each actor's state is completely private. Other actors cannot directly access
+or modify it. This eliminates entire classes of concurrency bugs like race conditions
+and deadlocks. Actors can only influence each other by sending messages.
+
+**Message Processing**
+
+While many actors run in parallel across the system, each individual actor
+processes only one message at a time. Messages wait in the actor's mailbox and
+are handled sequentially. This means you never need to worry about two threads
+modifying an actor's state simultaneously; it simply can't happen.
+
+**Asynchronous message passing**
+
+When Actor A sends a message to Actor B, it doesn't have to wait for B to
+process it or respond. The message is queued in B's mailbox, and A can continue
+with its work immediately. This non-blocking communication allows actors to work
+concurrently without waiting on each other.
+
+**Location Transparency**
+
+Sending or receiving a message from another actor looks the
+same whether that other actor is running on the same machine or across the network.
+This makes it natural to distribute work and scale horizontally.
+
+---
 
 **In Autonomy:**
 - Simple actors are called workers.
 - Agents are intelligent autonomous actors that use large language models.
 - Both follow the actor model.
 
+When an actor is idle and there are no messages in its mailbox,
+it consumes no CPU. This design makes it easy to run thousands of concurrent
+stateful actors that make the most optimal use of available CPU cores.
+
+Agents, for example, spend a majority of their lifespan waiting for calls
+to language models or tools to finish. While one agent is waiting, the actor
+runtime automatically gives the CPU core to a different actor that has a
+new message to process.
+
+This enables highly efficient and horizontally scalable applications.
+
 ---
 
 ## Workers
 
 Workers are Autonomy's implementation of actors.
-They're lightweight, stateful, message-processing components.
 
-**Each worker:**
-- Has a unique name within its node.
-- Processes messages asynchronously.
-- Maintains its own state.
-- Can run on the local machine or remote nodes.
-- Replies to messages when needed.
-
-Autonomy's actor runtime is implemented in Rust and exposed to
-Python using the `Node` class. All nodes in a zone can create encrypted,
-mutually authenticated, secure communication channels with other nodes.
+Autonomy's actor runtime is implemented in Rust and exposed to Python code
+using the `Node` class. All nodes in a zone can create encrypted, mutually authenticated,
+secure communication channels with other nodes.
 
 ---
 
@@ -111,7 +138,8 @@ await node.stop_worker("worker_name")
 
 **Message Types**
 
-Messages must be strings. This is because the messaging layer transmits messages across the network, and strings are simple, universal, and work everywhere.
+Messages must be strings. This is because the messaging layer transmits
+messages across the network, and strings are simple, universal, and work everywhere.
 
 ```python
 # Correct - string message
@@ -905,132 +933,4 @@ await node.send_and_receive("worker", {"data": 123})  # ❌
 
 # Right
 await node.send_and_receive("worker", json.dumps({"data": 123}))  # ✅
-```
-
----
-
-## Best Practices
-
-### Design Guidelines
-
-**When to Use Workers**
-
-Use workers for:
-- **Stateful services** - Maintaining connections, sessions, or caches
-- **Resource management** - Pooling database connections or API clients  
-- **Sequential processing** - Tasks that must be processed in order
-- **Isolation** - Isolating failures to specific components
-
-Avoid workers for:
-- **Pure functions** - Use regular functions instead
-- **CPU-bound parallel work** - Consider process pools
-- **Simple request-response** - May add unnecessary complexity
-
-**State Management**
-
-- Initialize state in `__init__()`
-- Keep state minimal and focused
-- Use immutable data structures when possible
-- Document state invariants
-
-**Message Design**
-
-- Keep messages small (< 1MB recommended)
-- Use clear, documented JSON schemas
-- Include version fields for compatibility
-- Validate incoming messages
-
-### Implementation Tips
-
-**Always Use Timeouts**
-
-```python
-# Good - timeout in seconds
-reply = await node.send_and_receive("worker", msg, timeout=10)
-
-# Bad - might hang forever
-reply = await node.send_and_receive("worker", msg)
-```
-
-**JSON for Structure**
-
-```python
-# Good - structured data
-message = json.dumps({"action": "process", "data": [1, 2, 3]})
-
-# Bad - will crash
-message = {"action": "process"}  # Not a string!
-```
-
-**Proper Cleanup**
-
-```python
-workers = []
-try:
-    # Start workers
-    for i in range(10):
-        await node.start_worker(f"worker-{i}", Worker())
-        workers.append(f"worker-{i}")
-    
-    # Use workers...
-    
-finally:
-    # Always cleanup
-    for worker_name in workers:
-        try:
-            await node.stop_worker(worker_name)
-        except:
-            pass  # Worker may already be stopped
-```
-
-### Performance
-
-**Scaling Strategies**
-
-Horizontal scaling with clones:
-```yaml
-pods:
-  - name: runner-pod
-    clones: 10  # 10 machines for parallel processing
-```
-
-Vertical scaling with multiple workers:
-```python
-# Multiple workers per node
-for i in range(cpu_count):
-    await node.start_worker(f"processor-{i}", Processor())
-```
-
-**Resource Allocation**
-
-- **Lightweight coordination** in main pod
-- **Heavy computation** in runner pods
-- **One worker per CPU core** for CPU-bound work
-- **Many workers per node** for I/O-bound work
-
-**Optimization Tips**
-
-1. **Batch messages** when possible to reduce overhead
-2. **Use fire-and-forget** when replies aren't needed
-3. **Cache frequently accessed data** in worker state
-4. **Profile message processing** to identify bottlenecks
-5. **Monitor worker queue depth** to detect overload
-
-```python
-# Batching example
-class BatchProcessor:
-    def __init__(self):
-        self.batch = []
-        self.batch_size = 100
-    
-    async def handle_message(self, context, message):
-        self.batch.append(message)
-        
-        if len(self.batch) >= self.batch_size:
-            # Process entire batch at once
-            results = await self.process_batch(self.batch)
-            self.batch = []
-            await context.reply(json.dumps(results))
-        else:
-            await context.reply(json.dumps({"status": "queued"}))
 ```
