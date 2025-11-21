@@ -444,9 +444,9 @@ Here's a complete working example that demonstrates communication between nodes 
 **Architecture:**
 ```
 Main Pod (client)
-└── Sends messages to server
+└── Sends messages to runner
 
-Server Pod (server)
+Runner Pod (runner)
 └── Runs greeter worker that responds to messages
 ```
 
@@ -462,16 +462,16 @@ pods:
       - name: client
         image: client
 
-  - name: server-pod
+  - name: runner-pod
     size: small
     containers:
-      - name: server
-        image: server
+      - name: runner
+        image: runner
 ```
 
-**Server Node:**
+**Runner Node:**
 
-```python images/server/main.py
+```python images/runner/main.py
 from autonomy import Node, info
 
 class Greeter:
@@ -481,9 +481,9 @@ class Greeter:
         await context.reply(reply)
 
 async def main(node):
-    info("Starting server node...")
+    info("Starting runner node...")
     await node.start_worker("greeter", Greeter())
-    info("Server is ready with greeter worker")
+    info("Runner is ready with greeter worker")
 
 Node.start(main)
 ```
@@ -497,20 +497,23 @@ import asyncio
 async def main(node):
     info("Client node started")
 
-    # Wait for server to be ready
-    info("Waiting for server to be ready...")
-    await asyncio.sleep(5)
+    # Wait for runner to be ready with retry loop
+    info("Waiting for runner to be ready...")
+    runners = []
+    max_retries = 10
+    for attempt in range(max_retries):
+        runners = await Zone.nodes(node, filter="runner")
+        if runners:
+            break
+        info(f"No runner nodes found yet, retrying... (attempt {attempt + 1}/{max_retries})")
+        await asyncio.sleep(2)
 
-    # Discover server nodes
-    info("Discovering server nodes...")
-    servers = await Zone.nodes(node, filter="server")
-
-    if not servers:
-        info("No server nodes found!")
+    if not runners:
+        info("No runner nodes found after waiting!")
         return
 
-    server = servers[0]
-    info(f"Connected to server: {server.name}")
+    runner = runners[0]
+    info(f"Connected to runner: {runner.name}")
 
     # Send messages to the greeter worker
     messages = [
@@ -524,7 +527,7 @@ async def main(node):
         info(f"Sending message {i}: {message}")
 
         try:
-            reply = await server.send_and_receive("greeter", message, timeout=30)
+            reply = await runner.send_and_receive("greeter", message, timeout=30)
             info(f"Received reply {i}: {reply}")
         except Exception as e:
             info(f"Error sending/receiving message {i}: {e}")
@@ -539,7 +542,7 @@ Node.start(main)
 
 **Dockerfiles:**
 
-```dockerfile images/server/Dockerfile
+```dockerfile images/runner/Dockerfile
 FROM ghcr.io/build-trust/autonomy-python
 COPY . .
 ENTRYPOINT ["python", "main.py"]
@@ -569,8 +572,8 @@ open http://127.0.0.1:32101
 
 Client logs show:
 ```
-INFO node Discovering server nodes...
-INFO node Connected to server: a9eb812238f753132652ae09963a05e9-multinode-server
+INFO node Waiting for runner to be ready...
+INFO node Connected to runner: a9eb812238f753132652ae09963a05e9-multinode-runner
 INFO node Sending message 1: Hello from client
 INFO node Received reply 1: Hello! You said: Hello from client
 INFO node Sending message 2: How are you?
@@ -578,26 +581,25 @@ INFO node Received reply 2: Hello! You said: How are you?
 ...
 ```
 
-Server logs show:
+Runner logs show:
 ```
-INFO node Starting server node...
-INFO node Server is ready with greeter worker
+INFO node Starting runner node...
+INFO node Runner is ready with greeter worker
 INFO node Greeter received: Hello from client
 INFO node Greeter received: How are you?
 ...
 ```
 
 **Key Points:**
-- Use `Zone.nodes(node, filter="server")` to discover nodes by pod name prefix
+- Use `Zone.nodes(node, filter="runner")` to discover nodes by pod name prefix
+- Implement a retry loop to wait for nodes to become available
 - Messages are automatically routed across pods and machines
 - Workers on remote nodes are accessed the same way as local workers
-- The `filter` parameter matches against pod names (e.g., "server" matches "server-pod")
+- The `filter` parameter matches against pod names (e.g., "runner" matches "runner-pod")
 
 ---
 
-## Cookbook
-
-### Basic Patterns
+## Patterns
 
 **Echo Worker** - Simple message echo:
 
@@ -644,8 +646,6 @@ class CommandHandler:
         
         await context.reply(json.dumps(result))
 ```
-
-### Advanced Patterns
 
 **In-Memory Store** - Key-value storage pattern:
 
@@ -730,8 +730,6 @@ await node.start_worker("logger", Logger())
 await node.send_message("logger", "Application started")
 await node.send_message("logger", "User logged in")
 ```
-
-### Production Patterns
 
 **Error Handling with Cleanup** - Always clean up resources:
 
