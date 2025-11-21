@@ -16,14 +16,7 @@
     "groups": [
       {
         "group": "GET STARTED",
-        "pages": [
-          "start/start-here",
-          "start/get-started",
-          "start/build-with-a-coding-agent",
-          "start/build-manually",
-          "start/discord",
-          "start/pricing"
-        ]
+        "pages": ["what-is-autonomy", "get-started", "build-with-a-coding-agent", "build-manually", "pricing"]
       },
       {
         "group": "APPLICATIONS",
@@ -53,20 +46,29 @@
     "links": [
       {
         "label": "Autonomy Website",
+        "icon": "earth",
         "href": "https://autonomy.computer"
       },
       {
-        "label": "Open Souce Code",
-        "href": "https://github.com/build-trust/autonomy"
+        "label": "Star us on Github",
+        "icon": "github",
+        "href": "https://autonomy.computer/github"
+      },
+      {
+        "label": "Join us on Discord",
+        "icon": "discord",
+        "href": "https://autonomy.computer/discord"
       },
       {
         "label": "Get Help",
+        "icon": "comment-question",
         "href": "mailto:support@autonomy.computer"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Sign up",
+      "icon": "angles-right",
       "href": "https://my.autonomy.computer"
     }
   },
@@ -80,5 +82,37 @@
   },
   "seo": {
     "indexing": "all"
-  }
+  },
+  "redirects": [
+    {
+      "source": "/start/start-here",
+      "destination": "/what-is-autonomy",
+      "permanent": true
+    },
+    {
+      "source": "/start/pricing",
+      "destination": "/pricing",
+      "permanent": true
+    },
+    {
+      "source": "/start/build-with-a-coding-agent",
+      "destination": "/build-with-a-coding-agent",
+      "permanent": true
+    },
+    {
+      "source": "/start/build-manually",
+      "destination": "/build-manually",
+      "permanent": true
+    },
+    {
+      "source": "/start/get-started",
+      "destination": "/get-started",
+      "permanent": true
+    },
+    {
+      "source": "/demo-prompt",
+      "destination": "/build-with-a-coding-agent",
+      "permanent": true
+    }
+  ]
 }
