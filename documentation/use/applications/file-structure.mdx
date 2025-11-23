@@ -6,7 +6,7 @@ description: "How to organize an application built with the Autonomy Framework."
 
 Every Autonomy application follows this structure:
 
-```
+```text File Structure:
 my-app/
 |-- autonomy.yaml         # Zone configuration
 |-- images/               # Container images
@@ -21,9 +21,10 @@ my-app/
 
 ## autonomy.yaml
 
-This configuration file defines a **zone** in the Autonomy Computer - a **cloud-based runtime** to deploy, connect, and scale apps built using the **open-source Python framework**.
-Think of a zone as your app's dedicated infrastructure.
-The Autonomy Computer provisions everything needed to run it.
+This configuration file defines a [zone](/applications/runtime-architecture#zone) in the
+[Autonomy Computer](/what-is-autonomy#autonomy-computer). Think of a zone as
+your app's dedicated infrastructure. The Autonomy Computer provisions
+everything needed to run it.
 
 ```yaml autonomy.yaml
 name: hello
@@ -35,10 +36,10 @@ pods:
         image: main
 ```
 
-- **`name: hello`** - The zone's name (must be `≤ 10` characters, using only `a to z` and `0 to 9`).
-- **`pods`** - List of pods to create in this zone (a pod is a group of containers that run together).
+- **`name: hello`** - The zone's name (must be `≤ 10` characters, using only `a to z` or `0 to 9`).
+- **`pods`** - List of [pods](/applications/runtime-architecture#pod) to create in this zone (a pod is a group of containers that run together).
 - **`public: true`** - Serve the HTTP server on port 8000 of this pod on a public address over HTTPS.
-- **`containers`** - List of containers in the `main-pod`.
+- **`containers`** - List of [containers](/applications/runtime-architecture#container) in the `main-pod`.
 - **`image: main`** - Create the `main` container using the image defined in `images/main`.
 
 ### Environment Variables and Secrets

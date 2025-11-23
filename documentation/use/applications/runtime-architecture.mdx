@@ -1,14 +1,16 @@
 ---
-title: "Architecture"
+title: "Runtime Architecture"
 icon: "cloud"
 description: "Understand how your applications run on the Autonomy Computer"
 ---
 
-The Autonomy Computer uses a hierarchical architecture that lets you build everything from simple single-agent apps to distributed systems with thousands of parallel collaborating agents.
+The [Autonomy Computer](/what-is-autonomy#autonomy-computer) provides a scalable
+and flexible architecture that lets you ship everything from simple single-agent
+apps to distributed systems with thousands of parallel collaborating agents.
 
 Your applications run in this hierarchy:
 
-```
+```text Runtime Architecture:
 Cluster (your dedicated cloud infrastructure)
 |-- Zones (your deployed apps)
     |-- Pods (groups of containers that can communicate over localhost)
@@ -22,7 +24,7 @@ Cluster (your dedicated cloud infrastructure)
 
 ## Cluster
 
-Your dedicated cloud infrastructure.
+Your dedicated cloud infrastructure in the [Autonomy Computer](/what-is-autonomy#autonomy-computer).
 This infrastructure is geographically distributed across regions and clouds.
 
 **Key points:**

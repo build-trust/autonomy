@@ -20,7 +20,7 @@
       },
       {
         "group": "APPLICATIONS",
-        "pages": ["applications/structure", "applications/architecture", "applications/actors"]
+        "pages": ["applications/file-structure", "applications/runtime-architecture", "applications/actors"]
       },
       {
         "group": "AGENTS",
@@ -112,6 +112,16 @@
     {
       "source": "/demo-prompt",
       "destination": "/build-with-a-coding-agent",
+      "permanent": true
+    },
+    {
+      "source": "/applications/architecture",
+      "destination": "/applications/runtime-architecture",
+      "permanent": true
+    },
+    {
+      "source": "/applications/structure",
+      "destination": "/applications/file-structure",
       "permanent": true
     }
   ]

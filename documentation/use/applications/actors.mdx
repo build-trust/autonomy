@@ -86,9 +86,10 @@ secure communication channels with other nodes.
 
 ---
 
-**Your First Worker**
-
 Here's a simple worker that echoes messages back:
+
+<CodeGroup>
+
 
 ```python images/main/main.py
 from autonomy import Node
@@ -110,6 +111,23 @@ async def main(node):
 
 Node.start(main)
 ```
+
+```python images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: hello
+pods:
+  - name: main-pod
+    containers:
+      - name: main
+        image: main
+```
+
+</CodeGroup>
 
 **What's happening:**
 1. Define a worker class with `handle_message()`.
