@@ -1,15 +1,14 @@
 ---
 title: "Models"
-description: "Use the best model for the task"
+description: "Large language models give agents the ability to make autonomous decisions."
 icon: "brain-circuit"
-noindex: true
 ---
 
-The core of any agent is its model. Models are AI systems that transform input data into useful language outputs. They can understand natural language, reason about context, and generate text, powering the capabilities of [Agents](/agents/agents).
+The [Autonomy Computer](/what-is-autonomy#autonomy-computer) provides a **Model
+Gateway** that gives your apps access to a wide range of models from different
+providers, each optimized for different use cases and cost profiles.
 
-You can specify any model you prefer by passing the `model` argument to `Agent.start()`:
-
-<RequestExample>
+You specify which model an agent should use by passing the `model` argument to `Agent.start()`:
 
 ```python images/main/main.py
 from autonomy import Agent, Model, Node
@@ -27,21 +26,95 @@ async def main(node):
 Node.start(main)
 ```
 
-</RequestExample>
+You can easily switch models by changing the model name in your `Model()` constructor.
 
-The code above changes the agent to use the `claude-sonnet-4-v1` model. To use `llama4-maverick` change the model to:
+## Supported Models
+
+Autonomy supports a wide range of models from different providers:
+
+| Model              | Provider  | Description                                    |
+|--------------------|-----------|------------------------------------------------|
+| claude-opus-4-v1   | Anthropic | Most capable model for complex tasks           |
+| claude-sonnet-4-v1 | Anthropic | Balanced performance and cost                  |
+| nova-premier-v1    | Amazon    | High-performance model from AWS                |
+| deepseek-r1        | DeepSeek  | Advanced reasoning capabilities                |
+| nova-pro-v1        | Amazon    | Professional-grade AWS model                   |
+| llama4-maverick    | Meta      | High-performance Llama 4 variant               |
+| llama4-scout       | Meta      | Efficient Llama 4 variant                      |
+| nova-lite-v1       | Amazon    | Lightweight and cost-effective AWS model       |
+| nova-micro-v1      | Amazon    | Ultra-lightweight, most cost-effective option  |
+
+For detailed pricing information for each model, see the [Pricing](/pricing) page.
+
+## Parameters
+
+The `Model()` constructor accepts additional parameters that control the model's behavior.
+
+- **`temperature`**: The sampling temperature to use, between 0 and 2. Higher values like 0.8 produce more random outputs, while lower values like 0.2 make outputs more focused and deterministic.
+
+- **`top_p`**: An alternative to sampling with temperature. It instructs the model to consider the results of the tokens with top_p probability. For example, 0.1 means only the tokens comprising the top 10% probability mass are considered.
 
 ```python images/main/main.py
 from autonomy import Agent, Model, Node
 
 
 async def main(node):
+  # Use a lower temperature for more focused responses
   await Agent.start(
     node=node,
-    name="henry",
-    instructions="You are Henry, an expert legal assistant",
-    model=Model("llama4-maverick")
+    name="analyst",
+    instructions="You are a financial analyst",
+    model=Model("claude-sonnet-4-v1", temperature=0.2)
   )
+
+
+Node.start(main)
+```
+
+## Calling Models Directly
+
+While agents provide a powerful framework for building autonomous applications,
+you can also call models directly for simpler use cases. This is useful when you
+need to make one-off completions without the full features of an agent.
+
+```python images/main/main.py
+from autonomy import Model, Node, SystemMessage, UserMessage
+
+
+async def main(node):
+  model = Model("claude-sonnet-4-v1")
+
+  response = model.complete_chat([
+    SystemMessage("You are a helpful assistant."),
+    UserMessage("Explain gravity in simple terms")
+  ])
+  
+  print(response)
+
+
+Node.start(main)
+```
+
+### Streaming Responses
+
+You can also stream responses from models by setting `stream=True`:
+
+```python images/main/main.py
+from autonomy import Model, Node, SystemMessage, UserMessage
+
+
+async def main(node):
+  model = Model("claude-sonnet-4-v1")
+
+  streaming_response = model.complete_chat([
+      SystemMessage("You are a helpful assistant."),
+      UserMessage("Explain gravity")
+  ], stream=True)
+
+  async for chunk in streaming_response:
+    if hasattr(chunk, "choices") and chunk.choices and chunk.choices[0].delta.content:
+      content = chunk.choices[0].delta.content
+      print(content, end="")
 
 
 Node.start(main)
