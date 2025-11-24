@@ -1,0 +1,272 @@
+---
+title: "User Interfaces"
+icon: "window"
+description: "How to build user interfaces for Autonomy applications."
+---
+
+Autonomy apps support multiple approaches for user interfaces.
+
+## 1. External UIs that invoke HTTP APIs
+
+Any application can interact with Autonomy apps by invoking
+[built-in](/applications/programming-interfaces#built-in-apis)
+or [custom HTTP APIs](/applications/programming-interfaces#custom-apis-with-fastapi).
+
+This approach works for:
+- Mobile applications (iOS, Android).
+- Desktop applications.
+- Web applications hosted separately.
+- CLI tools.
+- Integration with existing systems.
+
+Example external client:
+```typescript external-app/client.ts
+async function chatWithAgent(message: string) {
+  const response = await fetch("https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry", {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": "Bearer API_KEY"
+    },
+    body: JSON.stringify({ message })
+  });
+  // Process response...
+}
+```
+
+---
+
+## 2. Simple UI with index.html
+
+For a basic interface, place an `index.html` directly in your container image directory:
+
+```
+my-app/
+|-- autonomy.yaml
+|-- images/
+    |-- main/
+        |-- Dockerfile
+        |-- main.py
+        |-- index.html       # Automatically served at "/"
+```
+
+If an `index.html` exists in the container image directory, the Autonomy Node
+automatically serves it at the root of its HTTP server. This is perfect for simple
+applications and prototypes.
+
+Example structure:
+```html images/main/index.html
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>My Agent</title>
+</head>
+<body>
+    <textarea id="in" placeholder="Type your message..."></textarea>
+    <pre id="out"></pre>
+    <script>
+        // Interact with agent via /agents/{agent_name} endpoint
+        async function send(message) {
+            const response = await fetch("/agents/henry?stream=true", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message })
+            });
+            // Process streaming response...
+        }
+    </script>
+</body>
+</html>
+```
+
+The HTML file can call the same [built-in agent APIs](/programming-interfaces#built-in-apis).
+
+---
+
+## 3. Custom UI in a separate container
+
+For larger applications, split the UI into its own container within the same pod. This provides complete separation between UI and API layers while maintaining fast internal communication.
+
+Example structure:
+```
+my-app/
+|-- autonomy.yaml
+|-- images/
+    |-- ui/                    # UI container
+    |   |-- Dockerfile
+    |   |-- package.json
+    |   |-- next.config.ts
+    |   |-- app/
+    |       |-- page.tsx
+    |
+    |-- api/                   # API container
+        |-- Dockerfile
+        |-- main.py
+```
+
+Configure multiple containers in `autonomy.yaml`:
+```yaml autonomy.yaml
+name: multiapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: ui
+        image: ui
+      - name: api
+        image: api
+```
+
+**API Container** (`images/api/main.py`):
+```python images/api/main.py
+from autonomy import Agent, HttpServer, Model, Node
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, a helpful assistant.",
+    model=Model("claude-sonnet-4-v1")
+  )
+
+# Listen on 0.0.0.0:9000 so it doesn't conflict with the default public port.
+Node.start(main, http_server=HttpServer(listen_address="0.0.0.0:9000"))
+```
+
+**UI Container** (`images/ui/next.config.ts`):
+```typescript images/ui/next.config.ts
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  output: "standalone",
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://localhost:9000/:path*",  // Proxy to API container
+      },
+    ];
+  },
+};
+
+export default nextConfig;
+```
+
+1. Both containers run in the same pod and share a network namespace.
+2. They communicate via `localhost` - the API container listens on port 9000.
+3. The UI container proxies `/api/*` requests to `localhost:9000`.
+4. Only the UI container (port 8000) is exposed publicly.
+5. The API container remains internal to the pod.
+
+**UI Container Dockerfile** (Next.js example):
+```dockerfile images/ui/Dockerfile
+FROM cgr.dev/chainguard/node:latest-dev AS builder
+WORKDIR /app
+COPY --chown=node:node package*.json ./
+RUN npm ci
+COPY --chown=node:node . .
+RUN npm run build
+
+FROM cgr.dev/chainguard/node:latest
+WORKDIR /app
+COPY --chown=node:node --from=builder /app/.next/standalone ./
+COPY --chown=node:node --from=builder /app/.next/static ./.next/static
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=8000
+CMD ["server.js"]
+```
+
+This approach works for any modern UI framework and is great for frameworks
+that use server side rendering.
+
+<Note>
+Ensure the API container binds to `0.0.0.0` (not just `localhost`) so it's
+accessible from other containers in the pod. The UI framework must proxy API
+requests to the correct internal port.
+</Note>
+
+---
+
+## 4. Custom UI with Static Files
+
+You can also compile you UI code to static files and configure FastAPI to serve
+these static files.
+
+```
+my-app/
+|-- autonomy.yaml
+|-- images/
+|   |-- main/
+|       |-- Dockerfile
+|       |-- main.py
+|       |-- public/            # Compiled static files (served by FastAPI)
+|           |-- index.html
+|           |-- assets/
+|           |-- ...
+|
+|-- ui/                        # UI source code
+    |-- package.json
+    |-- src/
+    |-- ...
+```
+
+1. Write your UI code in `ui/` using your chosen framework.
+2. Compile the UI to static files (HTML, CSS, JS).
+3. Move compiled files from build output to `images/main/public/`.
+4. Set up FastAPI to serve the `public/` directory using `StaticFiles`.
+5. Copy the `public/` directory into the container image.
+
+Example `package.json` in `ui/` for Next.js:
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build-autonomy": "npm run build && rm -rf ../images/main/public/* && cp -r out/* ../images/main/public/"
+  }
+}
+```
+
+For Next.js, also configure `next.config.js` for static export:
+```js
+const nextConfig = {
+  output: 'export',
+  distDir: 'out',
+}
+
+module.exports = nextConfig
+```
+
+Example `main.py` to serve static files:
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+import os
+
+app = FastAPI()
+
+# Your custom API endpoints
+@app.post("/api/chat")
+async def chat(request: dict):
+    # Custom API logic
+    pass
+
+# IMPORTANT: Serve static files from public/ directory (must be last)
+if os.path.exists("public"):
+    app.mount("/", StaticFiles(directory="public", html=True), name="static")
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+- You must manually configure FastAPI with `StaticFiles` to serve the `public/` directory.
+- The `ui/` directory is not included in the Docker image.
+- Only the compiled `public/` directory goes into the image.
+- Your UI framework can be anything that outputs static files.
+- The FastAPI `StaticFiles` mount must be last (after all API routes).
+- The `html=True` parameter enables serving `index.html` when a directory is requested.
+
+<Note>
+The static files mount must be last in your FastAPI configuration (after all API routes).
+</Note>

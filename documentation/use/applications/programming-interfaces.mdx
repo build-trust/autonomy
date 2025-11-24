@@ -1,0 +1,202 @@
+---
+title: "Programming Interfaces"
+icon: "code"
+description: "How to create APIs for Autonomy applications."
+---
+
+An Autonomy [Node](/applications/runtime-architecture#node) starts an HTTP
+Server that includes a set of built-in APIs. You can also add custom FastAPI
+routes tailored to your application's needs.
+
+---
+
+## Built-in APIs
+
+By default, an Autonomy Node automatically provides these endpoints:
+
+- `POST /agents/{agent_name}` - Send messages to a specific agent.
+- `POST /agents/{agent_name}?stream=true` Send messages, get streaming responses.
+- `GET /agents` - List all running agents.
+- `GET /agents/{agent_name}` - Get details about a specific agent.
+
+---
+
+## Custom APIs with FastAPI
+
+For applications that need custom business logic, data validation, or
+specialized endpoints, create custom FastAPI routes.
+
+**Basic Custom API**
+
+Create a custom endpoint that uses an agent:
+
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+
+app = FastAPI()
+agent = None
+
+@app.post("/translate")
+async def translate(request: dict, node: NodeDep):
+    global agent
+    
+    if not agent:
+        agent = await Agent.start(
+            node=node,
+            name="translator",
+            model=Model("claude-sonnet-4-v1"),
+            instructions="""
+            You are an agent that specializes in translating text
+            from English to Hindi. When you're given text in English,
+            output the corresponding translation in Hindi written
+            using the Latin alphabet (Roman script).
+            
+            Provide only the translation, no additional explanation.
+            """,
+        )
+    
+    response = await agent.send(f"English:\n\n{request.get('text', '')}")
+    return {"translation": response[-1].content.text}
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+- Use `NodeDep` to inject the Node instance into your endpoint
+- Create agents on-demand or reuse them across requests
+- Return custom response formats tailored to your API design
+
+**Accessing the Node Instance**
+
+The `NodeDep` dependency provides access to the Autonomy Node reference, which
+you need to start agents:
+
+```python images/main/main.py
+from autonomy import NodeDep
+
+@app.post("/my-endpoint")
+async def my_endpoint(request: dict, node: NodeDep):
+    # Now you can use the node reference to start agents
+    agent = await Agent.start(node=node, name="my-agent", ...)
+```
+
+---
+
+## Parallel Processing
+
+For high-throughput applications, process multiple requests concurrently by
+running many agents in parallel:
+
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+from asyncio import gather, create_task
+from typing import List, Dict
+
+app = FastAPI()
+
+async def translate_item(node: Node, item: str) -> Dict[str, str]:
+    agent = None
+    try:
+        agent = await Agent.start(
+            node=node,
+            name=f"translator_{id(item)}",
+            instructions="""
+            You are an agent that specializes in translating text
+            from English to Hindi. When you're given text in English,
+            output the corresponding translation in Hindi written
+            using the Latin alphabet (Roman script).
+            
+            Provide only the translation, no additional explanation.
+            """,
+            model=Model("claude-sonnet-4-v1"),
+        )
+        
+        response = await agent.send(f"English:\n\n{item}", timeout=60)
+        return {"text": item, "translation": response[-1].content.text}
+    except Exception as e:
+        return {"text": item, "error": str(e)}
+    finally:
+        if agent:
+            create_task(Agent.stop(node, agent.name))
+
+@app.post("/translate")
+async def translate(request: dict, node: NodeDep):
+    texts = request.get("texts", [])
+    results = await gather(*(translate_item(node, text) for text in texts))
+    return {"translations": results}
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+- Each item gets its own agent with a unique name.
+- `asyncio.gather` runs all agents concurrently.
+- Agents are stopped after processing to free resources.
+- Errors are caught per-item, so one failure doesn't break the batch.
+
+---
+
+## Streaming Responses
+
+For long-running agent interactions, stream responses to the client:
+
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import json
+
+app = FastAPI()
+
+@app.post("/chat")
+async def chat(request: dict, node: NodeDep):
+    message = request.get("message", "")
+    
+    async def generate():
+        agent = await Agent.start(
+            node=node,
+            name="assistant",
+            instructions="You are a helpful assistant.",
+            model=Model("claude-sonnet-4-v1")
+        )
+        
+        async for chunk in agent.stream(message):
+            if chunk.content and chunk.content.text:
+                yield json.dumps({"text": chunk.content.text}) + "\n"
+    
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+**Client-side handling:**
+```typescript client.ts
+const response = await fetch("/chat", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ message: "Hello!" })
+});
+
+const reader = response.body?.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  
+  const text = decoder.decode(value);
+  const lines = text.split("\n").filter(line => line.trim());
+  
+  for (const line of lines) {
+    const data = JSON.parse(line);
+    console.log(data.text);  // Process each chunk
+  }
+}
+```
+---
+
+## API Documentation
+
+FastAPI automatically generates interactive API documentation. Access it at:
+- `/docs` - Swagger UI interface
+- `/redoc` - ReDoc interface
