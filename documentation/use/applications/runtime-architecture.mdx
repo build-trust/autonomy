@@ -25,15 +25,11 @@ Cluster (your dedicated cloud infrastructure)
 ## Cluster
 
 Your dedicated cloud infrastructure in the [Autonomy Computer](/what-is-autonomy#autonomy-computer).
-This infrastructure is geographically distributed across regions and clouds.
 
-**Key points:**
-- One cluster per account.
-- Has a unique cluster ID (like `19f138000c5dcc2eaa7d8f21594fc0c3`).
-- Hosts all your zones.
+- It hosts all your [zones](#zone).
+- and has a unique identifier, like `19f138000c5dcc2eaa7d8f21594fc0c3`.
 
-**Setup:**
-```bash
+```bash Commands:
 # Enroll your workstation
 autonomy cluster enroll --no-input
 
@@ -41,20 +37,18 @@ autonomy cluster enroll --no-input
 autonomy cluster show
 ```
 
-Your apps are accessible at: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/`.
+Clusters are geographically distributed across regions and clouds.
 
 ## Zone
 
-A deployed application with **autonomous agents**. Each zone is defined by an `autonomy.yaml` file.
+A deployed application. Each zone is defined by an `autonomy.yaml` file.
 
-**Key points:**
-- Name must be `≤ 10` characters, using only `a to z` and `0 to 9`.
-- Contains one or more pods.
-- Can be public (web accessible) or private.
+- Its name must be `≤ 10` characters, using only `a to z` and `0 to 9`.
+- It contains one or more pods.
+- It can be public (web accessible) or private.
 - Nodes in a Zone can communicate and securely delegate work to each other.
 
-**Example:**
-```yaml
+```yaml autonomy.yaml
 name: myapp
 pods:
   - name: main-pod
@@ -64,18 +58,20 @@ pods:
         image: main
 ```
 
-**Commands:**
-```bash
-autonomy zone deploy              # Deploy or update
+```bash Commands:
+autonomy zone deploy              # Deploy or update th zone defined in autonomy.yaml
 autonomy zone list                # List all zones
-autonomy zone delete --yes        # Delete zone
+autonomy zone delete [ZONE_NAME]  # Delete the specified zone
+autonomy zone delete              # Delete the zone defined in autonomy.yaml
 ```
+
+If `public: true` then port `8000` of the `main-pod` are served on this
+public HTTPS url: `https://${CLUSTER}-${ZONE}.cluster.autonomy.computer`
 
 ## Pod
 
 A group of containers that run together.
 
-**Key points:**
 - All containers in a pod share a network namespace (use `localhost` to communicate).
 - Can be public (expose port 8000 to the Internet) or private.
 - Can be cloned to create multiple instances.
@@ -111,7 +107,6 @@ pods:
 
 A container running inside a pod.
 
-**Key points:**
 - Built from `images/${IMAGE_NAME}/Dockerfile`.
 - Can run an Autonomy Node or any service that a node needs (like MCP servers).
 - Multiple containers in the same pod communicate via `localhost`.
@@ -146,7 +141,6 @@ It hosts agents as **stateful concurrent actors** that can send and asynchronous
 receive message. This enables them to collaborate with and delegate work
 to other agents.
 
-**Key points:**
 - Created by calling `Node.start(main)` in Python.
 - Runs HTTP server on port 8000.
 - Can discover and communicate with other nodes.
