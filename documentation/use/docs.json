@@ -20,7 +20,13 @@
       },
       {
         "group": "APPLICATIONS",
-        "pages": ["applications/file-structure", "applications/runtime-architecture", "applications/actors"]
+        "pages": [
+          "applications/runtime-architecture",
+          "applications/file-structure",
+          "applications/programming-interfaces",
+          "applications/user-interfaces",
+          "applications/actors"
+        ]
       },
       {
         "group": "AGENTS",
