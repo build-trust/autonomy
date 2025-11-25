@@ -1,0 +1,424 @@
+---
+title: "Filesystem"
+icon: "folder-tree"
+description: "Give agents the ability to read, write, and search files."
+---
+
+**Filesystem Tools** provide agents with dedicated file system 
+to save plans and take notes. Agents can read, write, search, and manage files.
+Your application can control whether agents share files across all users,
+per-tenant, or per-conversation.
+
+Filesystem tools are essential for agents that need to:
+- Store and retrieve user-specific data.
+- Process documents and files.
+- Maintain conversation-specific context.
+- Generate reports or code files.
+
+---
+
+## Quick Start
+
+Add filesystem tools to your agent with default (conversation-level) isolation:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+from autonomy.tools import FilesystemTools
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="assistant",
+    instructions="You are a helpful assistant with file access",
+    model=Model("claude-sonnet-4-v1"),
+    tools=[FilesystemTools()]  # Default: conversation-level isolation
+  )
+
+
+Node.start(main)
+```
+
+The agent can now use filesystem operations:
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"Create a file called notes.txt with the content: Hello World", "conversation":"chat-1"}' \
+  "http://localhost:8000/agents/assistant"
+```
+
+Files are isolated per conversation by default:
+- Conversation `chat-1`: `/tmp/agent-files/assistant/default/chat-1/notes.txt`
+- Conversation `chat-2`: `/tmp/agent-files/assistant/default/chat-2/notes.txt`
+
+---
+
+## Visibility Levels
+
+Visibility controls how files are isolated between users and conversations. Choose the level that matches your security and sharing requirements.
+
+### Conversation (Default)
+
+**Maximum isolation** - Each conversation has its own isolated filesystem:
+
+```python
+tools=[FilesystemTools(visibility="conversation")]
+```
+
+**Path structure:**
+```
+/tmp/agent-files/{agent_name}/{scope}/{conversation}/
+```
+
+**Example paths:**
+```
+User Alice, Chat 1: /tmp/agent-files/assistant/user-alice/chat-1/notes.txt
+User Alice, Chat 2: /tmp/agent-files/assistant/user-alice/chat-2/notes.txt
+User Bob, Chat 1:   /tmp/agent-files/assistant/user-bob/chat-1/notes.txt
+```
+
+**Use when:**
+- Users should not see each other's files
+- Different conversations should be completely isolated
+- Maximum security is required
+- Building chat applications with ephemeral workspaces
+
+### Scope
+
+**Per-user/tenant isolation** - Files shared across conversations for the same user:
+
+```python
+tools=[FilesystemTools(visibility="scope")]
+```
+
+**Path structure:**
+```
+/tmp/agent-files/{agent_name}/{scope}/
+```
+
+**Example paths:**
+```
+User Alice, Chat 1: /tmp/agent-files/assistant/user-alice/notes.txt
+User Alice, Chat 2: /tmp/agent-files/assistant/user-alice/notes.txt  # Same file!
+User Bob, Chat 1:   /tmp/agent-files/assistant/user-bob/notes.txt
+```
+
+**Use when:**
+- Users need persistent storage across conversations
+- Building document management or note-taking apps
+- Implementing user workspaces
+- Multi-tenant applications with user isolation
+
+### Agent
+
+**Per-agent isolation** - Files shared across all users but separate per agent:
+
+```python
+tools=[FilesystemTools(visibility="agent")]
+```
+
+**Path structure:**
+```
+/tmp/agent-files/{agent_name}/
+```
+
+**Example paths:**
+```
+All users, all conversations: /tmp/agent-files/assistant/notes.txt
+```
+
+**Use when:**
+- Agent needs access to shared configuration or templates
+- All users should see the same reference files
+- Building knowledge base or documentation assistants
+- Single-tenant applications
+
+### All
+
+**No isolation** - Files shared across all agents and users:
+
+```python
+tools=[FilesystemTools(visibility="all")]
+```
+
+**Path structure:**
+```
+/tmp/agent-files/
+```
+
+**Use when:**
+- Building single-user development tools
+- Prototyping and testing
+- Files genuinely need to be shared globally
+
+---
+
+## Available Operations
+
+Filesystem tools provide comprehensive file operations:
+
+### List Directory
+
+List files and directories:
+
+```python
+# Agent can call: list_directory(path=".")
+# Returns: List of files and directories with metadata
+```
+
+### Read File
+
+Read file contents:
+
+```python
+# Agent can call: read_file(path="notes.txt")
+# Returns: File contents as text
+```
+
+### Write File
+
+Create or overwrite files:
+
+```python
+# Agent can call: write_file(path="report.txt", content="...")
+# Creates: report.txt with specified content
+```
+
+### Edit File
+
+Modify existing files with search/replace:
+
+```python
+# Agent can call: edit_file(
+#   path="config.json",
+#   old_text="\"debug\": false",
+#   new_text="\"debug\": true"
+# )
+```
+
+### Find Files
+
+Search for files by name pattern:
+
+```python
+# Agent can call: find_files(pattern="*.txt", path=".")
+# Returns: List of matching file paths
+```
+
+### Search in Files
+
+Search file contents:
+
+```python
+# Agent can call: search_in_files(query="TODO", path=".")
+# Returns: Files containing the search term with context
+```
+
+### Remove File
+
+Delete a file:
+
+```python
+# Agent can call: remove_file(path="temp.txt")
+```
+
+### Remove Directory
+
+Delete a directory and its contents:
+
+```python
+# Agent can call: remove_directory(path="temp")
+```
+
+### Copy File
+
+Copy a file to a new location:
+
+```python
+# Agent can call: copy_file(source="original.txt", destination="backup.txt")
+```
+
+### Move File
+
+Move or rename a file:
+
+```python
+# Agent can call: move_file(source="draft.txt", destination="final.txt")
+```
+
+---
+
+## Factory Mode vs Direct Mode
+
+### Factory Mode (Recommended)
+
+In factory mode, you pass `FilesystemTools()` to the agent, and the framework automatically creates the right instance with proper isolation:
+
+```python
+from autonomy import Agent, Model, Node
+from autonomy.tools import FilesystemTools
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="assistant",
+    instructions="You are a helpful assistant",
+    model=Model("claude-sonnet-4-v1"),
+    tools=[FilesystemTools(visibility="conversation")]
+  )
+
+
+Node.start(main)
+```
+
+The framework automatically:
+1. Extracts `scope` and `conversation` from each request
+2. Creates an isolated `FilesystemTools` instance for that context
+3. All file operations stay within the visibility boundary
+
+**This is the recommended approach** for multi-user applications.
+
+### Direct Mode
+
+In direct mode, you specify the full context upfront:
+
+```python
+from autonomy.tools import FilesystemTools, Tool
+
+# Create instance with specific context
+fs = FilesystemTools(
+  visibility="scope",
+  agent_name="assistant",
+  scope="user-alice",
+  base_dir="/data/files"
+)
+
+# Use directly
+tools = [
+  Tool(fs.read_file),
+  Tool(fs.write_file),
+  Tool(fs.list_directory)
+]
+```
+
+**Use direct mode when:**
+- Building single-user applications
+- Running agents outside the HTTP API
+- You need explicit control over file paths
+- Testing and development
+
+---
+
+## Configuration
+
+### Custom Base Directory
+
+Change where files are stored:
+
+```python
+tools=[FilesystemTools(
+  visibility="conversation",
+  base_dir="/data/agent-files"  # Custom location
+)]
+```
+
+### Multiple Filesystem Instances
+
+Provide different filesystem access with different visibility:
+
+```python
+from autonomy.tools import FilesystemTools
+
+# Shared templates (all users can read)
+templates_fs = FilesystemTools(visibility="agent")
+
+# User-specific workspace
+workspace_fs = FilesystemTools(visibility="scope")
+
+await Agent.start(
+  node=node,
+  name="assistant",
+  instructions="""
+  You have access to two filesystems:
+  - Shared templates in the agent filesystem
+  - Your personal workspace in the scope filesystem
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  tools=[templates_fs, workspace_fs]
+)
+```
+
+---
+
+## Complete Example
+
+Build a document assistant with user-specific workspaces:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+from autonomy.tools import FilesystemTools
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="document_assistant",
+    instructions="""
+    You are a document assistant that helps users manage their files.
+    
+    You can:
+    - List files in their workspace
+    - Read and write documents
+    - Search for content across files
+    - Organize files into directories
+    
+    Each user has their own isolated workspace. Files are persistent
+    across conversations for the same user.
+    """,
+    model=Model("claude-sonnet-4-v1"),
+    tools=[FilesystemTools(visibility="scope")]
+  )
+
+
+Node.start(main)
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: docu
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+**Usage examples:**
+
+```bash
+# User Alice creates a document
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"Create a file called project-notes.md with my project ideas", "scope":"user-alice"}' \
+  "https://CLUSTER-ZONE.cluster.autonomy.computer/agents/document_assistant"
+
+# Later, in a different conversation, Alice can still access it
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"Read my project-notes.md file", "scope":"user-alice", "conversation":"new-chat"}' \
+  "https://CLUSTER-ZONE.cluster.autonomy.computer/agents/document_assistant"
+
+# User Bob has a completely separate workspace
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"List my files", "scope":"user-bob"}' \
+  "https://CLUSTER-ZONE.cluster.autonomy.computer/agents/document_assistant"
+```

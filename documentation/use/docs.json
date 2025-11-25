@@ -30,16 +30,16 @@
       },
       {
         "group": "AGENTS",
+        "pages": ["agents/agents", "agents/models", "agents/memory", "agents/context"]
+      },
+      {
+        "group": "TOOLS",
         "pages": [
-          "agents/agents",
-          "agents/models",
-          "agents/memory",
-          "agents/knowledge",
           "agents/tools",
-          "agents/planning",
-          "collaboration/messages",
-          "collaboration/flows",
-          "integration/private_link"
+          "agents/human-in-the-loop",
+          "agents/knowledge",
+          "agents/filesystem",
+          "agents/subagents"
         ]
       }
     ]

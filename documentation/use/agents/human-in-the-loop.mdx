@@ -1,0 +1,338 @@
+---
+title: "Human-in-the-loop"
+icon: "user"
+description: "Enable agents to pause and request input from users."
+---
+
+**Human-in-the-loop** interactions allow agents to pause their execution and
+request clarification or additional information from users. This enables more
+interactive and dynamic conversations where agents can gather the specific details
+they need to complete tasks effectively.
+
+---
+
+## Ask User for Input
+
+The `ask_user_for_input` tool enables agents to pause and request clarification during a conversation. When enabled, agents can decide when they need more information and ask users directly.
+
+### Enable the Tool
+
+Add `enable_ask_for_user_input=True` when starting your agent:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="assistant",
+    instructions="""
+      You are a helpful travel booking assistant.
+      Ask for clarification when you need specific details to complete a task.
+    """,
+    model=Model("claude-sonnet-4-v1"),
+    enable_ask_for_user_input=True
+  )
+
+
+Node.start(main)
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: human-in-loop-example
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+---
+
+## How It Works
+
+When an agent calls `ask_user_for_input`:
+
+1. **Agent pauses** - The agent's state transitions to `"waiting_for_input"`
+2. **Question is returned** - The streaming response completes with the agent's question
+3. **Conversation waits** - The conversation remains paused until the user responds
+4. **User responds** - The next message from the user resumes the conversation
+5. **Agent continues** - The agent processes the response and continues its task
+
+### Example Flow
+
+**Initial request - User asks to book a flight:**
+
+<CodeGroup>
+
+```bash httpie
+http POST \
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/assistant?stream=true" \
+message="Book me a flight"
+```
+
+```bash curl
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"Book me a flight"}' \
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/assistant?stream=true"
+```
+
+</CodeGroup>
+
+**Response includes waiting state:**
+
+```json
+{
+  "phase": "waiting_for_input",
+  "message": "Where would you like to fly to?"
+}
+```
+
+**User provides answer:**
+
+<CodeGroup>
+
+```bash httpie
+http POST \
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/assistant?stream=true" \
+message="San Francisco"
+```
+
+```bash curl
+curl --request POST \
+--header "Content-Type: application/json" \
+--data '{"message":"San Francisco"}' \
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/assistant?stream=true"
+```
+
+</CodeGroup>
+
+**Agent continues the conversation:**
+
+```json
+{
+  "phase": "completed",
+  "message": "Great! When would you like to depart for San Francisco?"
+}
+```
+
+---
+
+## Best Practices
+
+### Write Clear Instructions
+
+Guide your agent on when to ask for input:
+
+```python
+await Agent.start(
+  node=node,
+  name="assistant",
+  instructions="""
+    You are a customer support assistant.
+    
+    When a user's request is ambiguous or missing critical details:
+    - Use ask_user_for_input to request clarification
+    - Ask one clear, specific question at a time
+    - Explain why you need the information
+    
+    Don't make assumptions about user preferences or requirements.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  enable_ask_for_user_input=True
+)
+```
+
+### Handle Multi-Step Workflows
+
+Agents can ask multiple questions to gather all necessary information:
+
+```python
+await Agent.start(
+  node=node,
+  name="order-assistant",
+  instructions="""
+    You help users place orders.
+    
+    Required information:
+    - Product name and quantity
+    - Shipping address
+    - Payment method
+    
+    If any information is missing, ask for it one question at a time.
+    Confirm all details before completing the order.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  enable_ask_for_user_input=True
+)
+```
+
+### Combine with Other Tools
+
+Use `ask_user_for_input` alongside other tools for powerful workflows:
+
+```python
+from autonomy import Agent, Model, Node, Tool
+
+
+def check_inventory(product: str) -> dict:
+  """
+  Check product availability and pricing.
+  
+  Args:
+    product: Product name or ID
+  """
+  # Check inventory system
+  return {
+    "available": True,
+    "price": 99.99,
+    "stock": 15
+  }
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="shop-assistant",
+    instructions="""
+      You are a shopping assistant.
+      
+      When a user wants to buy something:
+      1. Check inventory using check_inventory
+      2. If available, show price and stock
+      3. If user confirms, ask for shipping details using ask_user_for_input
+      4. Complete the order
+    """,
+    model=Model("claude-sonnet-4-v1"),
+    tools=[Tool(check_inventory)],
+    enable_ask_for_user_input=True
+  )
+
+
+Node.start(main)
+```
+
+---
+
+## Client Integration
+
+### Streaming Responses
+
+When using `stream=true`, check the `phase` field to detect when the agent is waiting:
+
+```javascript
+const response = await fetch('/agents/assistant?stream=true', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ message: 'Book me a flight' })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  
+  const chunk = decoder.decode(value);
+  const lines = chunk.split('\n');
+  
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const data = JSON.parse(line.slice(6));
+      
+      if (data.phase === 'waiting_for_input') {
+        // Show user input prompt
+        console.log('Agent asks:', data.message);
+        // Enable user input field
+      }
+    }
+  }
+}
+```
+
+### Non-Streaming Responses
+
+Without streaming, check the response status:
+
+```python
+import requests
+
+response = requests.post(
+  'https://CLUSTER-ZONE.cluster.autonomy.computer/agents/assistant',
+  json={'message': 'Book me a flight'}
+)
+
+data = response.json()
+
+if data.get('phase') == 'waiting_for_input':
+  print(f"Agent asks: {data['message']}")
+  # Prompt user for input
+  user_answer = input('Your answer: ')
+  
+  # Send user's answer
+  response = requests.post(
+    'https://CLUSTER-ZONE.cluster.autonomy.computer/agents/assistant',
+    json={'message': user_answer}
+  )
+```
+
+---
+
+## Conversation State
+
+### Waiting State
+
+When an agent calls `ask_user_for_input`:
+- **Phase**: `"waiting_for_input"`
+- **Message**: The agent's question
+- **Turn**: The conversation remains on the same turn
+- **Memory**: The tool call and question are saved
+
+### Resume State
+
+When the user responds:
+- **Phase**: `"completed"` (or other non-waiting state)
+- **Message**: The agent's continued response
+- **Turn**: Advances to next turn
+- **Memory**: The user's answer and agent's continuation are saved
+
+### Example State Transition
+
+```python
+# Turn 1: User initiates
+{"message": "Book me a flight"}
+
+# Turn 1: Agent pauses
+{
+  "phase": "waiting_for_input",
+  "message": "Where would you like to fly to?"
+}
+
+# Turn 2: User answers
+{"message": "San Francisco"}
+
+# Turn 2: Agent continues
+{
+  "phase": "waiting_for_input",
+  "message": "When would you like to depart?"
+}
+
+# Turn 3: User answers
+{"message": "Next Monday"}
+
+# Turn 3: Agent completes
+{
+  "phase": "completed",
+  "message": "I'll book you a flight to San Francisco departing next Monday..."
+}
+```

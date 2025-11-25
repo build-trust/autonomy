@@ -1,67 +1,180 @@
 ---
 title: "Knowledge"
 icon: "file-magnifying-glass"
-mode: "wide"
-description: "Give agents unlimited context "
-noindex: true
+description: "Give agents the ability to search a corpus of documents."
 ---
 
-`Knowledge` is a structured store of external documents and resources that an agent can consult in order to inform its responses. Instead of relying purely on pre-trained model weights or short-term context, the agent can load, index, and retrieve relevant documents, data, and content. This enables more accurate, up-to-date, and specific answers, especially when dealing with domain-specific or recently changing information.
+**Knowledge** gives agents the ability to search a corpus of documents for
+for information beyond their training data. Instead of hardcoding information
+in prompts or relying solely on the model's knowledge, agents can dynamically
+retrieve the most relevant information.
 
-## In the example code
+Knowledge uses vector embeddings to find the most relevant document chunks
+based on semantic similarity.
 
-A `knowledge` instance named `us_federal_code` is created, to represent a collection of sections of U.S. federal law.
+---
 
-Several documents are added via`add_document(name, url, content_type="text/markdown")`, each mapping a shorthand name (“sec-330”, “sec-330a”, etc.) to a URL pointing to Markdown versions of specific legal sections.
+Create a searchable knowledge base and give an agent access to it as a tool:
 
-The agent, “Henry,” is then started with instructions, a model, and this`knowledge` store. Because the agent has been given `knowledge=us_federal_code`, whenever “Henry” is asked a question, it can search through the loaded legal sections to find, quote, or reason over relevant content.
-
-<Tip>
-  You can find all the code for this example [on Github](https://github.com/build-trust/autonomy/tree/main/examples/005).
-</Tip>
-
-```python images/main/main.py
-from autonomy import Agent, Knowledge, Model, Node
-
+```python
+from autonomy import Agent, Model, Node
+from autonomy.knowledge import Knowledge, KnowledgeTool
 
 async def main(node):
-  docs = {
-    "sec-330": "https://raw.githubusercontent.com/AlextheYounga/us-federal-code/refs/heads/master/usc/title-15-commerce-and-trade/chapter-9a-weather-modification-activities-or-attempts%3B-reporting-requirement/sec-330.md",
-    "sec-330a": "https://raw.githubusercontent.com/AlextheYounga/us-federal-code/refs/heads/master/usc/title-15-commerce-and-trade/chapter-9a-weather-modification-activities-or-attempts%3B-reporting-requirement/sec-330a.md",
-    "sec-330b": "https://raw.githubusercontent.com/AlextheYounga/us-federal-code/refs/heads/master/usc/title-15-commerce-and-trade/chapter-9a-weather-modification-activities-or-attempts%3B-reporting-requirement/sec-330b.md",
-    "sec-330c": "https://raw.githubusercontent.com/AlextheYounga/us-federal-code/refs/heads/master/usc/title-15-commerce-and-trade/chapter-9a-weather-modification-activities-or-attempts%3B-reporting-requirement/sec-330c.md",
-    "sec-330d": "https://raw.githubusercontent.com/AlextheYounga/us-federal-code/refs/heads/master/usc/title-15-commerce-and-trade/chapter-9a-weather-modification-activities-or-attempts%3B-reporting-requirement/sec-330d.md",
-    "sec-330e": "https://raw.githubusercontent.com/AlextheYounga/us-federal-code/refs/heads/master/usc/title-15-commerce-and-trade/chapter-9a-weather-modification-activities-or-attempts%3B-reporting-requirement/sec-330e.md",
-  }
-
-  us_federal_code = Knowledge("us_federal_code")
-  for name, url in docs.items():
-    await us_federal_code.add_document(name, url, content_type="text/markdown")
-
+  # Create searchable knowledge base
+  knowledge = Knowledge(
+    name="legal_statutes",
+    searchable=True,
+    model=Model("embed-english-v3"),  # Embedding model
+    max_results=5,  # Top 5 most relevant chunks
+    max_distance=0.3  # Similarity threshold (0.0 = exact match, 1.0 = very different)
+  )
+  
+  # Add legal documents
+  await knowledge.add_text(
+    document_name="contract_law",
+    text="""
+    Contract Formation Requirements:
+    1. Offer: Clear proposal of terms
+    2. Acceptance: Unequivocal agreement to terms
+    3. Consideration: Exchange of value between parties
+    4. Capacity: Legal ability to enter contract
+    5. Legality: Lawful purpose and terms
+    """
+  )
+  
+  await knowledge.add_text(
+    document_name="tort_law",
+    text="""
+    Elements of Negligence:
+    - Duty of care owed to plaintiff
+    - Breach of that duty
+    - Causation (actual and proximate)
+    - Damages suffered by plaintiff
+    """
+  )
+  
+  # Give agent access to the knowledge base as a tool
   await Agent.start(
     node=node,
     name="henry",
-    instructions="You are Henry, an expert legal assistant",
-    model=Model("nova-micro-v1"),
-    knowledge=us_federal_code,
+    instructions="""
+    You are Henry, an expert legal assistant.
+    Use search_statutes tool to find relevant legal information.
+    """,
+    model=Model("claude-sonnet-4-v1"),
+    tools=[
+      KnowledgeTool(knowledge=knowledge, name="search_statutes")
+    ]
   )
-
 
 Node.start(main)
 ```
 
-```bash images/main/Dockerfile
-FROM ghcr.io/build-trust/autonomy-python
-COPY . .
-ENTRYPOINT ["python", "main.py"]
+---
+
+## Adding Documents
+
+### From Text
+
+Add text directly to the knowledge base:
+
+```python
+await knowledge.add_text(
+  document_name="statute_330",
+  text="# 15 USC 330: Weather Modification\n\nAny person engaging in weather modification activities..."
+)
 ```
 
-```yaml autonomy.yaml
-name: example005
-pods:
-  - name: main-pod
-    public: true
-    containers:
-      - name: main
-        image: main
+### From URLs
+
+Load documents from the web:
+
+```python
+await knowledge.add_document(
+  document_name="sec_330",
+  document_url="https://raw.githubusercontent.com/AlextheYounga/us-federal-code/refs/heads/master/usc/title-15-commerce-and-trade/chapter-9a-weather-modification-activities-or-attempts%3B-reporting-requirement/sec-330.md",
+  content_type="text/markdown"  # Optional, auto-detected if omitted
+)
+```
+
+Supported formats (via text extraction):
+- Plain text
+- Markdown
+- HTML
+- PDF (if markitdown is installed)
+- Word documents (if markitdown is installed)
+- Many more formats via markitdown
+
+---
+
+## Configuration Options
+
+```python
+knowledge = Knowledge(
+  name="docs",                     # Unique name for this knowledge base
+  searchable=True,                 # Enable vector search
+  model=Model("embed-english-v3"), # Model for generating embeddings
+  max_results=10,                  # Max search results to return
+  max_distance=0.2,                # Max cosine distance (0.0-1.0, lower = more similar)
+  max_knowledge_size=4096,         # Max characters to include in context
+  chunker=NaiveChunker(            # How to split documents
+    max_characters=256,            # Chunk size
+    overlap=16                     # Overlap between chunks
+  )
+)
+```
+
+**Key parameters:**
+- **`model`** - Embedding model for vector search. Default: `embed-english-v3`
+- **`max_results`** - Number of top results to return. Default: 10
+- **`max_distance`** - Similarity threshold (0.0 = identical, 1.0 = completely different). Default: 0.2
+- **`max_knowledge_size`** - Maximum characters in the returned context. Default: 4096
+- **`chunker`** - Strategy for splitting documents into chunks
+
+---
+
+## Storage Backends
+
+### In-Memory Storage (Default)
+
+Stores everything in memory. Simple but not persistent:
+
+```python
+from autonomy.knowledge import Knowledge, InMemory
+
+knowledge = Knowledge(name="docs", searchable=True, storage=InMemory())
+```
+
+### Database Storage
+
+For persistent storage across restarts:
+
+```python
+from autonomy.knowledge import Knowledge, Database
+
+# Initialize database connection
+db = await Database.from_environment()
+knowledge = Knowledge(name="docs", searchable=True, storage=db)
+```
+
+---
+
+## Use Knowledge as a Tool
+
+Give agents explicit control over when to search:
+
+```python
+from autonomy.knowledge import KnowledgeTool
+
+await Agent.start(
+  node=node,
+  name="henry",
+  instructions="""
+  You are Henry, an expert legal assistant.
+  Use search_statutes when you need to reference legal code.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  tools=[KnowledgeTool(knowledge=knowledge, name="search_statutes")]
+)
 ```

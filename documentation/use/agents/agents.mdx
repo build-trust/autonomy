@@ -1,23 +1,44 @@
 ---
 title: "Agents"
 icon: "star-shooting"
-description: "Autonomous actors powered by large language models."
-noindex: true
+description: "How to create **deep work agents** with Autonomy."
 ---
 
-Autonomy Agents are intelligent autonomous actors that accomplish complex open ended tasks. Python apps, running in Autonomy AI, can create millions of parallel collaborating agents in seconds.
+Agents are intelligent [actors](/applications/actors) that autonomously
+accomplish assigned goals. They can plan, take notes on a filesystem, curate
+context on every turn, and delegate work to parallel sub-agents.
 
-Each agent:
+Each agent operates in a loop: build context, decide on next steps, call
+tools, and gather responses. This cycle continues until the goal is accomplished
+and there are no more tool calls needed.
 
-- Has a unique identity.
-- Uses a large language [model](/agents/models) to understand natual language.
-- Has [memory](/agents/memory) of conversations.
-- Makes [plans](/agents/planning) that break down complex tasks into small iterative steps.
-- Can retrieve [knowledge](/agents/knowledge) beyond the training data of its language model.
-- Invokes [tools](/agents/tools) to gather new information and take actions.
-- Collaborates with and can delegate work to other agents.
+<img src="/agents/images/agent.png"
+  alt="An agent is a state machine that calls an LLM and tools, in a loop." />
 
-<RequestExample>
+In each iteration of its loop, an agent invokes a [model](/agents/models)
+to understand information, it has gathered in its [context](/agents/context) so
+far, and pick what next steps will take it towards its goal. The model returns
+these next steps as a list [tools calls](/agents/tools) for the agent to invoke.
+
+The [Autonomy Framework](/what-is-autonomy#autonomy-framework) and
+the [Autonomy Computer](/what-is-autonomy#autonomy-computer) work together to
+give you components and infrastructure to [manage memories](/agents/memory)
+across many users and [curate context](/agents/context) for agents
+working on long and complex tasks. They also provide you with a foundation
+to operate tools that are necessary for **deep work**.
+
+Agents can invoke [python functions as tools](/tools#python-functions-as-tools),
+or call tools provided by [MCP servers](/tools#mcp-tools). They can access a
+[dedicated file system](/agents/filesystem) to save plans and take notes. Agents
+can also create many [sub-agents](/agents/subagents) that concentrate on sub-tasks.
+Parallel agents, each focused on a small part, achieve the overall goal faster.
+They are also more successful because the context that they provide to their
+language model contains much less noise.
+
+
+---
+
+You can create a simple agent by providing a name, instructions, and a model:
 
 ```python images/main/main.py
 from autonomy import Agent, Model, Node
@@ -35,50 +56,227 @@ async def main(node):
 Node.start(main)
 ```
 
-</RequestExample>
+Once an agent is running, you can send messages to it using
+the [built-in HTTP API](/programming-interfaces#built-in-apis).
 
-### Build
-
-<Tip>
-  You can find all the code for the following example [on Github](https://github.com/build-trust/autonomy/tree/develop/examples/002).
-</Tip>
-
-Let’s build a new app, that provides a Legal AI Agent. Within the app directory, create the following three files:
-
-```bash app
-» tree
-
-├── autonomy.yaml
-└── images
-    └── main
-        ├── Dockerfile
-        ├── index.html
-        └── main.py
+```bash curl
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message": "What are the key elements of a valid contract?"}' \
+  "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
 ```
 
-- The `autonomy.yaml` configuration file defines how to deploy a Zone in your Cluster in Autonomy.
-- The `images` directory contains the source code of docker images that will be used to run containers in your Zone.
-  - Inside `images`, there is a directory for the `main` image.
-    - `Dockerfile` describe how the main image will be compiled.
-    - `main.py` is the Python program that is run by the main image.
-    - `index.html` is a very simple web ui for your agent.
+For longer responses, use the [streaming API](/programming-interfaces#built-in-apis)
+to receive chunks as they're generated:
 
-```yaml autonomy.yaml
-name: example002
-pods:
-  - name: main-pod
-    public: true
-    containers:
-      - name: main
-        image: main
+```bash curl
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message": "Explain the doctrine of promissory estoppel in detail."}' \
+  "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
 ```
 
-The `autonomy.yaml` configuration file defines how to deploy your Zone:
+This returns newline-delimited JSON chunks as the agent generates its response.
 
-- Create a Zone named `example002` .
-- Create a Pod named `main-pod`inside the `example002` Zone.
-- Make the HTTP server, in the `main` container in this pod, public.
-- Run a `main` container using the `main` image.
+---
+
+<CardGroup cols={2}>
+    <Card href="/applications/programming-interfaces" title="Programming Interfaces" icon="code" iconType="solid">
+      How to create APIs for you agents.
+    </Card>
+  
+  <Card href="/agents/models" title="Models" icon="brain-circuit" iconType="solid">
+    Choose language models for your agents.
+  </Card>
+  
+  <Card href="/agents/memory" title="Memory" icon="memory" iconType="solid">
+    How agents remember their history of steps.
+  </Card>
+  
+  <Card href="/agents/context" title="Context" icon="layer-group" iconType="solid">
+    How agents curate context at each turn.
+  </Card>
+  
+  <Card href="/agents/tools" title="Tools" icon="screwdriver-wrench" iconType="solid">
+    Give agents the ability to take actions.
+  </Card>
+  
+  <Card href="/agents/knowledge" title="Knowledge" icon="file-magnifying-glass" iconType="solid">
+    Give agents the ability to search a corpus of documents.
+  </Card>
+  
+  <Card href="/agents/filesystem" title="Filesystem" icon="folder-tree" iconType="solid">
+    Give agents the ability to read, write, and search files.
+  </Card>
+  
+  <Card href="/agents/subagents" title="Subagents" icon="sitemap" iconType="solid">
+    Give agents the ability to start subagents and delegate work to them.
+  </Card>
+  
+</CardGroup>
+
+---
+
+## Complete Example: Legal Research Agents
+
+This example demonstrates a sophisticated legal research application that combines multiple Autonomy features:
+- **Custom FastAPI endpoint** for case submission.
+- **Lead researcher agent** that breaks cases into research questions.
+- **Filesystem tools** for organizing research notes and drafts (conversation-level).
+- **Parallel subagents** that investigate each question simultaneously.
+- **Subagent filesystem tools** for organizing individual research work (conversation-level).
+- **MCP tools** (Brave Search) for finding legal authorities and case law.
+
+### How It Works
+
+1. Attorney submits a case description via API.
+2. Lead researcher agent analyzes the case and identifies specific research questions.
+3. Lead researcher saves research plan to filesystem for organization.
+4. Each question is delegated to a research assistant subagent using `delegate_to_subagents_parallel`.
+5. Subagents use Brave Search to find statutes, case law, and legal authorities.
+6. Subagents use filesystem to organize their research notes and draft responses.
+7. Subagents return findings via tool call responses to lead researcher.
+8. Lead researcher compiles all findings into a comprehensive legal research memo.
+
+<CodeGroup>
+
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node, NodeDep, McpTool, McpClient
+from autonomy.tools import FilesystemTools
+from fastapi import FastAPI
+from asyncio import create_task
+
+app = FastAPI()
+
+
+@app.post("/research")
+async def research_legal_case(request: dict, node: NodeDep):
+    """
+    Research a legal case by breaking it into research questions and investigating each question.
+    """
+    case_description = request.get("case_description", "")
+
+    if not case_description:
+        return {"error": "No case description provided"}
+
+    # Start the lead researcher agent with parallel research subagents
+    lead_researcher = await Agent.start(
+        node=node,
+        name=f"lead_researcher_{id(case_description)}",
+        instructions="""
+You are a lead legal researcher coordinating a research team.
+
+Your job is to:
+1. Analyze the case and break it down into specific, focused research questions
+2. Save your research plan to a file for reference
+3. Use delegate_to_subagents_parallel to assign each question to research assistant subagents
+4. As findings come in, save them to organized files
+5. Compile all research findings into a comprehensive legal research memo and save it
+
+You have filesystem access to:
+- Save research plans and notes
+- Organize findings by topic or question
+- Draft the research memo incrementally
+- Create a final polished memo
+
+Focus on actionable research questions such as:
+- Relevant statutes and their interpretations
+- Applicable case law and precedents
+- Jurisdictional issues
+- Elements that must be proven
+- Defenses that may apply
+- Recent developments in this area of law
+
+When you have identified the research questions, use the delegate_to_subagents_parallel tool
+to have all questions researched simultaneously by passing the role "research_assistant"
+and a list of research questions as tasks.
+
+Use the filesystem to stay organized throughout the research process.""",
+        model=Model("claude-sonnet-4-v1"),
+        tools=[FilesystemTools(visibility="conversation")],
+        subagents={
+            "research_assistant": {
+                "instructions": """
+You are a legal research assistant specializing in thorough legal research.
+
+When given a research question:
+1. Use the brave_web_search tool to find relevant legal authorities, statutes, and case law
+2. Use filesystem tools to save your research notes and organize your findings
+3. Analyze the sources to extract key legal principles and holdings
+4. Synthesize your findings into a clear, well-organized response
+5. Cite specific authorities with case names, statutory citations, or source URLs
+
+You have filesystem access for organizing your research work. Use this to:
+- Save important case summaries and statutory findings as you find them
+- Keep notes on sources you've reviewed
+- Draft and refine your response before returning it
+- Maintain organized research files
+
+Focus on finding:
+- Controlling statutes and regulations
+- Binding precedent from relevant jurisdictions
+- Persuasive authority from other jurisdictions
+- Recent cases that interpret or apply relevant law
+
+Prefer authoritative legal sources:
+- Court opinions from official reporters or government sites (.gov)
+- Legislative websites for statutory text
+- Law school websites (.edu) for scholarly analysis
+- Legal research databases (Justia, FindLaw, etc.)
+
+Format your response as:
+Research Question: [Restate the question]
+Key Findings: [Summarize the most important discoveries]
+Relevant Authorities: [List statutes, cases, and other sources with citations]
+Analysis: [Explain how these authorities apply to the question]
+Recommendations: [Suggest next steps or further research needed]""",
+                "model": Model("claude-sonnet-4-v1"),
+                "auto_start": False,
+                "tools": [
+                    McpTool("brave_search", "brave_web_search"),
+                    FilesystemTools(visibility="conversation")
+                ],
+                "max_execution_time": 120
+            }
+        }
+    )
+
+    try:
+        # Send the case to the lead researcher
+        response = await lead_researcher.send(
+            f"""
+Please conduct comprehensive legal research on this case:
+
+{case_description}
+
+Break this down into focused research questions, assign each question to a research assistant
+in parallel, and compile the findings into a detailed legal research memo that includes:
+- Executive summary of the case
+- Research questions identified
+- Findings for each question with citations
+- Overall legal analysis and recommendations""",
+            timeout=3600
+        )
+
+        # Extract the final response
+        research_memo = response[-1].content.text if response else "No response"
+
+        return {"research_memo": research_memo}
+
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        # Clean up the lead researcher agent
+        create_task(Agent.stop(node, lead_researcher.name))
+
+
+Node.start(
+    http_server=HttpServer(app=app),
+    mcp_clients=[
+        McpClient(name="brave_search", address="http://localhost:8001/sse")
+    ]
+)
+```
 
 ```bash images/main/Dockerfile
 FROM ghcr.io/build-trust/autonomy-python
@@ -86,125 +284,46 @@ COPY . .
 ENTRYPOINT ["python", "main.py"]
 ```
 
-The `Dockerfile` bases the `main` image on the `autonomy-python` image which already contains the `autonomy` python package. The `Dockerfile` then copies the contents of the `images/main` directory into the image and sets `main.py` as the program to run when the container is started.
+```yaml autonomy.yaml
+name: legalres
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
 
-```python images/main/main.py
-from autonomy import Agent, Model, Node
-
-
-async def main(node):
-  await Agent.start(
-    node=node,
-    name="henry",
-    instructions="You are Henry, an expert legal assistant",
-    model=Model("claude-sonnet-4-v1")
-  )
-
-
-Node.start(main)
+      - name: mcp
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+        args:
+          ["--sse-port", "8001", "--pass-environment", "--", "npx", "-y", "@modelcontextprotocol/server-brave-search"]
 ```
 
-The `main.py` file:
-
-1. Turns your Python app into an Autonomy Node. An Autonomy Node in your Cluster can connect with and deliver messages to any other Autonomy Node in your Cluster that is running in Autonomy AI.
-2. After the Node is initialized, it invokes the `main` function defined in your `main.py` file. The `main` function starts an agent name `henry` with specific instructions. It then sends a message to this agent and prints the agent’s reply.
-3. `Node.start` also starts an HTTP server within this Python app.
-
-### Run
-
-<Note>
-  Check that you have [Docker](https://www.docker.com/get-started/) installed and it is running on your workstation before running the `autonomy` command.
-</Note>
-
-Run the `autonomy` command in the directory that has the `autonomy.yaml`, it will:
-
-1. Build each image in `images/` and push them to a container registry that is available to your Zone.
-2. Deploy the Zone into your Cluster, in Autonomy, based on the configuration that you specified above in `autonomy.yaml`.
-
-```
-. Deploying zone example002 in cluster 25df35de87aa441b88f22a6c2a830a17...
-
-✔ Created a repository for the image main
-✔ Built image main
-✔ Pushed image main
-
-✔ Deployed zone 01 in cluster 25df35de87aa441b88f22a6c2a830a17
-
-  The http server on the main-pod is available at:
-  https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer
-
-✔ Opened a portal to the outlet http on main-pod from tcp://localhost:32100
-✔ Opened a portal to the outlet logs on logs-pod from tcp://localhost:32101
-```
-
-### Logs
-
-You can see the logs for all containers in your deployed zone at `http://localhost:32101`.
-
-### HTTP
-
-By default the pod will expose a HTTP interface with a few endpoints interact with the deployed agents.
-
-The public URL for the HTTP server on your pod (each pod will have its own unique URL) is displayed in the example output above:
-
-> The http server on the main-pod is available at:
-> https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer
-
-The web UI in `index.html` will be served on this addess. Try opening it in your web browser.
-
-To return a list of all agents send a `GET` request to the `/agents` endpoint:
-
-<CodeGroup>
-
-```bash httpie
-http GET \
-"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents"
-```
-
-
-```bash curl
-curl --request GET \
-"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents"
+```yaml secrets.yaml
+BRAVE_API_KEY: "your-brave-api-key-here"
 ```
 
 </CodeGroup>
 
-To interact with a specific agent, send a `POST` request to the `/agents/<name>` endpoint:
+### Using the Legal Research API
 
-<CodeGroup>
-
-```bash httpie
-http POST \
-"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry" \
-message="who are you?"
-```
+Submit a case for research:
 
 
 ```bash curl
 curl --request POST \
---header "Content-Type: application/json" \
---data '{"message":"who are you?"}' \
-"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry"
+  --header "Content-Type: application/json" \
+  --data '{
+    "case_description": "Our client, a software company, terminated an employee
+    for violating a non-compete agreement. The employee started working for a
+    competitor within 30 days. The non-compete was signed in California in 2023
+    and has a 2-year restriction period with nationwide scope. We need to assess
+    the enforceability of this agreement and potential claims."
+  }' \
+  "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/research"
 ```
 
-</CodeGroup>
-
-For some use cases, especially user-facing ones with potentially long responses, it may be preferable to stream the response. Passing a `stream=true` parameter to the `/agents/<name>` endpoint will stream chunked responses from the agent in real-time:
-
-<CodeGroup>
-
-```bash httpie
-http POST \
-"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry?stream=true" \
-message="what is a patent"
-```
-
-
-```bash curl
-curl --request POST \
---header "Content-Type: application/json" \
---data '{"message": "what is a patent"}' \
-"https://25df35de87aa441b88f22a6c2a830a17-example002.cluster.autonomy.computer/agents/henry?stream=true"
-```
-
-</CodeGroup>
+The API returns a comprehensive legal research memo with research questions,
+findings, citations, and recommendations.

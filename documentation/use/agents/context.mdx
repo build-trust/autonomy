@@ -1,0 +1,263 @@
+---
+title: "Context"
+description: "How agents curate context at each turn."
+icon: "layer-group"
+---
+
+**Context** is the structured information than an agent gives its language
+model at each conversational turn.
+
+<img src="/agents/images/agent.png"
+  alt="An agent is a state machine that calls an LLM and tools, in a loop." />
+
+It includes system instructions, conversation history, and additional
+information that helps the model decide the agent's next step. Think of context
+as everything a model "sees" when making a decision about the next step an
+agent should take in its journey.
+
+Agents use **Context Templates** to build context.
+
+---
+
+## Default Context Template
+
+By default, agents use a context template with the following structure:
+
+### 1. System instructions
+
+The `instructions` that you provide `Agent.start(..., instructions="", ...)`
+become a system message that appears first in the context.
+
+### 2. Framework instructions
+
+Agent's provide a collection of built-in tools.
+Instructions to use these tools are automatically injected after the
+system instructions.
+
+- **Time tools** - Get current time in UTC or local format
+- **Filesystem tools** (if enabled) - Read, write, search files
+- **User input tool** (if enabled) - Pause and ask the user for clarification
+- **Subagent tools** (if configured) - Delegate work to specialized sub-agents
+
+### 3. Conversation history
+
+Messages from the current conversation, including:
+- System messages.
+- User messages.
+- Model responses.
+- Tool calls and their results.
+
+The agent retrieves this from [Memory](/agents/memory) to maintain conversational context.
+
+### 4. User provided tools
+
+You can provide an agent with specialized [Tools](/agents/tools) using
+`Agent.start(..., tools=[], ...)`. Instructions to use these tools are injected
+as the final piece of context.
+
+---
+
+## Customize Context
+
+You can customize how context is built using **Context Templates**.
+
+## Manage Sections
+
+Context templates provide methods to manage sections dynamically:
+
+```python
+
+section = template.get_section("section_name") # Get a section by name
+template.add_section(new_section, index=1) # Add a new section
+template.remove_section("section_name") # Remove a section
+section_names = template.get_section_names() # List all sections
+```
+
+---
+
+### Custom Sections
+
+Create your own section by implementing the section interface:
+
+```python images/main/main.py
+from autonomy.agents.context import ContextSection
+
+class CustomSection:
+  def __init__(self):
+    self.data_source = data_source
+  
+  async def get_messages(self, scope, conversation, params):
+    data = await self.data_source.get(scope, conversation)
+    
+    if data:
+      return [{
+        "role": "system",
+        "content": {
+          "text": f"Additional context: {data}",
+          "type": "text"
+        }
+      }]
+    
+    return []
+```
+
+### Add Dynamic Context
+
+Inject additional information into the context:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+from autonomy.agents.context import AdditionalContextSection
+
+# Cache for user preferences
+preferences_cache = {}
+
+async def provide_user_preferences(scope, conversation, params):
+  # Check cache first
+  if scope not in preferences_cache:
+    # Fetch from database only if not cached
+    preferences_cache[scope] = await database.fetch_user_preferences(scope)
+    # Example result: {"currency": "USD", "timezone": "America/New_York"}
+  
+  p = preferences_cache[scope]
+  
+  return [{
+    "role": "system",
+    "content": {
+      "text": f"User preferences: Currency={p['currency']}, Timezone={p['timezone']}",
+      "type": "text"
+    }
+  }]
+
+async def main(node):
+  agent = await Agent.start(
+    node=node,
+    name="shopper",
+    instructions="You are a personalized shopping assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+  
+  # Add section for user preferences to the agent's context template
+  agent.context_template.add_section(
+    AdditionalContextSection(name="user_preferences", provider_fn=provide_user_preferences),
+    index=1  # Insert after system instructions
+  )
+
+Node.start(main)
+```
+
+### Filter Conversation History
+
+Control which messages appear in context:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+class FilteredHistorySection:  
+  def __init__(self, memory):
+    self.memory = memory
+  
+  # Keep all non-tool messages, but only tool messages from last 10
+  async def get_messages(self, scope, conversation, params):
+    messages = await self.memory.get_messages_only(scope, conversation)
+    last_10_start = max(0, len(messages) - 10)
+    return [msg for idx, msg in enumerate(messages)
+            if msg.get("role") != "tool" or idx >= last_10_start]
+
+async def main(node):
+  agent = await Agent.start(
+    node=node,
+    name="assistant",
+    instructions="You are a helpful assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+  
+  memory = agent.context_template.get_section("conversation_history").memory
+  filtered_history_section = FilteredHistorySection(memory)
+  agent.context_template.remove_section("conversation_history")
+  agent.context_template.add_section(filtered_history_section)
+
+
+Node.start(main)
+```
+
+### Summarize Conversation History
+
+Compress long conversations to stay within token limits:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+class SummarizedHistorySection:  
+  def __init__(self, memory, summary_model):
+    self.memory = memory
+    self.summary_model = summary_model
+  
+  # Return summary if conversation is long, otherwise return recent messages
+  async def get_messages(self, scope, conversation, params):
+    messages = await self.memory.get_messages_only(scope, conversation)
+    
+    if len(messages) > 30:
+      # Generate summary using a model
+      summary = await self.summary_model.complete_chat([{
+        "role": "user",
+        "content": {
+          "text": f"Summarize this conversation:\n\n{messages}",
+          "type": "text"
+        }
+      }])
+      
+      # Return summary plus last 10 messages
+      return [{
+        "role": "system",
+        "content": {
+          "text": f"Conversation summary: {summary}",
+          "type": "text"
+        }
+      }] + messages[-10:]
+    
+    return messages
+
+async def main(node):
+  agent = await Agent.start(
+    node=node,
+    name="assistant",
+    instructions="You are a helpful assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+  
+  memory = agent.context_template.get_section("conversation_history").memory
+  summary_model = Model("nova-micro-v1")  # Use fast, cheap model for summaries
+  summarized_history_section = SummarizedHistorySection(memory, summary_model)
+  agent.context_template.remove_section("conversation_history")
+  agent.context_template.add_section(summarized_history_section)
+
+Node.start(main)
+```
+
+### Retrieval-Augmented Generation (RAG)
+
+You can also automatically inject search results into context but adding
+a section that searches a knowledge base of documents for recent messages in
+the conversation history.
+
+However, it is usually better to give an agent the ability to search the
+knowledge base as a tool. For complete documentation on creating knowledge bases
+and turning them into tools, see [Knowledge](/agents/knowledge).
+
+---
+
+## Context and Memory
+
+Context works closely with [Memory](/agents/memory):
+
+1. **Memory stores** all messages from conversations.
+2. **Context template decides** which messages to include.
+3. **Sections retrieve** messages from memory and format them.
+4. **Agent sends** the combined context to the model.
+
+The separation allows you to:
+- Store complete conversation history in memory.
+- Send only relevant context to the model.
+- Add dynamic information without modifying stored messages.
+- Implement features like filtering and summarization.

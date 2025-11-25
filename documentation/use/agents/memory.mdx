@@ -1,91 +1,162 @@
 ---
 title: "Memory"
-description: "Persistent memory for coherent, multi-turn interactions."
+description: "How agents remember their history of steps."
 icon: "memory"
-noindex: true
 ---
 
-`Memory` in the Autonomy Agents framework refers to the agent’s ability to persist conversational/contextual state across multiple turns. Rather than treating each prompt in isolation, memory lets the agent “remember” what’s been said or done previously: user preferences, earlier questions, the flow of dialogue, and anything else relevant to maintaining a coherent, multi-turn interaction. This makes conversation more natural, consistent, and contextually aware.
+**Memory** enables agents to maintain coherance over multiple-turns.
+Agents store a history of messages that include:
 
-## How the Example Works
+- System messages.
+- User messages.
+- Model responses.
+- Tool calls and their results.
 
-In the demo below, the agent is able to respond to a follow-up prompt ("What have I asked you before?") by recalling earlier user messages in the same conversation (“What is your name?”, “Where do you live?”).
+Memory works automatically. Behind the scenes, it uses a two-tier architecture
+with recent messages in fast in-memory storage and optional database persistence
+for durability.
 
-The example shows that you can manage multiple concurrent conversations by passing a conversation identifier: each distinct conversation ID has its own memory thread.
-
-Further, you can introduce a scope (e.g. per-user or per-customer) so that memory is isolated not just by conversation but also across user boundaries. This is useful in multi-user or shared-agent environments where you want to ensure one user's context doesn't leak into another’s.
-
-```
-> What is your name?
-
-(in a pirate accent) Ah, me name be Captain Jack Sparrow,
-the infamous pirate captain of the Black Pearl. 
-
-> Where do you live?
-
-(laughs) Ah, me home be the sea, matey. Me ship, the Black Pearl,
-be me abode. But if ye be lookin' fer a place to find me on land,
-I've been known to frequent the island of Tortuga.
-
-> What have I asked you before?
-
-(chuckles) Ye asked me what me name be, and then ye
-asked me where I live. That be the extent o' our conversation
-so far, savvy?
-
->
-```
-
-## Isolating conversations
-
-You can have multiple separate conversations with an agent at the same time by using a different `conversation` identifier for each one:
-
-<CodeGroup>
+---
 
 ```python
-await agent.send("What have I asked you before?", conversation="1")
+from autonomy import Agent, Model, Node
+
+async def main(node):
+  agent = await Agent.start(
+    node=node,
+    name="henry",
+    instructions="You are Henry, a legal research assistant",
+    model=Model("claude-sonnet-4-v1")
+  )
+
+Node.start(main)
 ```
 
-
-```bash httpie
-http POST \
-  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679" \
-  message="What have I asked you before" conversation=1
-```
-
-
-```bash curl
+```bash
+# First message - agent stores case details
 curl --request POST \
   --header "Content-Type: application/json" \
-  --data '{"message":"What have I asked you before?", "conversation": "1"}' \
-  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679"
-```
+  --data '{
+    "message":"I am working on Smith v. Johnson, a contract dispute",
+    "conversation": "case-123"
+  }' \
+  "https://19f13800-myapp.cluster.autonomy.computer/agents/henry"
 
-</CodeGroup>
-
-## Isolating conversations per user
-
-You can add an extra layer of isolation by using a unique `scope` identifier (like a customer ID) when conversation-level isolation alone doesn't meet your needs in multi-user environments:
-
-<CodeGroup>
-
-```python Autonomy SDK
-await agent.send("What is 56 divided by 27?", scope="user-1", conversation="1")
-```
-
-
-```bash httpie
-http POST \
-  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679" \
-  message="What have I asked you before" scope="user-1" conversation=1
-```
-
-
-```bash curl
+# Second message - agent recalls the case details
 curl --request POST \
   --header "Content-Type: application/json" \
-  --data '{"message":"What have I asked you before?", "scope": "user-1", "conversation": "1"}' \
-  "https://25df35de87aa441b88f22a6c2a830a17-example001.cluster.autonomy.computer/agents/ef48fd1c0b8f342ef12bf679"
+  --data '{
+    "message":"What case am I working on?",
+    "conversation": "case-123"
+  }' \
+  "https://19f13800-myapp.cluster.autonomy.computer/agents/henry"
+
+# Agent responds: "You are working on Smith v. Johnson, a contract dispute"
 ```
 
-</CodeGroup>
+The agent automatically:
+1. Stores each user message in memory.
+2. Stores its own responses in memory.
+3. Stores tool calls and results in memory.
+4. Retrieves relevant history when building context.
+
+---
+
+## Isolation
+
+### Isolated Conversations
+
+Each conversation has its own isolated memory. Use different conversation
+identifiers to maintain separate conversation histories:
+
+```python
+# Research on contract case
+await agent.send("Research breach of contract defenses", conversation="contract-case")
+
+# Research on tort case (completely separate memory)
+await agent.send("Research negligence elements", conversation="tort-case")
+
+# These conversations don't see each other's history
+await agent.send("What was I researching?", conversation="contract-case")
+# Agent only recalls the contract case research
+```
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"What have we discussed?", "conversation": "tort-case"}' \
+  "https://19f13800-myapp.cluster.autonomy.computer/agents/henry"
+```
+
+### Isolated Users (Scope)
+
+For multi-tenant applications, add a `scope` parameter to isolate memory
+across users:
+
+```python
+# Attorney Smith's case research
+await agent.send(
+  "I'm working on Smith v. Johnson, a contract dispute",
+  scope="attorney-smith",
+  conversation="case-research"
+)
+
+# Attorney Jones's case research (same conversation ID, different scope)
+await agent.send(
+  "I'm working on Davis v. Brown, a negligence case",
+  scope="attorney-jones",
+  conversation="case-research"
+)
+
+# Each attorney's memory is completely isolated
+await agent.send(
+  "What case am I working on?",
+  scope="attorney-smith",
+  conversation="case-research"
+)
+# Agent responds: "You're working on Smith v. Johnson, a contract dispute"
+```
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{
+    "message":"What case details did I provide?",
+    "scope": "attorney-smith",
+    "conversation": "case-research"
+  }' \
+  "https://19f13800-myapp.cluster.autonomy.computer/agents/henry"
+```
+
+### Isolated Agents
+
+Different agents have separate memory, even when serving the same user:
+
+```python
+# Two different legal assistants
+researcher = await Agent.start(node=node, name="henry", ...)
+drafter = await Agent.start(node=node, name="sarah", ...)
+
+# Same attorney and conversation ID, but separate memory
+await researcher.send("Research contracts", scope="attorney-123", conversation="work")
+await drafter.send("Draft a motion", scope="attorney-123", conversation="work")
+
+# Each agent only sees its own conversation history
+```
+
+---
+
+## Memory Limits
+
+By default, agents keep the last 100 messages or ~8,000 tokens in active
+memory (whichever limit is reached first). Older messages are automatically
+removed to stay within these limits. Messages are removed using
+FIFO (first in, first out) order - the oldest messages are removed first.
+
+---
+
+## Memory and Context
+
+Memory stores all conversation messages, but agents don't always send all
+messages to the model. The [Context](/agents/context) template determines
+which messages to included in calls to the model.

@@ -1,32 +1,37 @@
 ---
 title: "Tools"
 icon: "screwdriver-wrench"
-description: "Agents can invoke tools in Python or via MCP"
-mode: "wide"
-noindex: true
+description: "Give agents the ability to take actions."
 ---
 
-`Tools` are externally defined functions or services that an agent can call to extend its capabilities beyond pure language-model reasoning. `Tools` allow the agent to perform actions like looking things up on the web, getting the current time, querying APIs, or any arbitrary logic you build. They bridge the gap between what the model “knows” inherently and what it can do: you provide defined interfaces as either Python functions or MCP servers that the agent can use when needed, enabling more accurate, up-to-date, and actionable responses.
+**Tools** are functions that agents can call to take actions.
+
+
+
+extend their capabilities beyond pure language reasoning. Tools bridge the gap between what a model "knows" and what it can "do"—enabling agents to perform actions like getting the current time, querying APIs, searching the web, or executing custom business logic.
+
+When you provide tools to an agent, the model can decide when to use them based on the conversation context. The agent automatically handles tool invocation, processes results, and incorporates them into its responses.
+
+---
 
 ## Python Functions as Tools
 
-You can build your own custom tools in Python for your agents to call when needed. This feature allows unlimited tool possibilities because you can build a tool to do whatever you'd like.
-
-## How the Example Works
-
-The example defines a simple Python function `current_iso8601_utc_time()` that returns the current UTC time in ISO-8601 format. That function is wrapped as a Tool, then given to the agent (“Henry”) as part of its configuration. Because the tool is included, the agent can invoke it when asked for the current time.
-
-The setup shows two modes: purely local tools (Python functions) and tools via MCP (Model Context Protocol) servers. For example, “Henry” can use both the `current_iso8601_utc_time` Python tool and a web-search tool plugged in via MCP (e.g. `McpTool("brave_search", "brave_web_search")`).
-
-The example also shows how to configure the infrastructure: specifying the agent, model, tools list; how to start the node; how to wire up MCP clients so that external tool servers can be used.
-
-<Tip>
-  You can find all the code for this example [on Github](https://github.com/build-trust/autonomy/tree/main/examples/003).
-</Tip>
+The simplest way to create tools is to wrap Python functions. Any function can become a tool that your agent can call.
 
 ```python images/main/main.py
 from autonomy import Agent, Model, Node, Tool
 from datetime import datetime, UTC
+
+
+def get_weather(city: str) -> str:
+  """
+  Get the current weather for a city.
+  
+  Args:
+    city: The name of the city
+  """
+  # In a real app, this would call a weather API
+  return f"The weather in {city} is sunny and 72°F"
 
 
 def current_iso8601_utc_time():
@@ -40,9 +45,12 @@ async def main(node):
   await Agent.start(
     node=node,
     name="henry",
-    instructions="You are Henry, an expert legal assistant",
+    instructions="You are Henry, a helpful assistant",
     model=Model("claude-sonnet-4-v1"),
-    tools=[Tool(current_iso8601_utc_time)],
+    tools=[
+      Tool(get_weather),
+      Tool(current_iso8601_utc_time)
+    ]
   )
 
 
@@ -56,7 +64,7 @@ ENTRYPOINT ["python", "main.py"]
 ```
 
 ```yaml autonomy.yaml
-name: example003
+name: tools-example
 pods:
   - name: main-pod
     public: true
@@ -69,24 +77,38 @@ pods:
 
 ```bash httpie
 http POST \
-"https://25df35de87aa441b88f22a6c2a830a17-example003.cluster.autonomy.computer/agents/henry" \
-message="what is the current time"
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/henry" \
+message="What's the weather in San Francisco and what time is it?"
 ```
-
 
 ```bash curl
 curl --request POST \
 --header "Content-Type: application/json" \
---data '{ "message": "What is the current time?" }' \
-"https://25df35de87aa441b88f22a6c2a830a17-example003.cluster.autonomy.computer/agents/henry"
+--data '{"message":"What is the weather in San Francisco and what time is it?"}' \
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/henry"
 ```
 
 </CodeGroup>
 
-### Tools provided by MCP Servers
+**How it works:**
+- The `Tool()` wrapper converts your function into a tool specification
+- Docstrings become tool descriptions that help the model understand when to use the tool
+- Type hints define parameter types (converted to JSON schema)
+- Both sync and async functions are supported
+- The agent automatically decides when to call your tools
+
+---
+
+## MCP Tools
+
+**Model Context Protocol (MCP)** enables agents to use tools from external servers. MCP servers provide standardized interfaces to various services—web search, databases, APIs, and more.
+
+### Configure MCP Server
+
+Define MCP servers in your `autonomy.yaml`:
 
 ```yaml autonomy.yaml
-name: example006
+name: mcp-example
 pods:
   - name: main-pod
     public: true
@@ -103,26 +125,26 @@ pods:
            "npx", "-y", "@modelcontextprotocol/server-brave-search"]
 ```
 
+Store your API key in `secrets.yaml`:
+
 ```yaml secrets.yaml
-BRAVE_API_KEY: "YOUR KEY HERE"
+BRAVE_API_KEY: "YOUR_BRAVE_API_KEY_HERE"
 ```
 
-```bash images/main/Dockerfile
-FROM ghcr.io/build-trust/autonomy-python:latest
-COPY . .
-ENTRYPOINT ["python", "main.py"]
-```
+### Use MCP Tools
+
+Reference MCP server tools using `McpTool()`:
 
 ```python images/main/main.py
-from datetime import datetime
 from autonomy import Agent, Model, Node, McpTool, McpClient, Tool
+from datetime import datetime, UTC
 
 
 def current_iso8601_utc_time():
   """
   Returns the current UTC time in ISO 8601 format.
   """
-  return datetime.utcnow().isoformat() + "Z"
+  return datetime.now(UTC).isoformat() + "Z"
 
 
 async def main(node):
@@ -131,40 +153,278 @@ async def main(node):
     name="henry",
     instructions="""
       You are Henry, an expert legal assistant.
-
-      When you are given a question, decide if your response can be better
-      with a web search. If so, use the web search tool to improve your response.
+      
+      When answering questions, decide if a web search would improve your response.
+      If so, use the brave_web_search tool to find current information.
     """,
-    model=Model("claude-3-7-sonnet-v1"),
+    model=Model("claude-sonnet-4-v1"),
     tools=[
       McpTool("brave_search", "brave_web_search"),
-      Tool(current_iso8601_utc_time),
-    ],
+      Tool(current_iso8601_utc_time)
+    ]
   )
 
 
 Node.start(
   main,
   mcp_clients=[
-    McpClient(name="brave_search", address="http://localhost:8001/sse"),
-  ],
+    McpClient(name="brave_search", address="http://localhost:8001/sse")
+  ]
 )
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
 ```
 
 <CodeGroup>
 
 ```bash httpie
 http POST \
-"https://25df35de87aa441b88f22a6c2a830a17-example006.cluster.autonomy.computer/agents/henry" \
-message="Find links to cases currently in the US Supreme Court"
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/henry" \
+message="Find recent Supreme Court decisions on contract law"
 ```
-
 
 ```bash curl
 curl --request POST \
 --header "Content-Type: application/json" \
---data '{ "message": "Find links to cases currently in the US Supreme Court" }' \
-"https://25df35de87aa441b88f22a6c2a830a17-example006.cluster.autonomy.computer/agents/henry"
+--data '{"message":"Find recent Supreme Court decisions on contract law"}' \
+"https://CLUSTER-ZONE.cluster.autonomy.computer/agents/henry"
 ```
 
 </CodeGroup>
+
+The agent will use the `brave_web_search` tool to find current information and incorporate it into its response.
+
+---
+
+## Built-in Tools
+
+Agents automatically have access to several built-in tools:
+
+### Time Tools
+
+Always available without configuration:
+
+- **`get_current_time_utc`** - Get current time in UTC timezone
+- **`get_current_time`** - Get current time in a specific timezone (e.g., "America/New_York")
+
+```python
+await Agent.start(
+  node=node,
+  name="assistant",
+  instructions="You are a helpful assistant",
+  model=Model("claude-sonnet-4-v1")
+)
+# Agent can automatically use get_current_time_utc and get_current_time
+```
+
+### Human-in-the-Loop
+
+Enable interactive conversations where agents can pause and request user input. See [Human-in-the-loop](/agents/human-in-the-loop) for complete documentation on the `ask_user_for_input` tool.
+
+### Additional Built-in Tools
+
+- **Filesystem tools** - Read, write, and search files. See [Filesystem Tools](/agents/filesystem).
+- **Subagent tools** - Delegate work to specialized sub-agents. See [Subagents](/agents/subagents).
+
+---
+
+## Tool Factories (Advanced)
+
+**Tool Factories** enable you to create scope-aware tools that are instantiated per-user, per-conversation, or per-agent. This is essential for multi-tenant applications where tools need isolated resources.
+
+### When to Use Tool Factories
+
+Use tool factories when:
+- Tools need per-user or per-conversation state
+- Tools access user-specific resources (databases, files, APIs)
+- Tools require tenant isolation for security
+- Static tool instances can't be shared safely
+
+### Implement ToolFactory Protocol
+
+Create a class that implements the `create_tools()` method:
+
+```python
+from autonomy import Agent, Model, Node, Tool
+from autonomy.tools import ToolFactory
+from typing import Optional, List
+
+
+class DatabaseToolFactory(ToolFactory):
+  """
+  Creates tenant-isolated database tools.
+  
+  Each tenant gets their own database connection with isolated data access.
+  """
+  
+  def __init__(self, connection_string: str):
+    self.connection_string = connection_string
+  
+  def create_tools(
+    self,
+    scope: Optional[str],
+    conversation: Optional[str],
+    agent_name: Optional[str] = None
+  ) -> List:
+    """
+    Create database tools for a specific tenant.
+    
+    Args:
+      scope: Tenant/user identifier (e.g., "tenant-123", "user-alice")
+      conversation: Conversation identifier
+      agent_name: Agent name
+    
+    Returns:
+      List of Tool instances with tenant-specific database connections
+    """
+    # Create tenant-specific database connection
+    tenant_id = scope or "default"
+    db = Database(self.connection_string, tenant=tenant_id)
+    
+    def query_records(table: str, filter: str = ""):
+      """
+      Query records from a database table.
+      
+      Args:
+        table: Table name to query
+        filter: Optional SQL WHERE clause filter
+      """
+      return db.query(f"SELECT * FROM {table} WHERE {filter}" if filter else f"SELECT * FROM {table}")
+    
+    def insert_record(table: str, data: dict):
+      """
+      Insert a record into a database table.
+      
+      Args:
+        table: Table name
+        data: Record data as key-value pairs
+      """
+      return db.insert(table, data)
+    
+    return [
+      Tool(query_records),
+      Tool(insert_record)
+    ]
+
+
+async def main(node):
+  # Create factory instance
+  db_factory = DatabaseToolFactory("postgresql://localhost/mydb")
+  
+  await Agent.start(
+    node=node,
+    name="assistant",
+    instructions="You are a helpful assistant with database access",
+    model=Model("claude-sonnet-4-v1"),
+    tools=[db_factory]  # Pass factory, not individual tools
+  )
+
+
+Node.start(main)
+```
+
+**How it works:**
+1. You pass the factory instance to `tools=[db_factory]`
+2. The agent framework detects it implements `ToolFactory`
+3. For each conversation, the framework calls `create_tools(scope, conversation, agent_name)`
+4. You create tools with proper isolation based on the provided context
+5. Each user/conversation gets their own tool instances with isolated resources
+
+### Factory vs Static Tools
+
+**Static tools** (using `Tool(func)`):
+- Same instance shared across all users and conversations
+- Suitable for stateless operations (time, calculations, read-only APIs)
+- Simple and efficient
+
+**Factory tools** (using `ToolFactory`):
+- New instances created per-user/per-conversation
+- Suitable for stateful operations (databases, filesystems, user-specific APIs)
+- Provides tenant isolation and security
+
+---
+
+## How Tools Work
+
+### Tool Specification
+
+Tools are described to models using JSON schema format:
+
+```python
+{
+  "type": "function",
+  "function": {
+    "name": "get_weather",
+    "description": "Get the current weather for a city",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "city": {
+          "type": "string",
+          "description": "The name of the city"
+        }
+      },
+      "required": ["city"]
+    }
+  }
+}
+```
+
+The `Tool()` wrapper automatically generates this specification from:
+- Function name → tool name
+- Docstring → description
+- Type hints → parameter types
+- Required vs optional parameters
+
+### Type Coercion
+
+The framework automatically coerces JSON values to match Python type hints:
+
+```python
+def calculate(amount: int, rate: float, active: bool):
+  """Calculate something with typed parameters"""
+  return amount * rate if active else 0
+
+# JSON: {"amount": "100", "rate": "1.5", "active": "true"}
+# Coerced to: {"amount": 100, "rate": 1.5, "active": True}
+```
+
+Supported coercions:
+- `str` → `int`, `float`, `bool`
+- String booleans: "true"/"false", "yes"/"no", "1"/"0"
+- Numbers to strings
+- Empty/null handling
+
+### Error Handling
+
+Tool errors are captured and returned as strings to the model:
+
+```python
+def divide(a: int, b: int) -> float:
+  """Divide two numbers"""
+  return a / b
+
+# If b=0: "Tool execution failed: ZeroDivisionError: division by zero"
+```
+
+The agent can see the error and decide how to respond—retry with different parameters, ask for clarification, or explain the problem to the user.
+
+### Size Limits
+
+- JSON arguments: 1MB maximum
+- Tool responses: No hard limit, but keep responses concise for model context efficiency
+
+---
+
+## Related Documentation
+
+- **[Human-in-the-loop](/agents/human-in-the-loop)** - Enable agents to pause and request user input
+- **[Filesystem Tools](/agents/filesystem)** - Complete filesystem operations with configurable visibility
+- **[Subagents](/agents/subagents)** - Hierarchical agent coordination and delegation
+- **[Knowledge](/agents/knowledge)** - Search document collections with KnowledgeTool
+- **[Context](/agents/context)** - How tool specifications are included in context
+- **[Memory](/agents/memory)** - How tool calls and results are stored

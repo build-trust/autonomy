@@ -1,0 +1,688 @@
+---
+title: "Subagents"
+icon: "users"
+description: "Give agents the ability to start subagents and delegate work to them."
+---
+
+Agents can create many **sub-agents** that concentrate on sub-tasks.
+
+**Parallel agents**, each focused on a small part, achieve the overall goal faster.
+They are also more successful because the context that they provide to their
+language model contains much less noise
+Each subagent can have its own instructions, model, and tools, allowing you to build sophisticated multi-agent systems.
+
+Subagents are ideal for:
+- Breaking complex tasks into specialized subtasks.
+- Parallel processing of independent work items.
+- Role-based delegation (researcher, writer, reviewer).
+- Isolating concerns with specialized tools and expertise.
+
+---
+
+## Quick Start
+
+Define subagents in your agent configuration:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="manager",
+    instructions="""
+    You are a project manager who coordinates research and writing tasks.
+    
+    When given a topic:
+    1. Delegate research to the researcher subagent
+    2. Delegate writing to the writer subagent
+    3. Combine their work into a final response
+    """,
+    model=Model("claude-sonnet-4-v1"),
+    subagents={
+      "researcher": {
+        "instructions": "You are a researcher who finds accurate information on topics.",
+        "model": Model("claude-sonnet-4-v1"),
+        "auto_start": True
+      },
+      "writer": {
+        "instructions": "You are a writer who creates clear, engaging content.",
+        "model": Model("nova-pro-v1"),
+        "auto_start": True
+      }
+    }
+  )
+
+
+Node.start(main)
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: subagent-example
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+The parent agent can now delegate tasks:
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"Write a report about quantum computing"}' \
+  "https://CLUSTER-ZONE.cluster.autonomy.computer/agents/manager"
+```
+
+The manager agent will:
+1. Delegate research to the `researcher` subagent
+2. Delegate writing to the `writer` subagent
+3. Combine their responses
+
+---
+
+## Configuring Subagents
+
+Subagents are defined in the `subagents` parameter:
+
+```python
+await Agent.start(
+  node=node,
+  name="parent",
+  instructions="You coordinate work across specialized subagents",
+  model=Model("claude-sonnet-4-v1"),
+  subagents={
+    "role_name": {
+      "instructions": "Subagent instructions",
+      "model": Model("model-name"),
+      "auto_start": True,  # Optional: start automatically on first use
+      "tools": [...],      # Optional: subagent-specific tools
+      "max_iterations": 10,  # Optional: override default
+      "max_execution_time": 60,  # Optional: timeout in seconds
+      "enable_long_term_memory": True,  # Optional: persistent memory
+    }
+  }
+)
+```
+
+### Configuration Options
+
+**Required:**
+- **`instructions`** - System instructions defining the subagent's role and behavior
+
+**Optional:**
+- **`model`** - Model to use. Defaults to parent's model if not specified
+- **`auto_start`** - Automatically start subagent on first delegation. Default: `False`
+- **`tools`** - List of tools available to the subagent
+- **`max_iterations`** - Maximum reasoning loops. Default: 10
+- **`max_execution_time`** - Timeout in seconds. Default: 60
+- **`max_messages_in_short_term_memory`** - Message limit. Default: 100
+- **`max_tokens_in_short_term_memory`** - Token limit. Default: 8000
+- **`enable_long_term_memory`** - Enable persistent memory. Default: `False`
+- **`runner_filter`** - Filter for distributing subagents across nodes
+
+---
+
+## Subagent Tools
+
+When you configure subagents, the parent agent automatically gets access to delegation tools:
+
+### start_subagent
+
+Manually start a subagent:
+
+```python
+# Agent calls: start_subagent(role="researcher")
+# Returns: Confirmation that subagent started
+```
+
+**Not usually needed** - use `auto_start: True` instead.
+
+### delegate_to_subagent
+
+Delegate a single task to a subagent:
+
+```python
+# Agent calls: delegate_to_subagent(
+#   role="researcher",
+#   task="Research the history of quantum computing"
+# )
+# Returns: The researcher's response
+```
+
+**Parameters:**
+- `role` - The subagent role name (must match a key in `subagents` config)
+- `task` - Task description or prompt to send to the subagent
+
+### delegate_to_subagents_parallel
+
+Delegate multiple tasks to parallel subagent instances:
+
+```python
+# Agent calls: delegate_to_subagents_parallel(
+#   role="researcher",
+#   tasks=[
+#     "Research quantum computing history",
+#     "Research quantum computing applications",
+#     "Research quantum computing challenges"
+#   ]
+# )
+# Returns: Array of results in the same order as tasks
+```
+
+**Parameters:**
+- `role` - The subagent role name
+- `tasks` - List of task descriptions
+
+Creates one subagent instance per task and processes them concurrently.
+
+### list_subagents
+
+List configured and running subagents:
+
+```python
+# Agent calls: list_subagents()
+# Returns: Information about configured and running subagents
+```
+
+### stop_subagent
+
+Stop a running subagent:
+
+```python
+# Agent calls: stop_subagent(role="researcher")
+# Returns: Confirmation that subagent stopped
+```
+
+**Rarely needed** - subagents are automatically cleaned up when the parent stops.
+
+---
+
+## Delegation Patterns
+
+### Sequential Delegation
+
+Delegate tasks one at a time in sequence:
+
+```python
+await Agent.start(
+  node=node,
+  name="sequential_manager",
+  instructions="""
+  When given a topic to analyze:
+  1. First, delegate to 'researcher' to gather information
+  2. Then, delegate to 'analyst' to analyze the research
+  3. Finally, delegate to 'writer' to create a report
+  
+  Use delegate_to_subagent for each step, waiting for results before proceeding.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  subagents={
+    "researcher": {
+      "instructions": "Research topics thoroughly and provide factual information",
+      "auto_start": True
+    },
+    "analyst": {
+      "instructions": "Analyze research data and identify key insights",
+      "auto_start": True
+    },
+    "writer": {
+      "instructions": "Write clear, engaging reports from analysis",
+      "auto_start": True
+    }
+  }
+)
+```
+
+### Parallel Delegation
+
+Process multiple independent tasks concurrently:
+
+```python
+await Agent.start(
+  node=node,
+  name="parallel_manager",
+  instructions="""
+  When given a list of topics to research:
+  1. Use delegate_to_subagents_parallel to research all topics at once
+  2. Each topic will be processed by a separate researcher instance
+  3. Combine the results into a comprehensive summary
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  subagents={
+    "researcher": {
+      "instructions": "Research a single topic and provide detailed findings",
+      "model": Model("claude-sonnet-4-v1"),
+      "auto_start": True
+    }
+  }
+)
+```
+
+**Example usage:**
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"Research these topics: quantum computing, AI ethics, blockchain"}' \
+  "https://CLUSTER-ZONE.cluster.autonomy.computer/agents/parallel_manager"
+```
+
+The manager will create 3 researcher instances and process all topics concurrently.
+
+### Role-Based Delegation
+
+Different subagents for different expertise:
+
+```python
+await Agent.start(
+  node=node,
+  name="content_manager",
+  instructions="""
+  You coordinate content creation:
+  - Use 'researcher' for fact-finding
+  - Use 'writer' for drafting content
+  - Use 'editor' for reviewing and improving content
+  - Use 'fact_checker' to verify claims
+  
+  Choose the right subagent based on the task at hand.
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  subagents={
+    "researcher": {
+      "instructions": "Research topics and gather accurate information",
+      "tools": [McpTool("brave_search", "brave_web_search")],
+      "auto_start": True
+    },
+    "writer": {
+      "instructions": "Write engaging, clear content",
+      "model": Model("claude-sonnet-4-v1"),
+      "auto_start": True
+    },
+    "editor": {
+      "instructions": "Review content for clarity, grammar, and style",
+      "model": Model("claude-sonnet-4-v1"),
+      "auto_start": True
+    },
+    "fact_checker": {
+      "instructions": "Verify factual claims and identify unsupported statements",
+      "tools": [McpTool("brave_search", "brave_web_search")],
+      "auto_start": True
+    }
+  }
+)
+```
+
+---
+
+## Auto-Start Behavior
+
+Subagents can start automatically on first use:
+
+```python
+subagents={
+  "researcher": {
+    "instructions": "You are a researcher",
+    "auto_start": True  # Starts automatically when first delegated to
+  }
+}
+```
+
+**With `auto_start: True`:**
+- Parent calls `delegate_to_subagent(role="researcher", ...)`
+- Framework automatically starts the subagent if not running
+- Task is delegated
+- No need to explicitly call `start_subagent()`
+
+**With `auto_start: False` (default):**
+- Parent must explicitly call `start_subagent(role="researcher")` first
+- Then can call `delegate_to_subagent(role="researcher", ...)`
+- Useful when you want explicit control over lifecycle
+
+**Recommendation:** Use `auto_start: True` for simpler agent logic.
+
+---
+
+## Parallel Processing
+
+Use `delegate_to_subagents_parallel` to process multiple tasks concurrently:
+
+```python
+await Agent.start(
+  node=node,
+  name="batch_processor",
+  instructions="""
+  When given a batch of documents to analyze:
+  1. Use delegate_to_subagents_parallel with the 'analyzer' role
+  2. Pass all documents as separate tasks
+  3. Each document will be analyzed by a separate instance
+  4. Results come back in the same order as the input
+  """,
+  model=Model("claude-sonnet-4-v1"),
+  subagents={
+    "analyzer": {
+      "instructions": "Analyze a single document and extract key insights",
+      "model": Model("claude-sonnet-4-v1")
+    }
+  }
+)
+```
+
+**Example:**
+
+```python
+# Parent agent calls:
+delegate_to_subagents_parallel(
+  role="analyzer",
+  tasks=[
+    "Analyze document 1: [content...]",
+    "Analyze document 2: [content...]",
+    "Analyze document 3: [content...]"
+  ]
+)
+
+# Framework:
+# 1. Creates 3 analyzer instances
+# 2. Processes all 3 documents concurrently
+# 3. Returns array of results: [result1, result2, result3]
+```
+
+**Benefits:**
+- Dramatically faster for independent tasks
+- Scales to dozens of concurrent tasks
+- Automatic cleanup after completion
+
+---
+
+## Runner Distribution
+
+For true parallelism across multiple nodes, use runner filters:
+
+```python
+await Agent.start(
+  node=node,
+  name="distributed_manager",
+  instructions="Coordinate work across distributed workers",
+  model=Model("claude-sonnet-4-v1"),
+  subagent_runner_filter="role=worker",  # Apply to all subagents
+  subagents={
+    "worker": {
+      "instructions": "Process tasks assigned to you",
+      "runner_filter": "role=worker,cpu=high"  # Override for this subagent
+    }
+  }
+)
+```
+
+**Runner filters:**
+- Select which nodes can run subagents
+- Enable distribution across multiple machines
+- Format: `"key1=value1,key2=value2"`
+- Subagent-specific `runner_filter` overrides agent-level `subagent_runner_filter`
+
+**Configure runners in `autonomy.yaml`:**
+
+```yaml
+name: distributed-app
+pods:
+  - name: manager-pod
+    public: true
+    containers:
+      - name: manager
+        image: manager
+
+  - name: worker-pod
+    replicas: 3  # Multiple worker nodes
+    labels:
+      role: worker
+      cpu: high
+    containers:
+      - name: worker
+        image: worker
+```
+
+---
+
+## Subagent Memory
+
+Subagents have their own isolated memory:
+
+```python
+subagents={
+  "researcher": {
+    "instructions": "You are a researcher",
+    "enable_long_term_memory": True,  # Enable persistent memory
+    "max_messages_in_short_term_memory": 50,  # Limit short-term memory
+    "max_tokens_in_short_term_memory": 4000
+  }
+}
+```
+
+**Memory behavior:**
+- Each subagent instance has its own conversation history
+- Parent agent's memory is separate from subagent memory
+- Subagents don't see parent's conversation history
+- Results are returned to parent as tool responses
+
+**For parallel subagents:**
+- Each parallel instance has completely isolated memory
+- Instance A cannot see Instance B's history
+- Clean slate for each task
+
+---
+
+## Complete Example
+
+Build a research and writing system with parallel processing:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node, McpClient, McpTool
+
+
+async def main(node):
+  await Agent.start(
+    node=node,
+    name="research_coordinator",
+    instructions="""
+    You coordinate research and writing projects.
+    
+    When given a topic with multiple aspects:
+    1. Break it into specific research questions
+    2. Use delegate_to_subagents_parallel to research all questions at once
+    3. Synthesize the research findings
+    4. Delegate to the writer to create a comprehensive article
+    5. Return the final article
+    """,
+    model=Model("claude-sonnet-4-v1"),
+    subagents={
+      "researcher": {
+        "instructions": """
+        You are a thorough researcher who finds accurate, current information.
+        Use the brave_web_search tool to find reliable sources.
+        Cite your sources in your responses.
+        """,
+        "model": Model("claude-sonnet-4-v1"),
+        "tools": [McpTool("brave_search", "brave_web_search")],
+        "auto_start": True,
+        "max_execution_time": 120
+      },
+      "writer": {
+        "instructions": """
+        You are a skilled writer who creates clear, engaging articles.
+        Structure content with clear headings and logical flow.
+        Write in an accessible but authoritative tone.
+        """,
+        "model": Model("claude-sonnet-4-v1"),
+        "auto_start": True,
+        "max_execution_time": 90
+      }
+    }
+  )
+
+
+Node.start(
+  main,
+  mcp_clients=[
+    McpClient(name="brave_search", address="http://localhost:8001/sse")
+  ]
+)
+```
+
+```yaml autonomy.yaml
+name: research-system
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+      
+      - name: mcp
+        image: ghcr.io/build-trust/mcp-proxy
+        env:
+          - BRAVE_API_KEY: secrets.BRAVE_API_KEY
+        args:
+          ["--sse-port", "8001", "--pass-environment", "--",
+           "npx", "-y", "@modelcontextprotocol/server-brave-search"]
+```
+
+```yaml secrets.yaml
+BRAVE_API_KEY: "YOUR_BRAVE_API_KEY"
+```
+
+```bash
+# Use the system
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message":"Write a comprehensive article about renewable energy, covering solar, wind, and hydroelectric power"}' \
+  "https://CLUSTER-ZONE.cluster.autonomy.computer/agents/research_coordinator"
+```
+
+**What happens:**
+1. Coordinator breaks topic into 3 research questions
+2. Creates 3 researcher instances that work in parallel
+3. Each researcher uses web search to find current information
+4. Coordinator synthesizes findings
+5. Delegates to writer for final article
+6. Returns polished, well-researched article
+
+---
+
+## Best Practices
+
+### Choose Appropriate Models
+
+Use different models for different subagent roles:
+
+```python
+subagents={
+  "quick_classifier": {
+    "instructions": "Classify inputs into categories",
+    "model": Model("nova-micro-v1")  # Fast, cheap for simple tasks
+  },
+  "deep_analyzer": {
+    "instructions": "Perform deep analysis",
+    "model": Model("claude-opus-4-v1")  # Powerful for complex reasoning
+  }
+}
+```
+
+### Set Appropriate Timeouts
+
+```python
+subagents={
+  "web_searcher": {
+    "instructions": "Search the web for information",
+    "max_execution_time": 120,  # Web searches may take longer
+    "tools": [McpTool("brave_search", "brave_web_search")]
+  },
+  "calculator": {
+    "instructions": "Perform calculations",
+    "max_execution_time": 30  # Quick operations
+  }
+}
+```
+
+### Use auto_start for Simplicity
+
+```python
+subagents={
+  "helper": {
+    "instructions": "Help with tasks",
+    "auto_start": True  # Simpler agent logic
+  }
+}
+```
+
+### Provide Clear Instructions
+
+Each subagent should have focused, clear instructions:
+
+```python
+subagents={
+  "researcher": {
+    "instructions": """
+    You are a researcher focused solely on gathering information.
+    
+    Your job:
+    - Find accurate, current information on the given topic
+    - Use web search when needed
+    - Cite sources
+    - DO NOT write articles or summaries
+    - DO NOT provide opinions, only facts
+    """
+  }
+}
+```
+
+### Handle Errors Gracefully
+
+Include error handling guidance in parent agent instructions:
+
+```python
+instructions="""
+You coordinate subagents. If a subagent task fails:
+1. Check if the error can be resolved (e.g., retry with different parameters)
+2. Try an alternative approach if available
+3. If all attempts fail, inform the user clearly about what went wrong
+"""
+```
+
+---
+
+## When to Use Subagents
+
+**Use subagents when:**
+- Tasks require different expertise or roles
+- You need parallel processing of independent items
+- Different tasks need different models or tools
+- You want to isolate concerns for cleaner architecture
+
+**Don't use subagents when:**
+- A single agent can handle the task
+- Tasks are tightly coupled and need shared context
+- The coordination overhead outweighs the benefits
+- Simple sequential processing is sufficient
+
+**Alternatives:**
+- **Single agent with tools** - For simpler workflows
+- **Multiple independent agents** - For completely separate services
+- **Custom tools** - For deterministic operations that don't need reasoning
+
+---
+
+## Related Documentation
+
+- **[Tools](/agents/tools)** - Overview of all tool types including subagent tools
+- **[Memory](/agents/memory)** - How subagent memory isolation works
+- **[Models](/agents/models)** - Choosing appropriate models for subagents
+- **[Context](/agents/context)** - How subagents build their own context
