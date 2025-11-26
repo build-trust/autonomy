@@ -1,0 +1,69 @@
+---
+title: "How to think about managing context in Autonomy"
+description: "A Q&A with Mrinal, who answered questions about the importance of context engineering, how context engineering is different than prompt engineering, best practices and customer success stories."
+---
+
+## How do you define context engineering, and how is it different from prompt engineering?
+
+Agents autonomously work towards a goal by invoking an LLM and a collection of tools – **in a loop**. Depending on the goal, this loop can run for thousands of iterations.
+
+In each iteration, the agent gives its LLM some inputs. The LLM uses these inputs (its context) to decide the next action the agent should take. Too much, too little, or irrelevant information in the context can cause the LLM to steer the agent away from its goal by selecting the wrong next action.
+
+**Context engineering is the set of techniques that an agent uses to programmatically select the inputs to give its LLM in each iteration of the agent’s loop.**
+
+An agent quickly accumulates large amounts of information: the history of all messages, results of every tool call, data retrieved from files, and more. Much of this information was only relevant for actions the agent needed to take many iterations ago. Effective agents are engineered to select a minimal set of inputs, in each iteration, that help their LLM decide on a next action that maximizes the likelihood of reaching their goal.  
+
+**How context engineering is different from prompt engineering:**
+
+Prompt engineering is the process of writing effective instructions for LLMs. It focuses on refining the natural language text of primarily the system prompt and is typically done manually by a developer when an assistant or agent is being defined in code.
+
+The key difference is that context engineering is about _dynamic_ _programmatic selection of inputs_, at runtime, during every iteration in the agent’s loop.
+
+## Can you share a specific customer example of where context engineering has been especially useful?
+
+### Customer success story 1
+
+One customer has used Autonomy to build AI agents for pharmaceutical companies, to automate complex document preparation steps that are crucial for drug approval. These agents turn 2-week long manual tasks into 2-minute automations, this cuts months from a drug’s time-to-market.
+
+One such task is to create cross-reference links between several hundred regulatory submission documents. Their first approach loaded full documents into context.  This didn’t work, the error rate was too high. When there are too many tokens in context, LLMs struggle to focus.
+
+The successful approach introduced parallel sub‑agents, one per document. Each sub‑agent was given only a lightweight catalog of the other documents and simple tools to just‑in‑time search and read specific sections of any document. This worked extremely well because each sub-agent only passed a very small amount of information to its LLM, in each iteration.
+
+### Customer success story 2
+
+One customer has used Autonomy to build voice-based AI agents that conduct first-round recruitment interviews. These interviews can stretch up to an hour, the agent asks a range of detailed questions and receives nuanced answers.
+
+As the interview progresses, the agent quickly accumulates a large amount of conversational history. Their first prototype kept all that information in context. After some time, the agent often lost focus, asked redundant questions, and missed important details.
+
+They fixed this by making the agent compress older parts of the conversation and summarize key points into _memory notes_. By passing concise information to its LLM in each iteration, the interviewer agent maintains focus and a consistent line of questioning over long conversations.
+
+## What are the benefits of getting context engineering right?
+
+Getting context engineering right makes agents dramatically more reliable and efficient. An agent that manages the inputs to its LLM well stays focused on its goal. This leads to a much higher success rate, faster responses, and reduced costs.
+
+In practice, it’s the difference between an agent that drifts off course after a few iterations and one that can autonomously run for thousands of iterations. Good context-engineering enables agents that can handle longer, more complex tasks.
+
+## What types of data go into building context? For what purposes, and how should that data be formatted and retrieved?
+
+The context that an agent passes to its LLM, in each iteration, can include several types of inputs.
+
+The first essential part is the system prompt, instructions that define the agent’s role, goal, and guidelines on how it should behave. It’s also helpful to include few-shot examples that show the desired input-output behavior.
+
+Then there’s a list of available tools, each with descriptions and examples that help the LLM decide when and how to use them. Often there is also domain specific knowledge that could be helpful to the agent and has been retrieved ahead of time.
+
+During runtime, the agent accumulates a lot more information: the full history of messages, results from all tool calls, outputs of sub-agents, memory notes, data retrieved from the internet, files, databases, etc.
+
+It’s helpful to provide LLMs with good metadata and structure. Simple markdown or structured JSON are good for formatting inputs.
+
+Just-in-time retrieval is highly effective compared to ahead-of-time retrieval. Instead of pre-fetching all relevant data up front, it is much better to give agents references (like links or file paths). This keeps context small and the agent can dynamically load data that it needs, into context, by invoking tools.
+
+## What best practices do you recommend for implementing context engineering for AI agents in practice?
+
+In each iteration, an agent should give its LLM the smallest set of inputs that are dense with information that can help the LLM choose the right next action.
+
+Here are some useful techniques:
+
+- **Notes:** condense older conversations, tool outputs, or message history into short internal notes so all the detail is not in active context.
+- **Just-in-time retrieval:** Instead of pre-fetching all relevant data up front, it is much better to give agents references (like links or file paths). This keeps context small and the agent can dynamically load data that it needs, into context, by invoking tools.
+- **Curate the active context:** Remove any information that was only temporarily relevant. For example the results of tool calls like web searches tend to be relevant for only short spans.
+- **Parallel sub-agents:** In Autonomy, it’s easy to spin up tens of thousands, or even millions of sub-agents that run in parallel. Each sub-agent operates with a limited context and focuses on a smaller, well-defined part of the overall task. The parent agent doesn’t need to manage the working context of these subtasks, it only consumes their results. This technique is extremely effective for long running agents.
