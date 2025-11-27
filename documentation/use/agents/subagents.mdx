@@ -4,12 +4,13 @@ icon: "users"
 description: "Give agents the ability to start subagents and delegate work to them."
 ---
 
-Agents can create many **sub-agents** that concentrate on sub-tasks.
+**Subagents** are specialized agents that concentrate on sub-tasks delegated by 
+a parent agent.
 
-**Parallel agents**, each focused on a small part, achieve the overall goal faster.
+Parallel subagents, each focused on a small part, achieve the overall goal faster.
 They are also more successful because the context that they provide to their
-language model contains much less noise
-Each subagent can have its own instructions, model, and tools, allowing you to build sophisticated multi-agent systems.
+language model contains much less noise. Each subagent has its own instructions, 
+model, and tools.
 
 Subagents are ideal for:
 - Breaking complex tasks into specialized subtasks.
@@ -74,7 +75,7 @@ pods:
         image: main
 ```
 
-The parent agent can now delegate tasks:
+The parent agent delegates tasks:
 
 ```bash
 curl --request POST \
@@ -138,7 +139,7 @@ When you configure subagents, the parent agent automatically gets access to dele
 
 ### start_subagent
 
-Manually start a subagent:
+Start a subagent manually:
 
 ```python
 # Agent calls: start_subagent(role="researcher")
@@ -223,7 +224,7 @@ await Agent.start(
   2. Then, delegate to 'analyst' to analyze the research
   3. Finally, delegate to 'writer' to create a report
   
-  Use delegate_to_subagent for each step, waiting for results before proceeding.
+  Use delegate_to_subagent for each step. Wait for results before proceeding.
   """,
   model=Model("claude-sonnet-4-v1"),
   subagents={
@@ -277,7 +278,7 @@ curl --request POST \
   "https://CLUSTER-ZONE.cluster.autonomy.computer/agents/parallel_manager"
 ```
 
-The manager will create 3 researcher instances and process all topics concurrently.
+The manager creates 3 researcher instances and processes all topics concurrently.
 
 ### Role-Based Delegation
 
@@ -326,7 +327,7 @@ await Agent.start(
 
 ## Auto-Start Behavior
 
-Subagents can start automatically on first use:
+Subagents start automatically on first use:
 
 ```python
 subagents={
@@ -354,7 +355,7 @@ subagents={
 
 ## Parallel Processing
 
-Use `delegate_to_subagents_parallel` to process multiple tasks concurrently:
+Process multiple tasks concurrently with `delegate_to_subagents_parallel`:
 
 ```python
 await Agent.start(
@@ -390,14 +391,12 @@ delegate_to_subagents_parallel(
   ]
 )
 
-# Framework:
-# 1. Creates 3 analyzer instances
-# 2. Processes all 3 documents concurrently
-# 3. Returns array of results: [result1, result2, result3]
+# Framework creates 3 analyzer instances, processes all 3 documents concurrently,
+# and returns array of results: [result1, result2, result3]
 ```
 
 **Benefits:**
-- Dramatically faster for independent tasks
+- Independent tasks complete dramatically faster
 - Scales to dozens of concurrent tasks
 - Automatic cleanup after completion
 
@@ -424,8 +423,8 @@ await Agent.start(
 ```
 
 **Runner filters:**
-- Select which nodes can run subagents
-- Enable distribution across multiple machines
+- Select which nodes run subagents
+- Distribute work across multiple machines
 - Format: `"key1=value1,key2=value2"`
 - Subagent-specific `runner_filter` overrides agent-level `subagent_runner_filter`
 
@@ -468,15 +467,15 @@ subagents={
 ```
 
 **Memory behavior:**
-- Each subagent instance has its own conversation history
+- Each subagent instance maintains its own conversation history
 - Parent agent's memory is separate from subagent memory
 - Subagents don't see parent's conversation history
-- Results are returned to parent as tool responses
+- Results return to parent as tool responses
 
 **For parallel subagents:**
 - Each parallel instance has completely isolated memory
-- Instance A cannot see Instance B's history
-- Clean slate for each task
+- Instance A does not see Instance B's history
+- Each task starts with a clean slate
 
 ---
 
@@ -569,7 +568,7 @@ curl --request POST \
 
 **What happens:**
 1. Coordinator breaks topic into 3 research questions
-2. Creates 3 researcher instances that work in parallel
+2. Creates 3 researcher instances working in parallel
 3. Each researcher uses web search to find current information
 4. Coordinator synthesizes findings
 5. Delegates to writer for final article
@@ -646,7 +645,7 @@ subagents={
 
 ### Handle Errors Gracefully
 
-Include error handling guidance in parent agent instructions:
+Provide error handling guidance in parent agent instructions:
 
 ```python
 instructions="""
