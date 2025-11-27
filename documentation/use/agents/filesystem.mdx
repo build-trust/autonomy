@@ -4,12 +4,12 @@ icon: "folder-tree"
 description: "Give agents the ability to read, write, and search files."
 ---
 
-**Filesystem Tools** provide agents with dedicated file system 
-to save plans and take notes. Agents can read, write, search, and manage files.
-Your application can control whether agents share files across all users,
-per-tenant, or per-conversation.
+**Filesystem Tools** give agents a dedicated filesystem to save plans and take notes.
 
-Filesystem tools are essential for agents that need to:
+Agents read, write, search, and manage files with configurable isolation across 
+users and conversations.
+
+Use filesystem tools for agents that:
 - Store and retrieve user-specific data.
 - Process documents and files.
 - Maintain conversation-specific context.
@@ -48,7 +48,7 @@ curl --request POST \
   "http://localhost:8000/agents/assistant"
 ```
 
-Files are isolated per conversation by default:
+Files isolate per conversation by default:
 - Conversation `chat-1`: `/tmp/agent-files/assistant/default/chat-1/notes.txt`
 - Conversation `chat-2`: `/tmp/agent-files/assistant/default/chat-2/notes.txt`
 
@@ -56,7 +56,7 @@ Files are isolated per conversation by default:
 
 ## Visibility Levels
 
-Visibility controls how files are isolated between users and conversations. Choose the level that matches your security and sharing requirements.
+Visibility controls file isolation between users and conversations. Choose the level that matches your security and sharing requirements.
 
 ### Conversation (Default)
 
@@ -79,8 +79,8 @@ User Bob, Chat 1:   /tmp/agent-files/assistant/user-bob/chat-1/notes.txt
 ```
 
 **Use when:**
-- Users should not see each other's files
-- Different conversations should be completely isolated
+- Users must not see each other's files
+- Different conversations must be completely isolated
 - Maximum security is required
 - Building chat applications with ephemeral workspaces
 
@@ -129,8 +129,8 @@ All users, all conversations: /tmp/agent-files/assistant/notes.txt
 ```
 
 **Use when:**
-- Agent needs access to shared configuration or templates
-- All users should see the same reference files
+- Agent accesses shared configuration or templates
+- All users see the same reference files
 - Building knowledge base or documentation assistants
 - Single-tenant applications
 
@@ -156,7 +156,7 @@ tools=[FilesystemTools(visibility="all")]
 
 ## Available Operations
 
-Filesystem tools provide comprehensive file operations:
+Filesystem tools provide these operations:
 
 ### List Directory
 
@@ -253,7 +253,7 @@ Move or rename a file:
 
 ### Factory Mode (Recommended)
 
-In factory mode, you pass `FilesystemTools()` to the agent, and the framework automatically creates the right instance with proper isolation:
+In factory mode, pass `FilesystemTools()` to the agent. The framework automatically creates the right instance with proper isolation:
 
 ```python
 from autonomy import Agent, Model, Node
@@ -282,7 +282,7 @@ The framework automatically:
 
 ### Direct Mode
 
-In direct mode, you specify the full context upfront:
+Direct mode specifies the full context upfront:
 
 ```python
 from autonomy.tools import FilesystemTools, Tool
@@ -326,7 +326,7 @@ tools=[FilesystemTools(
 
 ### Multiple Filesystem Instances
 
-Provide different filesystem access with different visibility:
+Provide different filesystem access with different visibility levels:
 
 ```python
 from autonomy.tools import FilesystemTools
@@ -341,7 +341,7 @@ await Agent.start(
   node=node,
   name="assistant",
   instructions="""
-  You have access to two filesystems:
+  You access two filesystems:
   - Shared templates in the agent filesystem
   - Your personal workspace in the scope filesystem
   """,
@@ -368,7 +368,7 @@ async def main(node):
     instructions="""
     You are a document assistant that helps users manage their files.
     
-    You can:
+    Capabilities:
     - List files in their workspace
     - Read and write documents
     - Search for content across files
