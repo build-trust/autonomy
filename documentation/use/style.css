@@ -1,4 +1,44 @@
-/* Override content area styles for left-aligned layout */
+/* ==========================================================================
+   LAYOUT CUSTOMIZATIONS
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Navbar Spacing
+   -------------------------------------------------------------------------- */
+
+/* Add gap at the top of navbar above logo and links */
+#navbar {
+    padding-top: 0.2rem !important;
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar Layout & Sizing
+   -------------------------------------------------------------------------- */
+
+/* Sidebar width, positioning, and spacing */
+#sidebar-content {
+    width: 18rem !important;
+    padding-top: 0.5rem !important;
+}
+
+/* Sidebar layout container spacing */
+.almond-layout {
+    padding-top: 0.5rem !important;
+}
+
+/* --------------------------------------------------------------------------
+   Content Area Layout (Left-Aligned)
+   -------------------------------------------------------------------------- */
+
+/* Adjust content container for wider sidebar */
+#content-container {
+    margin-left: 18rem !important;
+}
+
+/* Adjust the content container left margin for large screens */
+.lg\:ml-\[16\.5rem\] {
+    margin-left: 18rem !important;
+}
 
 /* Override the centered content layout */
 .peer.is-center ~ .peer-\[\.is-center\]\:max-w-3xl {
@@ -37,9 +77,27 @@
     margin-right: auto !important;
 }
 
+/* --------------------------------------------------------------------------
+   Increase gap on the right edge
+   -------------------------------------------------------------------------- */
+
+/* Add right margin to the outer flex container to show more black background */
+.almond-layout > .flex.rounded-2xl {
+    margin-right: 0.5rem !important;
+}
+
+/* ==========================================================================
+   VISUAL STYLING
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Code Block Styling
+   -------------------------------------------------------------------------- */
+
 /* Override code block background to grey */
 pre.shiki,
-.code-block-background {
+.code-block-background,
+.bg-codeblock {
     background-color: #09090b !important;
 }
 
@@ -49,13 +107,11 @@ html.dark .code-block-background {
     background-color: #09090b !important;
 }
 
-/* Ensure code block container has grey background */
-.bg-codeblock {
-    background-color: #09090b !important;
-}
+/* --------------------------------------------------------------------------
+   Scrollbar Styling
+   -------------------------------------------------------------------------- */
 
-/* Style scrollbars to be less prominent */
-/* Webkit browsers (Chrome, Safari, Edge) */
+/* Global scrollbar styles - Webkit browsers (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -74,7 +130,7 @@ html.dark .code-block-background {
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Firefox */
+/* Global scrollbar styles - Firefox */
 * {
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
@@ -85,7 +141,7 @@ body {
     overflow: overlay;
 }
 
-/* Hide sidebar scrollbar until hover - Webkit */
+/* Left sidebar navigation scrollbar (hidden until hover) - Webkit */
 #navigation-items::-webkit-scrollbar {
     width: 6px !important;
 }
@@ -103,7 +159,7 @@ body {
     background: rgba(255, 255, 255, 0.15) !important;
 }
 
-/* Hide sidebar scrollbar until hover - Firefox */
+/* Left sidebar navigation scrollbar (hidden until hover) - Firefox */
 #navigation-items {
     scrollbar-width: none !important;
 }
@@ -113,7 +169,7 @@ body {
     scrollbar-color: rgba(255, 255, 255, 0.08) transparent !important;
 }
 
-/* Hide right sidebar table of contents scrollbar until hover - Webkit */
+/* Right sidebar table of contents scrollbar (hidden until hover) - Webkit */
 #table-of-contents::-webkit-scrollbar {
     width: 6px !important;
 }
@@ -131,7 +187,7 @@ body {
     background: rgba(255, 255, 255, 0.15) !important;
 }
 
-/* Hide right sidebar table of contents scrollbar until hover - Firefox */
+/* Right sidebar table of contents scrollbar (hidden until hover) - Firefox */
 #table-of-contents {
     scrollbar-width: none !important;
 }
