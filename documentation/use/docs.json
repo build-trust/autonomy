@@ -7,7 +7,7 @@
     "light": "#f54a00",
     "dark": "#f54a00"
   },
-  "favicon": "/logo/favicon.png",
+  "favicon": "/logo/icon-black.svg",
   "appearance": {
     "default": "dark",
     "strict": true
@@ -52,7 +52,7 @@
     "links": [
       {
         "label": "Autonomy Website",
-        "icon": "earth",
+        "icon": "/logo/icon-white.svg",
         "href": "https://autonomy.computer"
       },
       {
