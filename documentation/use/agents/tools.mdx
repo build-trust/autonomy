@@ -4,19 +4,16 @@ icon: "screwdriver-wrench"
 description: "Give agents the ability to take actions."
 ---
 
-**Tools** are functions that agents can call to take actions.
+**Tools** are functions that agents invoke to take actions and gather information.
 
-
-
-extend their capabilities beyond pure language reasoning. Tools bridge the gap between what a model "knows" and what it can "do"—enabling agents to perform actions like getting the current time, querying APIs, searching the web, or executing custom business logic.
-
-When you provide tools to an agent, the model can decide when to use them based on the conversation context. The agent automatically handles tool invocation, processes results, and incorporates them into its responses.
+In each iteration of an agent's loop, the model returns the next steps as tool calls.
+The agent invokes these tools, gathers their responses, and continues its loop.
 
 ---
 
 ## Python Functions as Tools
 
-The simplest way to create tools is to wrap Python functions. Any function can become a tool that your agent can call.
+Wrap Python functions to create tools. Any function becomes a tool that your agent invokes.
 
 ```python images/main/main.py
 from autonomy import Agent, Model, Node, Tool
@@ -90,18 +87,13 @@ curl --request POST \
 
 </CodeGroup>
 
-**How it works:**
-- The `Tool()` wrapper converts your function into a tool specification
-- Docstrings become tool descriptions that help the model understand when to use the tool
-- Type hints define parameter types (converted to JSON schema)
-- Both sync and async functions are supported
-- The agent automatically decides when to call your tools
+The `Tool()` wrapper converts your function into a tool specification. Docstrings become tool descriptions that help the model understand when to use the tool. Type hints define parameter types (converted to JSON schema). Both sync and async functions are supported.
 
 ---
 
 ## MCP Tools
 
-**Model Context Protocol (MCP)** enables agents to use tools from external servers. MCP servers provide standardized interfaces to various services—web search, databases, APIs, and more.
+**Model Context Protocol (MCP)** provides agents with tools from external servers. MCP servers expose standardized interfaces to services like web search, databases, and APIs.
 
 ### Configure MCP Server
 
@@ -202,7 +194,7 @@ The agent will use the `brave_web_search` tool to find current information and i
 
 ## Built-in Tools
 
-Agents automatically have access to several built-in tools:
+Agents have access to several built-in tools:
 
 ### Time Tools
 
@@ -223,7 +215,7 @@ await Agent.start(
 
 ### Human-in-the-Loop
 
-Enable interactive conversations where agents can pause and request user input. See [Human-in-the-loop](/agents/human-in-the-loop) for complete documentation on the `ask_user_for_input` tool.
+Agents pause and request user input during interactive conversations. See [Human-in-the-loop](/agents/human-in-the-loop) for complete documentation on the `ask_user_for_input` tool.
 
 ### Additional Built-in Tools
 
@@ -234,7 +226,7 @@ Enable interactive conversations where agents can pause and request user input. 
 
 ## Tool Factories (Advanced)
 
-**Tool Factories** enable you to create scope-aware tools that are instantiated per-user, per-conversation, or per-agent. This is essential for multi-tenant applications where tools need isolated resources.
+**Tool Factories** create scope-aware tools that are instantiated per-user, per-conversation, or per-agent. This is essential for multi-tenant applications where tools need isolated resources.
 
 ### When to Use Tool Factories
 
@@ -327,12 +319,7 @@ async def main(node):
 Node.start(main)
 ```
 
-**How it works:**
-1. You pass the factory instance to `tools=[db_factory]`
-2. The agent framework detects it implements `ToolFactory`
-3. For each conversation, the framework calls `create_tools(scope, conversation, agent_name)`
-4. You create tools with proper isolation based on the provided context
-5. Each user/conversation gets their own tool instances with isolated resources
+The agent framework detects the factory implements `ToolFactory`. For each conversation, the framework calls `create_tools(scope, conversation, agent_name)`. You create tools with proper isolation based on the provided context. Each user/conversation gets their own tool instances with isolated resources.
 
 ### Factory vs Static Tools
 
@@ -382,7 +369,7 @@ The `Tool()` wrapper automatically generates this specification from:
 
 ### Type Coercion
 
-The framework automatically coerces JSON values to match Python type hints:
+The framework coerces JSON values to match Python type hints:
 
 ```python
 def calculate(amount: int, rate: float, active: bool):
@@ -411,7 +398,7 @@ def divide(a: int, b: int) -> float:
 # If b=0: "Tool execution failed: ZeroDivisionError: division by zero"
 ```
 
-The agent can see the error and decide how to respond—retry with different parameters, ask for clarification, or explain the problem to the user.
+The agent sees the error and decides how to respond—retry with different parameters, ask for clarification, or explain the problem to the user.
 
 ### Size Limits
 
