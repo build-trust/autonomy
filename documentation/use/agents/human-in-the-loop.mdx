@@ -4,16 +4,18 @@ icon: "user"
 description: "Enable agents to pause and request input from users."
 ---
 
-**Human-in-the-loop** interactions allow agents to pause their execution and
-request clarification or additional information from users. This enables more
-interactive and dynamic conversations where agents can gather the specific details
+**Human-in-the-loop** pauses agent execution to request clarification or 
+additional information from users.
+
+This enables interactive conversations where agents gather the specific details
 they need to complete tasks effectively.
 
 ---
 
 ## Ask User for Input
 
-The `ask_user_for_input` tool enables agents to pause and request clarification during a conversation. When enabled, agents can decide when they need more information and ask users directly.
+The `ask_user_for_input` tool pauses agents to request clarification during a
+conversation. Agents decide when they need more information and ask users directly.
 
 ### Enable the Tool
 
@@ -59,7 +61,7 @@ pods:
 
 ## How It Works
 
-When an agent calls `ask_user_for_input`:
+When an agent invokes `ask_user_for_input`:
 
 1. **Agent pauses** - The agent's state transitions to `"waiting_for_input"`
 2. **Question is returned** - The streaming response completes with the agent's question
@@ -131,7 +133,7 @@ curl --request POST \
 
 ### Write Clear Instructions
 
-Guide your agent on when to ask for input:
+Guide your agent when to ask for input:
 
 ```python
 await Agent.start(
@@ -154,7 +156,7 @@ await Agent.start(
 
 ### Handle Multi-Step Workflows
 
-Agents can ask multiple questions to gather all necessary information:
+Agents ask multiple questions to gather all necessary information:
 
 ```python
 await Agent.start(
@@ -227,7 +229,7 @@ Node.start(main)
 
 ### Streaming Responses
 
-When using `stream=true`, check the `phase` field to detect when the agent is waiting:
+When using `stream=true`, check the `phase` field to detect when the agent waits:
 
 ```javascript
 const response = await fetch('/agents/assistant?stream=true', {
@@ -292,7 +294,7 @@ if data.get('phase') == 'waiting_for_input':
 
 ### Waiting State
 
-When an agent calls `ask_user_for_input`:
+When an agent invokes `ask_user_for_input`:
 - **Phase**: `"waiting_for_input"`
 - **Message**: The agent's question
 - **Turn**: The conversation remains on the same turn
