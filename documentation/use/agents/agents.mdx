@@ -13,7 +13,7 @@ tools, and gather responses. This cycle continues until the goal is accomplished
 and there are no more tool calls needed.
 
 <img src="/agents/images/agent.png"
-  alt="An agent is a state machine that calls an LLM and tools, in a loop." />
+  alt="Flowchart showing the agent loop: (1) Build context from instructions, memory, and tools, (2) Send context to language model, (3) Receive tool calls from model, (4) Execute tools and gather responses, (5) Repeat until goal is achieved or no more tool calls are needed." />
 
 In each iteration of its loop, an agent invokes a [model](/agents/models)
 to understand information, it has gathered in its [context](/agents/context) so
