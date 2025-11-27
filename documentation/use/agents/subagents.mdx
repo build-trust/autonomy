@@ -655,26 +655,3 @@ You coordinate subagents. If a subagent task fails:
 3. If all attempts fail, inform the user clearly about what went wrong
 """
 ```
-
----
-
-## When to Use Subagents
-
-**Use subagents when:**
-- Tasks require different expertise or roles
-- You need parallel processing of independent items
-- Different tasks need different models or tools
-- You want to isolate concerns for cleaner architecture
-
-**Don't use subagents when:**
-- A single agent can handle the task
-- Tasks are tightly coupled and need shared context
-- The coordination overhead outweighs the benefits
-- Simple sequential processing is sufficient
-
-**Alternatives:**
-- **Single agent with tools** - For simpler workflows
-- **Multiple independent agents** - For completely separate services
-- **Custom tools** - For deterministic operations that don't need reasoning
-
-
