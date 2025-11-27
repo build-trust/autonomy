@@ -27,8 +27,8 @@ across many users and [curate context](/agents/context) for agents
 working on long and complex tasks. They also provide you with a foundation
 to operate tools that are necessary for **deep work**.
 
-Agents can invoke [python functions as tools](/tools#python-functions-as-tools),
-or call tools provided by [MCP servers](/tools#mcp-tools). They can access a
+Agents can invoke [python functions as tools](/agents/tools#python-functions-as-tools),
+or call tools provided by [MCP servers](/agents/tools#mcp-tools). They can access a
 [dedicated file system](/agents/filesystem) to save plans and take notes. Agents
 can also create many [sub-agents](/agents/subagents) that concentrate on sub-tasks.
 Parallel agents, each focused on a small part, achieve the overall goal faster.
@@ -57,7 +57,7 @@ Node.start(main)
 ```
 
 Once an agent is running, you can send messages to it using
-the [built-in HTTP API](/programming-interfaces#built-in-apis).
+the [built-in HTTP API](/applications/programming-interfaces#built-in-apis).
 
 ```bash curl
 curl --request POST \
@@ -66,7 +66,7 @@ curl --request POST \
   "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/henry"
 ```
 
-For longer responses, use the [streaming API](/programming-interfaces#built-in-apis)
+For longer responses, use the [streaming API](/applications/programming-interfaces#built-in-apis)
 to receive chunks as they're generated:
 
 ```bash curl
