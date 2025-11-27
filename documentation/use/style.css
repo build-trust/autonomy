@@ -85,16 +85,58 @@ body {
     overflow: overlay;
 }
 
-/* Specific styling for the sidebar scrollbar */
-aside::-webkit-scrollbar {
-    width: 6px;
+/* Hide sidebar scrollbar until hover - Webkit */
+#navigation-items::-webkit-scrollbar {
+    width: 6px !important;
 }
 
-aside::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.08);
+#navigation-items::-webkit-scrollbar-thumb {
+    background: transparent !important;
     border-radius: 3px;
 }
 
-aside::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.15);
+#navigation-items:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+#navigation-items:hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Hide sidebar scrollbar until hover - Firefox */
+#navigation-items {
+    scrollbar-width: none !important;
+}
+
+#navigation-items:hover {
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent !important;
+}
+
+/* Hide right sidebar table of contents scrollbar until hover - Webkit */
+#table-of-contents::-webkit-scrollbar {
+    width: 6px !important;
+}
+
+#table-of-contents::-webkit-scrollbar-thumb {
+    background: transparent !important;
+    border-radius: 3px;
+}
+
+#table-of-contents:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+#table-of-contents:hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Hide right sidebar table of contents scrollbar until hover - Firefox */
+#table-of-contents {
+    scrollbar-width: none !important;
+}
+
+#table-of-contents:hover {
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent !important;
 }
