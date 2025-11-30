@@ -10,3 +10,4 @@ target
 .repl
 htmlcov
 .coverage
+node_modules
