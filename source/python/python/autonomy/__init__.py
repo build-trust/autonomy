@@ -1,4 +1,15 @@
-from .agents import Agent, AgentReference, HttpServer, NodeDep, WebSocketNodeDep, Repl, ConversationResponse
+from .agents import (
+  Agent,
+  AgentReference,
+  HttpServer,
+  NodeDep,
+  WebSocketNodeDep,
+  Repl,
+  ConversationResponse,
+  VoiceConfig,
+  ContextSection,
+  AdditionalContextSection,
+)
 from .evals import Eval, Metric, TestCase, TestOk, TestError
 from .logs import (
   info,
@@ -11,7 +22,7 @@ from .logs import (
   InfoContext,
   DebugContext,
 )
-from .models import Model, Voice
+from .models import Model
 from .nodes import (
   Node,
   Mailbox,
@@ -29,6 +40,9 @@ from .clusters import Cluster, Zone
 from .memory import Memory
 from .tools import McpTool, Tool, FilesystemTools, ToolFactory
 from .knowledge import (
+  Knowledge,
+  KnowledgeProvider,
+  KnowledgeAggregator,
   UnsearchableKnowledge,
   SearchableKnowledge,
   NoopKnowledge,
@@ -77,6 +91,8 @@ __all__ = [
   "WebSocketNodeDep",
   "Repl",
   "ConversationResponse",
+  "ContextSection",
+  "AdditionalContextSection",
   # from .autonomy_in_rust_for_python
   "RustMailbox",
   "McpClient",
@@ -99,7 +115,7 @@ __all__ = [
   "DebugContext",
   # from .models
   "Model",
-  "Voice",
+  "VoiceConfig",
   # from .nodes
   "Node",
   "RemoteNode",

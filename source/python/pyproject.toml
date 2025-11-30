@@ -25,7 +25,6 @@ dependencies = [
   "websockets>=13.0",
   "pypdfium2>=4.30",
   "filetype>=1.2.0",
-  "webrtcvad>=2.0.10",
   "setuptools>=80.9.0",
 ]
 

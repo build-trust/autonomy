@@ -48,8 +48,7 @@ from ..helpers.validate_address import validate_address
 from ..logs import get_logger
 from ..memory.memory import Memory
 from ..models.model import Model
-from ..models.voice import Voice
-from ..models.voice_model import VoiceModel
+from .voice import VoiceConfig
 from ..nodes.node import Node
 from ..tools.protocol import InvokableTool
 
@@ -86,48 +85,29 @@ logger = get_logger("agent")
 
 
 # =============================================================================
-# AGENT VOICE MODEL REGISTRY
+# AGENT VOICE CONFIG REGISTRY
 # =============================================================================
 
-# Global registry mapping agent names to their Voice configurations
+# Global registry mapping agent names to their VoiceConfig
 # This enables the HTTP server to access voice config for each agent
-_agent_voices: Dict[str, Voice] = {}
-
-# Legacy registry for VoiceModel (deprecated, for backwards compatibility)
-_agent_voice_models: Dict[str, VoiceModel] = {}
+_agent_voice_configs: Dict[str, VoiceConfig] = {}
 
 
-def _register_agent_voice(name: str, voice: Optional[Voice]) -> None:
+def _register_agent_voice_config(name: str, config: Optional[VoiceConfig]) -> None:
   """Register a voice configuration for an agent."""
-  if voice is not None:
-    _agent_voices[name] = voice
+  if config is not None:
+    _agent_voice_configs[name] = config
+    logger.debug(f"Registered voice config for agent '{name}'")
 
 
-def _unregister_agent_voice(name: str) -> None:
+def _unregister_agent_voice_config(name: str) -> None:
   """Unregister a voice configuration for an agent."""
-  _agent_voices.pop(name, None)
+  _agent_voice_configs.pop(name, None)
 
 
-def get_agent_voice(name: str) -> Optional[Voice]:
+def get_agent_voice_config(name: str) -> Optional[VoiceConfig]:
   """Get the voice configuration for an agent by name."""
-  return _agent_voices.get(name)
-
-
-# Legacy functions (deprecated, for backwards compatibility)
-def _register_agent_voice_model(name: str, voice_model: Optional[VoiceModel]) -> None:
-  """Register a voice model for an agent. DEPRECATED: Use _register_agent_voice instead."""
-  if voice_model is not None:
-    _agent_voice_models[name] = voice_model
-
-
-def _unregister_agent_voice_model(name: str) -> None:
-  """Unregister a voice model for an agent. DEPRECATED: Use _unregister_agent_voice instead."""
-  _agent_voice_models.pop(name, None)
-
-
-def get_agent_voice_model(name: str) -> Optional[VoiceModel]:
-  """Get the voice model for an agent by name. DEPRECATED: Use get_agent_voice instead."""
-  return _agent_voice_models.get(name)
+  return _agent_voice_configs.get(name)
 
 
 # =============================================================================
@@ -214,8 +194,7 @@ class AgentConfig(TypedDict):
   instructions: str
   name: NotRequired[str]
   model: NotRequired[Model]
-  voice: NotRequired[Voice]
-  voice_model: NotRequired[VoiceModel]  # Deprecated, use 'voice' instead
+  voice: NotRequired[VoiceConfig]
   tools: NotRequired[List]
   context_template: NotRequired[ContextTemplate]
   max_iterations: NotRequired[int]
@@ -936,8 +915,7 @@ class Agent:
     subagent_configs: Optional[Dict[str, SubagentConfig]] = None,
     parent_agent_name: Optional[str] = None,
     context_template: Optional[ContextTemplate] = None,
-    voice: Optional[Voice] = None,
-    voice_model: Optional[VoiceModel] = None,  # Deprecated, use 'voice' instead
+    voice: Optional[VoiceConfig] = None,
     enable_ask_for_user_input: bool = False,
     enable_filesystem: bool = False,
     filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
@@ -949,7 +927,10 @@ class Agent:
     self.name = name
     self.model = model
     self.voice = voice
-    self.voice_model = voice_model  # Deprecated, use 'voice' instead
+
+    # Register voice config for HTTP server access
+    if voice is not None:
+      _register_agent_voice_config(name, voice)
 
     self.memory = memory
     memory.set_instructions(system_message(instructions))
@@ -1801,8 +1782,7 @@ class Agent:
       name: Name of the agent to stop
     """
     # Unregister the voice configuration when stopping the agent
-    _unregister_agent_voice(name)
-    _unregister_agent_voice_model(name)  # Legacy cleanup
+    _unregister_agent_voice_config(name)
     await node.stop_worker(name)
 
   @staticmethod
@@ -1811,8 +1791,7 @@ class Agent:
     instructions: str,
     name: Optional[str] = None,
     model: Optional[Model] = None,
-    voice: Optional[Voice] = None,
-    voice_model: Optional[VoiceModel] = None,  # Deprecated, use 'voice' instead
+    voice: Optional[VoiceConfig] = None,
     tools: Optional[List] = None,
     context_template: Optional[ContextTemplate] = None,
     max_iterations: Optional[int] = None,
@@ -1837,8 +1816,7 @@ class Agent:
       instructions: System instructions defining agent behavior
       name: Unique agent name (auto-generated if None)
       model: LLM to use (defaults to claude-sonnet-4-v1)
-      voice: Optional Voice configuration for voice I/O (STT/TTS settings)
-      voice_model: DEPRECATED - Use 'voice' instead. Optional VoiceModel for real-time voice conversations
+      voice: Optional VoiceConfig for Voice Interface pattern
       tools: List of tools and/or tool factories. Can contain:
         - InvokableTool instances (static, shared across all scopes)
         - ToolFactory instances (create scope-specific tools automatically)
@@ -1885,7 +1863,6 @@ class Agent:
       instructions,
       model,
       voice,
-      voice_model,
       tools,
       context_template,
       max_iterations,
@@ -2044,7 +2021,6 @@ class Agent:
     subagent_runner_filter = config.get("subagent_runner_filter")
     exposed_as = config.get("exposed_as")
     voice = config.get("voice")
-    voice_model = config.get("voice_model")  # Legacy support
 
     # Delegate to existing start() method
     return await Agent.start(
@@ -2053,7 +2029,6 @@ class Agent:
       name=name,
       model=model,
       voice=voice,
-      voice_model=voice_model,
       tools=tools,
       context_template=context_template,
       max_iterations=max_iterations,
@@ -2152,8 +2127,7 @@ class Agent:
     name: str,
     instructions: str,
     model: Model,
-    voice: Optional[Voice],
-    voice_model: Optional[VoiceModel],
+    voice: Optional[VoiceConfig],
     tools: Optional[List],
     context_template: Optional[ContextTemplate],
     max_iterations: Optional[int],
@@ -2179,8 +2153,7 @@ class Agent:
       name: Unique agent name
       instructions: System instructions defining agent behavior
       model: LLM to use for reasoning
-      voice: Optional Voice configuration for voice I/O (STT/TTS settings)
-      voice_model: DEPRECATED - Optional VoiceModel for real-time voice conversations
+      voice: Optional VoiceConfig for Voice Interface pattern
       tools: List of tools and/or tool factories
       context_template: Optional custom context template for organizing model input
       max_iterations: Maximum state machine iterations
@@ -2241,6 +2214,11 @@ class Agent:
       enable_long_term_memory=enable_long_term_memory,
     )
     await memory.initialize_database()
+
+    # Register voice config immediately so HTTP server can access it
+    # This must happen before start_spawner since the agent_creator is deferred
+    if voice is not None:
+      _register_agent_voice_config(name, voice)
 
     def agent_creator(scope: Optional[str], conversation: Optional[str]):
       """
@@ -2325,8 +2303,6 @@ class Agent:
           kwargs["context_template"] = context_template
         if voice is not None:
           kwargs["voice"] = voice
-        if voice_model is not None:
-          kwargs["voice_model"] = voice_model
         if enable_ask_for_user_input:
           kwargs["enable_ask_for_user_input"] = enable_ask_for_user_input
         if enable_filesystem:
@@ -2376,10 +2352,6 @@ class Agent:
 
     await node.start_spawner(name, agent_creator, key_extractor, None, exposed_as)
     logger.debug(f"Successfully started agent {name}")
-
-    # Register the voice configuration for HTTP endpoint access
-    _register_agent_voice(name, voice)
-    _register_agent_voice_model(name, voice_model)  # Legacy support
 
     return AgentReference(name, node, exposed_as)
 
