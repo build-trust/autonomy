@@ -1,0 +1,9 @@
+name: multiapp
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: ui
+        image: ui
+      - name: api
+        image: api
