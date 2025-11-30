@@ -17,8 +17,7 @@ document chunks based on semantic similarity.
 Create a searchable knowledge base and give an agent access to it as a tool:
 
 ```python
-from autonomy import Agent, Model, Node
-from autonomy.knowledge import Knowledge, KnowledgeTool
+from autonomy import Agent, Knowledge, KnowledgeTool, Model, Node
 
 async def main(node):
   # Create searchable knowledge base
@@ -141,7 +140,7 @@ knowledge = Knowledge(
 Stores everything in memory. Simple but not persistent:
 
 ```python
-from autonomy.knowledge import Knowledge, InMemory
+from autonomy import InMemory, Knowledge
 
 knowledge = Knowledge(name="docs", searchable=True, storage=InMemory())
 ```
@@ -151,7 +150,7 @@ knowledge = Knowledge(name="docs", searchable=True, storage=InMemory())
 For persistent storage across restarts:
 
 ```python
-from autonomy.knowledge import Knowledge, Database
+from autonomy import Database, Knowledge
 
 # Initialize database connection
 db = await Database.from_environment()
@@ -165,7 +164,7 @@ knowledge = Knowledge(name="docs", searchable=True, storage=db)
 Give agents explicit control over when to search:
 
 ```python
-from autonomy.knowledge import KnowledgeTool
+from autonomy import KnowledgeTool
 
 await Agent.start(
   node=node,

@@ -22,8 +22,7 @@ Use filesystem tools for agents that:
 Add filesystem tools to your agent with default (conversation-level) isolation:
 
 ```python images/main/main.py
-from autonomy import Agent, Model, Node
-from autonomy.tools import FilesystemTools
+from autonomy import Agent, FilesystemTools, Model, Node
 
 
 async def main(node):
@@ -256,8 +255,8 @@ Move or rename a file:
 In factory mode, pass `FilesystemTools()` to the agent. The framework automatically creates the right instance with proper isolation:
 
 ```python
-from autonomy import Agent, Model, Node
-from autonomy.tools import FilesystemTools
+```python images/main/main.py
+from autonomy import Agent, FilesystemTools, Model, Node
 
 
 async def main(node):
@@ -285,7 +284,7 @@ The framework automatically:
 Direct mode specifies the full context upfront:
 
 ```python
-from autonomy.tools import FilesystemTools, Tool
+from autonomy import FilesystemTools, Tool
 
 # Create instance with specific context
 fs = FilesystemTools(
@@ -329,7 +328,7 @@ tools=[FilesystemTools(
 Provide different filesystem access with different visibility levels:
 
 ```python
-from autonomy.tools import FilesystemTools
+from autonomy import FilesystemTools
 
 # Shared templates (all users can read)
 templates_fs = FilesystemTools(visibility="agent")
@@ -357,8 +356,7 @@ await Agent.start(
 Build a document assistant with user-specific workspaces:
 
 ```python images/main/main.py
-from autonomy import Agent, Model, Node
-from autonomy.tools import FilesystemTools
+from autonomy import Agent, FilesystemTools, Model, Node
 
 
 async def main(node):

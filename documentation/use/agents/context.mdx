@@ -80,7 +80,7 @@ section_names = template.get_section_names() # List all sections
 Create your own section by implementing the section interface:
 
 ```python images/main/main.py
-from autonomy.agents.context import ContextSection
+from autonomy import ContextSection
 
 class CustomSection:
   def __init__(self):
@@ -106,8 +106,7 @@ class CustomSection:
 Inject additional information into the context:
 
 ```python images/main/main.py
-from autonomy import Agent, Model, Node
-from autonomy.agents.context import AdditionalContextSection
+from autonomy import AdditionalContextSection, Agent, Model, Node
 
 # Cache for user preferences
 preferences_cache = {}
