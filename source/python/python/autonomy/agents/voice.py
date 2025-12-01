@@ -549,6 +549,12 @@ class VoiceSession:
     self.is_responding = False  # True when a response is in progress
     self.is_output_audio_active = False  # True when audio is being output
 
+    # Transcript ordering: buffer assistant transcript events until user transcript arrives
+    # The user transcript comes from Whisper async and may arrive after the assistant
+    # has already started responding with a filler phrase
+    self.pending_assistant_events: List[Dict[str, Any]] = []
+    self.user_transcript_received = False  # Track if we've received user transcript for current turn
+
     logger.debug(f"VoiceSession created for agent '{agent.name}' (scope={scope}, conversation={conversation})")
 
   def _get_websocket_url(self) -> str:
@@ -732,6 +738,9 @@ class VoiceSession:
             await self._handle_interruption()
           # Mark the event so _translate_event knows this was an interruption
           event["_was_interrupted"] = was_interrupted
+          # Reset transcript state for new turn
+          self.pending_assistant_events = []
+          self.user_transcript_received = False
 
         # Handle function call arguments being accumulated
         if event_type == "response.function_call_arguments.done":
@@ -745,6 +754,7 @@ class VoiceSession:
           if transcript:
             self.conversation_history.append({"role": "user", "content": transcript})
             logger.info(f"🗣️ User said: {transcript}")
+            self.user_transcript_received = True
 
         # Track assistant responses for context
         if event_type == "response.audio_transcript.done":
@@ -947,17 +957,35 @@ class VoiceSession:
     elif event_type == "response.audio_transcript.delta":
       transcript_delta = event.get("delta", "")
       if transcript_delta:
-        return {"type": "transcript_delta", "text": transcript_delta, "role": "assistant"}
+        assistant_event = {"type": "transcript_delta", "text": transcript_delta, "role": "assistant"}
+        # If user transcript hasn't arrived yet, buffer the assistant event
+        if not self.user_transcript_received:
+          self.pending_assistant_events.append(assistant_event)
+          return None
+        return assistant_event
 
     elif event_type == "response.audio_transcript.done":
       transcript = event.get("transcript", "")
       if transcript:
-        return {"type": "transcript", "text": transcript, "role": "assistant"}
+        assistant_event = {"type": "transcript", "text": transcript, "role": "assistant"}
+        # If user transcript hasn't arrived yet, buffer the assistant event
+        if not self.user_transcript_received:
+          self.pending_assistant_events.append(assistant_event)
+          return None
+        return assistant_event
 
     elif event_type == "conversation.item.input_audio_transcription.completed":
+      # User transcript arrived - emit it along with any buffered assistant events
       user_transcript = event.get("transcript", "")
       if user_transcript:
-        return {"type": "transcript", "text": user_transcript, "role": "user"}
+        user_event = {"type": "transcript", "text": user_transcript, "role": "user"}
+        # If we have buffered assistant events, emit them all in correct order
+        if self.pending_assistant_events:
+          events = [user_event] + self.pending_assistant_events
+          self.pending_assistant_events = []
+          return {"type": "transcript_batch", "events": events}
+        return user_event
+      return None
 
     elif event_type == "input_audio_buffer.speech_started":
       # Note: _handle_interruption is called before _translate_event in handle_events,
@@ -1057,7 +1085,12 @@ class VoiceSession:
         async for event in self.handle_events():
           client_msg = self._translate_event(event)
           if client_msg:
-            await send_json(client_msg)
+            # Handle transcript_batch by sending individual events in order
+            if client_msg.get("type") == "transcript_batch":
+              for sub_event in client_msg.get("events", []):
+                await send_json(sub_event)
+            else:
+              await send_json(client_msg)
       except Exception as e:
         logger.error(f"❌ Error receiving from realtime API: {e}")
 
