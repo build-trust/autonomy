@@ -545,6 +545,10 @@ class VoiceSession:
       conversation=conversation,
     )
 
+    # Interruption handling state
+    self.is_responding = False  # True when a response is in progress
+    self.is_output_audio_active = False  # True when audio is being output
+
     logger.debug(f"VoiceSession created for agent '{agent.name}' (scope={scope}, conversation={conversation})")
 
   def _get_websocket_url(self) -> str:
@@ -702,6 +706,32 @@ class VoiceSession:
         # Log non-audio events for debugging
         if event_type not in ["response.audio.delta", "response.audio_transcript.delta"]:
           logger.debug(f"📨 Received event: {event_type}")
+
+        # Track response state
+        if event_type == "response.created":
+          self.is_responding = True
+          logger.debug("📝 Response started")
+
+        if event_type in ("response.done", "response.cancelled"):
+          self.is_responding = False
+          logger.debug("📝 Response ended")
+
+        # Track output audio buffer state
+        if event_type == "output_audio_buffer.started":
+          self.is_output_audio_active = True
+          logger.debug("🔊 Output audio started")
+
+        if event_type == "output_audio_buffer.stopped":
+          self.is_output_audio_active = False
+          logger.debug("🔇 Output audio stopped")
+
+        # Detect interruption: user started speaking while assistant is responding/playing audio
+        if event_type == "input_audio_buffer.speech_started":
+          was_interrupted = self.is_responding or self.is_output_audio_active
+          if was_interrupted:
+            await self._handle_interruption()
+          # Mark the event so _translate_event knows this was an interruption
+          event["_was_interrupted"] = was_interrupted
 
         # Handle function call arguments being accumulated
         if event_type == "response.function_call_arguments.done":
@@ -865,6 +895,38 @@ class VoiceSession:
     await self.websocket.send(json.dumps({"type": "response.cancel"}))
     logger.debug("Cancelled response")
 
+  async def _handle_interruption(self):
+    """
+    Handle user interruption using two-part cancellation.
+
+    This method is called when the user starts speaking while the assistant
+    is responding or playing audio. It:
+    1. Cancels the in-progress response (response.cancel)
+    2. Clears the output audio buffer (output_audio_buffer.clear)
+
+    This ensures both the response generation and audio playback are stopped
+    immediately, allowing the user to speak without the assistant talking over them.
+    """
+    logger.info("⚡ User interruption detected - cancelling response and clearing audio")
+
+    # 1. Cancel the response if one is in progress
+    if self.is_responding:
+      try:
+        await self.websocket.send(json.dumps({"type": "response.cancel"}))
+        self.is_responding = False
+        logger.debug("📝 Response cancelled due to interruption")
+      except Exception as e:
+        logger.warning(f"Failed to cancel response: {e}")
+
+    # 2. Clear output audio buffer if audio is active
+    if self.is_output_audio_active:
+      try:
+        await self.websocket.send(json.dumps({"type": "output_audio_buffer.clear"}))
+        self.is_output_audio_active = False
+        logger.debug("🔇 Output audio buffer cleared due to interruption")
+      except Exception as e:
+        logger.warning(f"Failed to clear output audio buffer: {e}")
+
   def _translate_event(self, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Translate a realtime API event to client protocol.
@@ -898,8 +960,12 @@ class VoiceSession:
         return {"type": "transcript", "text": user_transcript, "role": "user"}
 
     elif event_type == "input_audio_buffer.speech_started":
-      logger.debug("🎤 Speech started")
-      return {"type": "speech_started"}
+      # Note: _handle_interruption is called before _translate_event in handle_events,
+      # but we check the original state by looking at whether we just handled an interruption.
+      # The interrupted flag tells the client to clear its audio queue immediately.
+      was_interrupted = event.get("_was_interrupted", False)
+      logger.debug(f"🎤 Speech started (interrupted={was_interrupted})")
+      return {"type": "speech_started", "interrupted": was_interrupted}
 
     elif event_type == "input_audio_buffer.speech_stopped":
       logger.debug("⏸️ Speech stopped")

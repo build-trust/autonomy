@@ -455,6 +455,8 @@
       // Audio playback
       let playbackAudioContext = null;
       let nextPlayTime = 0;
+      let scheduledSources = []; // Track audio sources for interruption handling
+      let isSpeaking = false; // Track if assistant is currently speaking
 
       // DOM elements
       const voiceCircle = document.getElementById("voiceCircle");
@@ -529,6 +531,7 @@
 
           case "audio":
             // Play audio from realtime API
+            isSpeaking = true;
             await playAudioChunk(data.audio);
             setCircleState("speaking");
             updateStatus("Speaking...");
@@ -551,7 +554,10 @@
             break;
 
           case "speech_started":
-            console.log("🎤 Speech started");
+            // Always clear audio on speech start for responsive interruption
+            console.log("🎤 Speech started - clearing any playing audio");
+            clearAudioQueue();
+            isSpeaking = false;
             setCircleState("listening");
             updateStatus("Listening...");
             break;
@@ -564,6 +570,7 @@
 
           case "response_complete":
             console.log("✅ Response complete");
+            isSpeaking = false;
             setCircleState("listening");
             updateStatus("Listening...");
             break;
@@ -616,6 +623,25 @@
             if (!isRecording || !ws || ws.readyState !== WebSocket.OPEN) return;
 
             const inputData = e.inputBuffer.getChannelData(0);
+
+            // Client-side interruption detection: check audio level
+            // If user is speaking loudly while assistant is speaking, interrupt immediately
+            if (isSpeaking && scheduledSources.length > 0) {
+              let maxLevel = 0;
+              for (let i = 0; i < inputData.length; i++) {
+                const absLevel = Math.abs(inputData[i]);
+                if (absLevel > maxLevel) maxLevel = absLevel;
+              }
+              // Threshold of 0.02 filters out background noise but catches speech
+              if (maxLevel > 0.02) {
+                console.log("⚡ Client-side interruption detected (level:", maxLevel.toFixed(3), ")");
+                clearAudioQueue();
+                isSpeaking = false;
+                setCircleState("listening");
+                updateStatus("Listening...");
+              }
+            }
+
             const pcm16 = new Int16Array(inputData.length);
 
             for (let i = 0; i < inputData.length; i++) {
@@ -672,6 +698,28 @@
         }
       }
 
+      // Clear audio queue - stops all scheduled audio immediately (for interruption handling)
+      function clearAudioQueue() {
+        if (scheduledSources.length === 0) return; // Nothing to clear
+
+        console.log("🔇 Clearing audio queue (" + scheduledSources.length + " sources)");
+
+        // Stop all scheduled audio sources
+        scheduledSources.forEach((source) => {
+          try {
+            source.stop();
+          } catch (e) {
+            // Source may have already finished playing
+          }
+        });
+        scheduledSources = [];
+
+        // Reset playback timing to allow immediate new playback
+        if (playbackAudioContext) {
+          nextPlayTime = playbackAudioContext.currentTime;
+        }
+      }
+
       // Play audio chunk
       async function playAudioChunk(base64Audio) {
         try {
@@ -696,6 +744,12 @@
           const source = playbackAudioContext.createBufferSource();
           source.buffer = audioBuffer;
           source.connect(playbackAudioContext.destination);
+
+          // Track this source for potential interruption
+          source.onended = () => {
+            scheduledSources = scheduledSources.filter((s) => s !== source);
+          };
+          scheduledSources.push(source);
 
           if (nextPlayTime < playbackAudioContext.currentTime) {
             nextPlayTime = playbackAudioContext.currentTime;
@@ -742,6 +796,9 @@
       // End session
       function endSession() {
         stopRecording();
+        clearAudioQueue(); // Stop any playing audio
+        scheduledSources = []; // Reset tracking array
+        isSpeaking = false;
         if (ws) {
           ws.close();
           ws = null;
