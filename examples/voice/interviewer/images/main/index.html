@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Voice Interface - Autonomy Example</title>
+    <title>Software Engineering Interview</title>
 
     <style>
       * {
@@ -416,7 +416,9 @@
     <div class="container">
       <div class="transcript-panel">
         <div id="transcriptContainer" class="transcript-container">
-          <div style="color: #8b7355; font-size: 13px; text-align: center">Conversation will appear here...</div>
+          <div style="color: #8b7355; font-size: 13px; text-align: center">
+            Interview transcript will appear here...
+          </div>
         </div>
       </div>
 
@@ -439,7 +441,7 @@
         <div id="status" class="status-text">Click to start</div>
 
         <div class="controls">
-          <button id="endButton" class="control-button danger" style="display: none">End Session</button>
+          <button id="endButton" class="control-button danger" style="display: none">End Interview</button>
         </div>
       </div>
     </div>
@@ -822,7 +824,7 @@
         const item = document.createElement("div");
         item.className = "transcript-item " + role;
         item.innerHTML = `
-          <div class="role">${role === "user" ? "You" : "Assistant"}</div>
+          <div class="role">${role === "user" ? "Candidate" : "Interviewer"}</div>
           <div>${text}</div>
         `;
         transcriptContainer.appendChild(item);
@@ -843,7 +845,7 @@
           playbackAudioContext.close();
           playbackAudioContext = null;
         }
-        updateStatus("Session ended. Click to start again.");
+        updateStatus("Interview ended. Click to start again.");
       }
 
       // Event listeners
