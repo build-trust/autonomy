@@ -447,6 +447,9 @@
     </div>
 
     <script>
+      const id = () => Math.random().toString(36).slice(2);
+      const visitorId = (localStorage.autonomy_visitor ||= id());
+
       // State
       let ws = null;
       let mediaStream = null;
@@ -471,7 +474,7 @@
       // Connect to WebSocket
       async function connect() {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.host}/agents/interviewer/voice`;
+        const wsUrl = `${protocol}//${window.location.host}/agents/interviewer/voice?scope=${visitorId}&conversation=${id()}`;
 
         try {
           updateStatus("Connecting...");

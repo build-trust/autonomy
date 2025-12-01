@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Autonomy Docs - Voice Assistant</title>
+    <title>Personal Fitness Coach</title>
 
     <style>
       * {
@@ -14,12 +14,12 @@
 
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        background: #fafbfc;
+        background: #ffffff;
         min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #24292e;
+        color: #1a1a1a;
         overflow: hidden;
       }
 
@@ -38,7 +38,7 @@
         display: flex;
         flex-direction: column;
         padding: 40px;
-        background: #fafbfc;
+        background: #ffffff;
       }
 
       .voice-panel {
@@ -50,24 +50,7 @@
         justify-content: center;
         gap: 40px;
         padding: 40px;
-        background: #f6f8fa;
-        border-left: 1px solid #e1e4e8;
-      }
-
-      .header {
-        margin-bottom: 20px;
-      }
-
-      .header h1 {
-        font-size: 24px;
-        font-weight: 600;
-        color: #24292e;
-        margin-bottom: 8px;
-      }
-
-      .header p {
-        font-size: 14px;
-        color: #586069;
+        background: #ffffff;
       }
 
       .circle-container {
@@ -80,44 +63,44 @@
         width: 200px;
         height: 200px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        background: linear-gradient(135deg, #4a90d9 0%, #2e6ab3 100%);
         cursor: pointer;
         transition: all 0.3s ease;
         display: flex;
         align-items: center;
         justify-content: center;
         box-shadow:
-          0 10px 40px rgba(99, 102, 241, 0.25),
-          inset 0 2px 10px rgba(255, 255, 255, 0.1);
+          0 10px 40px rgba(74, 144, 217, 0.35),
+          inset 0 2px 10px rgba(255, 255, 255, 0.3);
         position: relative;
-        border: 2px solid rgba(99, 102, 241, 0.3);
+        border: 2px solid rgba(74, 144, 217, 0.5);
       }
 
       .voice-circle:hover {
         transform: scale(1.05);
         box-shadow:
-          0 15px 50px rgba(99, 102, 241, 0.35),
-          inset 0 2px 10px rgba(255, 255, 255, 0.15);
+          0 15px 50px rgba(74, 144, 217, 0.45),
+          inset 0 2px 10px rgba(255, 255, 255, 0.35);
       }
 
       .voice-circle.listening {
         animation: pulse-listening 2s ease-in-out infinite;
-        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+        background: linear-gradient(135deg, #5a9de0 0%, #4a90d9 100%);
       }
 
       .voice-circle.speaking {
         animation: pulse-speaking 1.5s ease-in-out infinite;
-        background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 100%);
+        background: linear-gradient(135deg, #6aabe8 0%, #4a90d9 100%);
       }
 
       .voice-circle.processing {
         animation: pulse-processing 1s ease-in-out infinite;
-        background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+        background: linear-gradient(135deg, #3d7fc4 0%, #4a90d9 100%);
       }
 
       .voice-circle.delegating {
         animation: pulse-delegating 0.8s ease-in-out infinite;
-        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+        background: linear-gradient(135deg, #2e6ab3 0%, #245a99 100%);
       }
 
       .waveform-icon {
@@ -211,16 +194,16 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(99, 102, 241, 0.25),
-            0 0 30px rgba(129, 140, 248, 0.2),
-            inset 0 2px 10px rgba(255, 255, 255, 0.1);
+            0 10px 40px rgba(74, 144, 217, 0.35),
+            0 0 30px rgba(74, 144, 217, 0.2),
+            inset 0 2px 10px rgba(255, 255, 255, 0.3);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(99, 102, 241, 0.4),
-            0 0 60px rgba(129, 140, 248, 0.35),
-            inset 0 2px 15px rgba(255, 255, 255, 0.15);
+            0 10px 60px rgba(74, 144, 217, 0.5),
+            0 0 60px rgba(74, 144, 217, 0.35),
+            inset 0 2px 15px rgba(255, 255, 255, 0.35);
           transform: scale(1.05);
         }
       }
@@ -229,16 +212,16 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(165, 180, 252, 0.3),
-            0 0 35px rgba(165, 180, 252, 0.3),
-            inset 0 2px 10px rgba(255, 255, 255, 0.1);
+            0 10px 40px rgba(106, 171, 232, 0.4),
+            0 0 35px rgba(106, 171, 232, 0.3),
+            inset 0 2px 10px rgba(255, 255, 255, 0.3);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(165, 180, 252, 0.45),
-            0 0 70px rgba(165, 180, 252, 0.45),
-            inset 0 2px 15px rgba(255, 255, 255, 0.15);
+            0 10px 60px rgba(106, 171, 232, 0.55),
+            0 0 70px rgba(106, 171, 232, 0.45),
+            inset 0 2px 15px rgba(255, 255, 255, 0.35);
           transform: scale(1.08);
         }
       }
@@ -247,16 +230,16 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(124, 58, 237, 0.25),
-            0 0 25px rgba(124, 58, 237, 0.25),
-            inset 0 2px 10px rgba(255, 255, 255, 0.1);
+            0 10px 40px rgba(74, 144, 217, 0.35),
+            0 0 25px rgba(61, 127, 196, 0.25),
+            inset 0 2px 10px rgba(255, 255, 255, 0.3);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(124, 58, 237, 0.35),
-            0 0 50px rgba(124, 58, 237, 0.35),
-            inset 0 2px 15px rgba(255, 255, 255, 0.15);
+            0 10px 60px rgba(74, 144, 217, 0.45),
+            0 0 50px rgba(61, 127, 196, 0.35),
+            inset 0 2px 15px rgba(255, 255, 255, 0.35);
           transform: scale(1.03);
         }
       }
@@ -265,16 +248,16 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(79, 70, 229, 0.3),
-            0 0 30px rgba(79, 70, 229, 0.25),
-            inset 0 2px 10px rgba(255, 255, 255, 0.1);
+            0 10px 40px rgba(46, 106, 179, 0.4),
+            0 0 30px rgba(46, 106, 179, 0.3),
+            inset 0 2px 10px rgba(255, 255, 255, 0.3);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(79, 70, 229, 0.45),
-            0 0 60px rgba(79, 70, 229, 0.4),
-            inset 0 2px 15px rgba(255, 255, 255, 0.15);
+            0 10px 60px rgba(46, 106, 179, 0.55),
+            0 0 60px rgba(46, 106, 179, 0.45),
+            inset 0 2px 15px rgba(255, 255, 255, 0.35);
           transform: scale(1.06);
         }
       }
@@ -287,7 +270,7 @@
         width: 240px;
         height: 240px;
         border-radius: 50%;
-        border: 2px solid rgba(99, 102, 241, 0.25);
+        border: 2px solid rgba(74, 144, 217, 0.3);
         opacity: 0;
         animation: wave-expand 2s ease-out infinite;
         pointer-events: none;
@@ -320,7 +303,7 @@
 
       .status-text {
         font-size: 18px;
-        color: #6366f1;
+        color: #1a1a1a;
         text-align: center;
         min-height: 30px;
         transition: all 0.3s ease;
@@ -329,50 +312,43 @@
       }
 
       .status-text.active {
-        color: #4f46e5;
+        color: #000000;
       }
 
       .transcript-container {
         width: 100%;
         flex: 1;
         overflow-y: auto;
-        background: #ffffff;
-        border: 1px solid #e1e4e8;
+        background: #fafafa;
+        border: 1px solid #e5e5e5;
         border-radius: 12px;
         padding: 24px;
       }
 
       .transcript-item {
         margin-bottom: 12px;
-        padding: 12px 16px;
+        padding: 8px 12px;
         border-radius: 8px;
         font-size: 14px;
-        line-height: 1.6;
+        line-height: 1.5;
       }
 
       .transcript-item.user {
-        background: #f0f1ff;
+        background: rgba(74, 144, 217, 0.15);
         margin-left: 20px;
-        border-left: 3px solid #6366f1;
       }
 
       .transcript-item.assistant {
-        background: #f6f8fa;
+        background: rgba(26, 26, 26, 0.05);
         margin-right: 20px;
-        border-left: 3px solid #8b949e;
       }
 
       .transcript-item .role {
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 1px;
-        color: #6e7781;
-        margin-bottom: 6px;
-        font-weight: 600;
-      }
-
-      .transcript-item.user .role {
-        color: #4f46e5;
+        color: #666666;
+        margin-bottom: 4px;
       }
 
       .controls {
@@ -383,10 +359,10 @@
 
       .control-button {
         padding: 12px 32px;
-        background: rgba(99, 102, 241, 0.1);
-        border: 2px solid rgba(99, 102, 241, 0.3);
+        background: rgba(74, 144, 217, 0.1);
+        border: 2px solid rgba(74, 144, 217, 0.4);
         border-radius: 24px;
-        color: #6366f1;
+        color: #1a1a1a;
         font-size: 16px;
         cursor: pointer;
         transition: all 0.3s ease;
@@ -395,21 +371,21 @@
       }
 
       .control-button:hover {
-        background: rgba(99, 102, 241, 0.2);
-        border-color: rgba(99, 102, 241, 0.6);
+        background: rgba(74, 144, 217, 0.2);
+        border-color: rgba(74, 144, 217, 0.7);
         transform: translateY(-2px);
-        box-shadow: 0 5px 20px rgba(99, 102, 241, 0.25);
+        box-shadow: 0 5px 20px rgba(74, 144, 217, 0.3);
       }
 
       .control-button.danger {
-        border-color: rgba(239, 68, 68, 0.4);
-        color: #ef4444;
-        background: rgba(239, 68, 68, 0.1);
+        border-color: #1a1a1a;
+        color: #1a1a1a;
+        background: transparent;
       }
 
       .control-button.danger:hover {
-        background: rgba(239, 68, 68, 0.2);
-        border-color: rgba(239, 68, 68, 0.6);
+        background: #1a1a1a;
+        color: #ffffff;
       }
 
       .connection-status {
@@ -419,60 +395,20 @@
         padding: 8px 16px;
         border-radius: 20px;
         font-size: 12px;
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid #e1e4e8;
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
         font-weight: 500;
       }
 
       .connection-status.connected {
-        border-color: rgba(34, 197, 94, 0.5);
-        color: #16a34a;
-        background: rgba(34, 197, 94, 0.1);
+        border-color: #4a90d9;
+        color: #1a1a1a;
+        background: rgba(74, 144, 217, 0.1);
       }
 
       .connection-status.disconnected {
-        border-color: rgba(239, 68, 68, 0.5);
-        color: #ef4444;
-        background: rgba(239, 68, 68, 0.1);
-      }
-
-      .suggestions {
-        margin-top: 20px;
-        padding: 16px;
-        background: #f6f8fa;
-        border-radius: 8px;
-        border: 1px solid #e1e4e8;
-      }
-
-      .suggestions h3 {
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #6e7781;
-        margin-bottom: 12px;
-        font-weight: 600;
-      }
-
-      .suggestion-chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .suggestion-chip {
-        padding: 8px 14px;
-        background: #ffffff;
-        border: 1px solid #e1e4e8;
-        border-radius: 20px;
-        font-size: 13px;
-        color: #24292e;
-        cursor: default;
-        transition: all 0.2s ease;
-      }
-
-      .suggestion-chip:hover {
-        border-color: #6366f1;
-        color: #4f46e5;
+        border-color: #1a1a1a;
+        color: #1a1a1a;
       }
     </style>
   </head>
@@ -481,26 +417,9 @@
 
     <div class="container">
       <div class="transcript-panel">
-        <div class="header">
-          <h1>🚀 Autonomy Docs Assistant</h1>
-          <p>Ask questions about Autonomy - the platform for building autonomous AI products</p>
-        </div>
-
         <div id="transcriptContainer" class="transcript-container">
-          <div style="color: #6e7781; font-size: 13px; text-align: center; padding: 20px">
-            Click the voice button to start a conversation...
-          </div>
-        </div>
-
-        <div class="suggestions">
-          <h3>Try asking about</h3>
-          <div class="suggestion-chips">
-            <span class="suggestion-chip">What is Autonomy?</span>
-            <span class="suggestion-chip">How do I create an agent?</span>
-            <span class="suggestion-chip">What are workers?</span>
-            <span class="suggestion-chip">How do I deploy my app?</span>
-            <span class="suggestion-chip">What models are available?</span>
-            <span class="suggestion-chip">How do I give agents tools?</span>
+          <div style="color: #666666; font-size: 13px; text-align: center">
+            Your coaching session transcript will appear here...
           </div>
         </div>
       </div>
@@ -544,8 +463,8 @@
       // Audio playback
       let playbackAudioContext = null;
       let nextPlayTime = 0;
-      let scheduledSources = [];
-      let isSpeaking = false;
+      let scheduledSources = []; // Track audio sources for interruption handling
+      let isSpeaking = false; // Track if assistant is currently speaking
 
       // DOM elements
       const voiceCircle = document.getElementById("voiceCircle");
@@ -557,7 +476,7 @@
       // Connect to WebSocket
       async function connect() {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.host}/agents/docs/voice?scope=${visitorId}&conversation=${id()}`;
+        const wsUrl = `${protocol}//${window.location.host}/agents/coach/voice?scope=${visitorId}&conversation=${id()}`;
 
         try {
           updateStatus("Connecting...");
@@ -572,6 +491,7 @@
             connectionStatus.className = "connection-status connected";
             updateStatus("Connected! Click to start talking");
 
+            // Send initial config
             ws.send(JSON.stringify({ type: "config" }));
           };
 
@@ -618,6 +538,7 @@
             break;
 
           case "audio":
+            // Play audio from realtime API
             isSpeaking = true;
             await playAudioChunk(data.audio);
             setCircleState("speaking");
@@ -625,6 +546,7 @@
             break;
 
           case "transcript":
+            // Complete transcript (user or assistant)
             if (data.role === "user") {
               console.log("🗣️ User:", data.text);
               addTranscript("user", data.text);
@@ -635,9 +557,12 @@
             break;
 
           case "transcript_delta":
+            // Streaming delta (optional - for real-time display if needed)
+            // Currently we just wait for the complete transcript
             break;
 
           case "speech_started":
+            // Always clear audio on speech start for responsive interruption
             console.log("🎤 Speech started - clearing any playing audio");
             clearAudioQueue();
             isSpeaking = false;
@@ -648,7 +573,7 @@
           case "speech_stopped":
             console.log("⏸️ Speech stopped");
             setCircleState("processing");
-            updateStatus("Searching docs...");
+            updateStatus("Processing...");
             break;
 
           case "response_complete":
@@ -671,8 +596,10 @@
       // Start recording
       async function startRecording() {
         if (!isConnected) {
+          // Try to reconnect if not connected
           updateStatus("Reconnecting...");
           await connect();
+          // Wait a bit for connection to establish
           await new Promise((resolve) => setTimeout(resolve, 500));
           if (!isConnected) {
             updateStatus("Failed to connect. Please try again.");
@@ -772,8 +699,9 @@
           updateStatus("Listening...");
           endButton.style.display = "block";
 
+          // Clear old transcripts
           transcriptContainer.innerHTML =
-            '<div style="color: #6e7781; font-size: 13px; text-align: center; padding: 20px">Conversation started...</div>';
+            '<div style="color: #666666; font-size: 13px; text-align: center">Session started. Let\'s get moving!</div>';
 
           console.log("🎤 Recording started");
         } catch (error) {
@@ -813,19 +741,23 @@
         }
       }
 
-      // Clear audio queue
+      // Clear audio queue - stops all scheduled audio immediately (for interruption handling)
       function clearAudioQueue() {
-        if (scheduledSources.length === 0) return;
+        if (scheduledSources.length === 0) return; // Nothing to clear
 
         console.log("🔇 Clearing audio queue (" + scheduledSources.length + " sources)");
 
+        // Stop all scheduled audio sources
         scheduledSources.forEach((source) => {
           try {
             source.stop();
-          } catch (e) {}
+          } catch (e) {
+            // Source may have already finished playing
+          }
         });
         scheduledSources = [];
 
+        // Reset playback timing to allow immediate new playback
         if (playbackAudioContext) {
           nextPlayTime = playbackAudioContext.currentTime;
         }
@@ -856,6 +788,7 @@
           source.buffer = audioBuffer;
           source.connect(playbackAudioContext.destination);
 
+          // Track this source for potential interruption
           source.onended = () => {
             scheduledSources = scheduledSources.filter((s) => s !== source);
           };
@@ -887,7 +820,8 @@
 
       // Add transcript to UI
       function addTranscript(role, text) {
-        const placeholder = transcriptContainer.querySelector('div[style*="color: #6e7781"]');
+        // Remove placeholder if present
+        const placeholder = transcriptContainer.querySelector('div[style*="color: #666666"]');
         if (placeholder) {
           placeholder.remove();
         }
@@ -895,7 +829,7 @@
         const item = document.createElement("div");
         item.className = "transcript-item " + role;
         item.innerHTML = `
-          <div class="role">${role === "user" ? "You" : "Autonomy Docs"}</div>
+          <div class="role">${role === "user" ? "You" : "Coach"}</div>
           <div>${text}</div>
         `;
         transcriptContainer.appendChild(item);
@@ -905,8 +839,8 @@
       // End session
       function endSession() {
         stopRecording();
-        clearAudioQueue();
-        scheduledSources = [];
+        clearAudioQueue(); // Stop any playing audio
+        scheduledSources = []; // Reset tracking array
         isSpeaking = false;
         if (ws) {
           ws.close();
@@ -916,7 +850,7 @@
           playbackAudioContext.close();
           playbackAudioContext = null;
         }
-        updateStatus("Session ended. Click to start again.");
+        updateStatus("Session ended. Great workout! Click to start again.");
       }
 
       // Event listeners
