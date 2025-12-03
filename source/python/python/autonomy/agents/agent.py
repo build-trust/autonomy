@@ -36,7 +36,7 @@ import json
 import secrets
 import time
 import traceback
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Union
 import uuid
 
 from collections import OrderedDict
@@ -76,6 +76,7 @@ from .context import (
   ContextSection,
   SystemInstructionsSection,
   ConversationHistorySection,
+  SummarizedHistorySection,
   AdditionalContextSection,
   FrameworkInstructionsSection,
   create_default_template,
@@ -140,6 +141,135 @@ FILESYSTEM_VISIBILITY_DEFAULT = "conversation"
 # =============================================================================
 
 
+class ContextSummaryConfig(TypedDict, total=False):
+  """Configuration for conversation history summarization.
+
+  When passed to Agent.start(context_summary=...), this controls how
+  older messages are summarized to prevent context window overflow.
+
+  Example:
+    # Enable with defaults
+    await Agent.start(..., context_summary=True)
+
+    # Custom configuration
+    await Agent.start(..., context_summary={
+      "floor": 15,    # Keep at least 15 recent messages
+      "ceiling": 30,  # Summarize when exceeding 30 messages
+      "size": 2048,   # Limit summary to 2048 tokens
+      "model": Model("nova-micro-v1"),  # Fast model for summaries
+      # Custom prompt template (must include {conversation} placeholder)
+      "instructions": "Summarize this chat:\\n{conversation}\\n\\nSummary:",
+    })
+  """
+
+  floor: int  # Minimum messages visible after summarization (default: 10)
+  ceiling: int  # Maximum messages before triggering summarization (default: 20)
+  size: int  # Maximum tokens for the generated summary (default: 2048)
+  model: Model  # Model used for generating summaries (default: agent's model)
+  instructions: str  # Custom prompt template replacing default (must include {conversation} placeholder)
+
+
+def _compute_memory_config(
+  context_summary: Optional[Union[bool, ContextSummaryConfig]],
+  max_messages_in_short_term_memory: Optional[int],
+  max_tokens_in_short_term_memory: Optional[int],
+) -> Tuple[int, Optional[int]]:
+  """
+  Compute internal memory limits based on context_summary and explicit overrides.
+
+  When context_summary is enabled, memory limits are auto-configured to ensure
+  the summarization system works correctly. When disabled, explicit values or
+  defaults are used.
+
+  Args:
+    context_summary: Summarization configuration (True, False, or config dict)
+    max_messages_in_short_term_memory: Explicit message limit (used when summary disabled)
+    max_tokens_in_short_term_memory: Explicit token limit (used when summary disabled)
+
+  Returns:
+    Tuple of (max_messages, max_tokens) for Memory initialization
+  """
+  if context_summary and context_summary is not False:
+    # Extract ceiling from config or use default
+    if context_summary is True:
+      ceiling = 20
+    else:
+      ceiling = context_summary.get("ceiling", 20)
+
+    # Memory stores enough for summarization to work
+    # ceiling * 2 provides buffer for growth between summarizations
+    internal_max_messages = ceiling * 2
+    # No token limit when using summarization (summary handles context management)
+    internal_max_tokens = None
+
+  else:
+    # No summarization — use explicit values or defaults
+    internal_max_messages = max_messages_in_short_term_memory or MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT
+    internal_max_tokens = max_tokens_in_short_term_memory or MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT
+
+  return internal_max_messages, internal_max_tokens
+
+
+def _create_summarized_template(
+  instructions: List[dict],
+  context_summary: Union[bool, ContextSummaryConfig],
+  model: Model,
+  enable_ask_for_user_input: bool = False,
+  enable_filesystem: bool = False,
+  filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
+  subagent_configs: Optional[Dict[str, Any]] = None,
+) -> ContextTemplate:
+  """
+  Create a context template with SummarizedHistorySection.
+
+  This is used internally by Agent.start() when context_summary is enabled.
+
+  Args:
+    instructions: System instruction messages
+    context_summary: True for defaults, or ContextSummaryConfig dict
+    model: Agent's model (used as default summary model)
+    enable_ask_for_user_input: Whether ask_user_for_input tool is enabled
+    enable_filesystem: Whether filesystem tools are enabled
+    filesystem_visibility: Filesystem visibility level
+    subagent_configs: Optional dict of configured subagents
+
+  Returns:
+    ContextTemplate with SummarizedHistorySection for conversation history
+  """
+  # Extract config values
+  if context_summary is True:
+    summary_model = model
+    floor = 10
+    ceiling = 20
+    size = 2048
+    summary_instructions = None
+  else:
+    summary_model = context_summary.get("model", model)
+    floor = context_summary.get("floor", 10)
+    ceiling = context_summary.get("ceiling", 20)
+    size = context_summary.get("size", 2048)
+    summary_instructions = context_summary.get("instructions")
+
+  sections = [
+    SystemInstructionsSection(instructions),
+    FrameworkInstructionsSection(
+      enable_ask_for_user_input=enable_ask_for_user_input,
+      enable_filesystem=enable_filesystem,
+      filesystem_visibility=filesystem_visibility,
+      subagent_configs=subagent_configs,
+    ),
+    SummarizedHistorySection(
+      summary_model=summary_model,
+      floor=floor,
+      ceiling=ceiling,
+      size=size,
+      instructions=summary_instructions,
+    ),
+  ]
+
+  return ContextTemplate(sections)
+
+
 class SubagentConfig(TypedDict):
   """Configuration for a subagent that can be started by a parent agent.
 
@@ -181,6 +311,7 @@ class AgentConfig(TypedDict):
       "model": Model(name="claude-sonnet-4-v1"),
       "tools": [search_tool, database_tool],
       "max_iterations": 500,
+      "context_summary": True,  # Enable automatic summarization
       "subagents": {
         "researcher": {
           "role": "researcher",
@@ -197,6 +328,7 @@ class AgentConfig(TypedDict):
   voice: NotRequired[VoiceConfig]
   tools: NotRequired[List]
   context_template: NotRequired[ContextTemplate]
+  context_summary: NotRequired[Union[bool, ContextSummaryConfig]]
   max_iterations: NotRequired[int]
   max_execution_time: NotRequired[float]
   max_messages_in_short_term_memory: NotRequired[int]
@@ -223,6 +355,7 @@ class AgentManyConfig(TypedDict):
       "number_of_agents": 10,
       "model": Model(name="claude-sonnet-4-v1"),
       "max_iterations": 500,
+      "context_summary": True,  # Enable automatic summarization
     }
     agents = await Agent.start_many_from_config(node=node, config=config)
   """
@@ -232,6 +365,7 @@ class AgentManyConfig(TypedDict):
   model: NotRequired[Model]
   tools: NotRequired[List]
   context_template: NotRequired[ContextTemplate]
+  context_summary: NotRequired[Union[bool, ContextSummaryConfig]]
   max_iterations: NotRequired[int]
   max_execution_time: NotRequired[float]
   max_messages_in_short_term_memory: NotRequired[int]
@@ -959,7 +1093,6 @@ class Agent:
     # If no custom template is provided, use the default template with framework instructions
     if context_template is None:
       self.context_template = create_default_template(
-        memory,
         memory.instructions,
         enable_ask_for_user_input=enable_ask_for_user_input,
         enable_filesystem=enable_filesystem,
@@ -1345,7 +1478,7 @@ class Agent:
     """
 
     # Build context using the template (applies to agent-scoped memory)
-    raw_messages = await self.context_template.build_context(self._memory_scope(scope), conversation)
+    raw_messages = await self.context_template.build_context(self.memory, self._memory_scope(scope), conversation)
     logger.debug(f"[MEMORY→READ] Retrieved {len(raw_messages)} messages for model context")
 
     if logger.isEnabledFor(10):  # DEBUG level
@@ -1796,6 +1929,8 @@ class Agent:
     context_template: Optional[ContextTemplate] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
+    # Context management
+    context_summary: Optional[Union[bool, ContextSummaryConfig]] = None,
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
@@ -1823,8 +1958,13 @@ class Agent:
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
       context_template: Optional custom context template for organizing model input
-      max_messages_in_short_term_memory: Maximum messages in short-term memory
-      max_tokens_in_short_term_memory: Maximum tokens in short-term memory
+      context_summary: Enable automatic context summarization for long conversations.
+        - True: Enable with defaults (floor=10, ceiling=20 messages)
+        - False or None: Disable summarization
+        - ContextSummaryConfig dict: Custom configuration with floor, ceiling, size, model, instructions
+        Cannot be used together with context_template.
+      max_messages_in_short_term_memory: Maximum messages in short-term memory (auto-configured when context_summary enabled)
+      max_tokens_in_short_term_memory: Maximum tokens in short-term memory (auto-configured when context_summary enabled)
       enable_long_term_memory: Enable persistent long-term memory (database)
       enable_ask_for_user_input: Enable ask_user_for_input tool
       enable_filesystem: Enable filesystem tools
@@ -1839,6 +1979,7 @@ class Agent:
     Example:
       from autonomy import Agent, Tool, FilesystemTools
 
+      # Basic agent
       agent = await Agent.start(
         node=node,
         name="assistant",
@@ -1846,6 +1987,26 @@ class Agent:
           Tool(my_function),  # Static tool
           FilesystemTools(),  # Factory - creates scope-specific tools
         ],
+      )
+
+      # Agent with automatic context summarization for long conversations
+      agent = await Agent.start(
+        node=node,
+        name="support-bot",
+        instructions="Help users with their questions.",
+        context_summary=True,  # Enable with defaults
+      )
+
+      # Custom summarization configuration
+      agent = await Agent.start(
+        node=node,
+        name="code-assistant",
+        instructions="Help with coding tasks.",
+        context_summary={
+          "floor": 15,    # Keep at least 15 recent messages
+          "ceiling": 30,  # Summarize when exceeding 30 messages
+          "instructions": "Preserve all code snippets and technical decisions.",
+        },
       )
     """
 
@@ -1857,6 +2018,35 @@ class Agent:
     if model is None:
       model = Model(name="claude-sonnet-4-v1")
 
+    # Validate that context_summary and context_template are not both specified
+    if context_summary and context_template is not None:
+      raise ValueError(
+        "Cannot specify both 'context_summary' and 'context_template'. "
+        "Use 'context_summary' for automatic summarization, or 'context_template' for custom templates."
+      )
+
+    # Compute memory configuration based on context_summary
+    effective_max_messages, effective_max_tokens = _compute_memory_config(
+      context_summary,
+      max_messages_in_short_term_memory,
+      max_tokens_in_short_term_memory,
+    )
+
+    # Create context template with summarization if enabled
+    effective_context_template = context_template
+    if context_summary and context_summary is not False:
+      # Build system instruction messages for the template
+      system_instructions = [{"role": "system", "content": instructions}]
+      effective_context_template = _create_summarized_template(
+        instructions=system_instructions,
+        context_summary=context_summary,
+        model=model,
+        enable_ask_for_user_input=enable_ask_for_user_input,
+        enable_filesystem=enable_filesystem,
+        filesystem_visibility=filesystem_visibility,
+        subagent_configs=subagents,
+      )
+
     return await Agent.start_agent_impl(
       node,
       name,
@@ -1864,11 +2054,11 @@ class Agent:
       model,
       voice,
       tools,
-      context_template,
+      effective_context_template,
       max_iterations,
       max_execution_time,
-      max_messages_in_short_term_memory,
-      max_tokens_in_short_term_memory,
+      effective_max_messages,
+      effective_max_tokens,
       enable_long_term_memory,
       enable_ask_for_user_input,
       enable_filesystem,
@@ -1888,6 +2078,8 @@ class Agent:
     context_template: Optional[ContextTemplate] = None,
     max_iterations: Optional[int] = None,
     max_execution_time: Optional[float] = None,
+    # Context management
+    context_summary: Optional[Union[bool, ContextSummaryConfig]] = None,
     max_messages_in_short_term_memory: int = MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT,
     max_tokens_in_short_term_memory: Optional[int] = MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT,
     enable_long_term_memory: bool = False,
@@ -1896,35 +2088,68 @@ class Agent:
     filesystem_visibility: str = FILESYSTEM_VISIBILITY_DEFAULT,
   ):
     """
-        Start multiple agents on a node for load distribution.
+    Start multiple agents on a node for load distribution.
 
-        Creates multiple agents with identical configuration to enable concurrent
-        processing of different conversations for better throughput.
+    Creates multiple agents with identical configuration to enable concurrent
+    processing of different conversations for better throughput.
 
-        Args:
-          node: Node instance where the agents will run
-          instructions: System instructions defining agent behavior
-          number_of_agents: Number of agent instances to create
-          model: LLM to use (defaults to claude-3-5-sonnet-v2)
-          tools: List of tools and/or tool factories. Can contain:
-    - InvokableTool instances (static, shared across all scopes)
-    - ToolFactory instances (create scope-specific tools automatically)
-          context_template: Optional custom context template for organizing model input
-          max_iterations: Maximum state machine iterations
-          max_execution_time: Maximum execution time in seconds
-          max_messages_in_short_term_memory: Maximum messages in short-term memory
-          max_tokens_in_short_term_memory: Maximum tokens in short-term memory
-          enable_long_term_memory: Enable persistent long-term memory (database)
-          enable_ask_for_user_input: Enable ask_user_for_input tool
-          enable_filesystem: Enable filesystem tools
-          filesystem_visibility: Filesystem visibility level ("all", "agent", "scope", or "conversation")
+    Args:
+      node: Node instance where the agents will run
+      instructions: System instructions defining agent behavior
+      number_of_agents: Number of agent instances to create
+      model: LLM to use (defaults to claude-3-5-sonnet-v2)
+      tools: List of tools and/or tool factories. Can contain:
+        - InvokableTool instances (static, shared across all scopes)
+        - ToolFactory instances (create scope-specific tools automatically)
+      context_template: Optional custom context template for organizing model input
+      context_summary: Enable automatic context summarization for long conversations.
+        - True: Enable with defaults (floor=10, ceiling=20 messages)
+        - False or None: Disable summarization
+        - ContextSummaryConfig dict: Custom configuration
+        Cannot be used together with context_template.
+      max_iterations: Maximum state machine iterations
+      max_execution_time: Maximum execution time in seconds
+      max_messages_in_short_term_memory: Maximum messages in short-term memory (auto-configured when context_summary enabled)
+      max_tokens_in_short_term_memory: Maximum tokens in short-term memory (auto-configured when context_summary enabled)
+      enable_long_term_memory: Enable persistent long-term memory (database)
+      enable_ask_for_user_input: Enable ask_user_for_input tool
+      enable_filesystem: Enable filesystem tools
+      filesystem_visibility: Filesystem visibility level ("all", "agent", "scope", or "conversation")
 
-        Returns:
-          List of AgentReference objects for the started agents
+    Returns:
+      List of AgentReference objects for the started agents
     """
 
     if model is None:
       model = Model(name="claude-3-5-sonnet-v2")
+
+    # Validate that context_summary and context_template are not both specified
+    if context_summary and context_template is not None:
+      raise ValueError(
+        "Cannot specify both 'context_summary' and 'context_template'. "
+        "Use 'context_summary' for automatic summarization, or 'context_template' for custom templates."
+      )
+
+    # Compute memory configuration based on context_summary
+    effective_max_messages, effective_max_tokens = _compute_memory_config(
+      context_summary,
+      max_messages_in_short_term_memory,
+      max_tokens_in_short_term_memory,
+    )
+
+    # Create context template with summarization if enabled
+    effective_context_template = context_template
+    if context_summary and context_summary is not False:
+      system_instructions = [{"role": "system", "content": instructions}]
+      effective_context_template = _create_summarized_template(
+        instructions=system_instructions,
+        context_summary=context_summary,
+        model=model,
+        enable_ask_for_user_input=enable_ask_for_user_input,
+        enable_filesystem=enable_filesystem,
+        filesystem_visibility=filesystem_visibility,
+        subagent_configs=None,
+      )
 
     agents = []
     for i in range(number_of_agents):
@@ -1936,13 +2161,12 @@ class Agent:
         instructions,
         model,
         None,  # voice not supported for multiple agents
-        None,  # voice_model not supported for multiple agents
         tools,
-        context_template,
+        effective_context_template,
         max_iterations,
         max_execution_time,
-        max_messages_in_short_term_memory,
-        max_tokens_in_short_term_memory,
+        effective_max_messages,
+        effective_max_tokens,
         enable_long_term_memory,
         enable_ask_for_user_input,
         enable_filesystem,
@@ -2005,6 +2229,7 @@ class Agent:
     model = config.get("model")
     tools = config.get("tools")
     context_template = config.get("context_template")
+    context_summary = config.get("context_summary")
     max_iterations = config.get("max_iterations")
     max_execution_time = config.get("max_execution_time")
     max_messages_in_short_term_memory = config.get(
@@ -2031,6 +2256,7 @@ class Agent:
       voice=voice,
       tools=tools,
       context_template=context_template,
+      context_summary=context_summary,
       max_iterations=max_iterations,
       max_execution_time=max_execution_time,
       max_messages_in_short_term_memory=max_messages_in_short_term_memory,
@@ -2090,6 +2316,7 @@ class Agent:
     model = config.get("model")
     tools = config.get("tools")
     context_template = config.get("context_template")
+    context_summary = config.get("context_summary")
     max_iterations = config.get("max_iterations")
     max_execution_time = config.get("max_execution_time")
     max_messages_in_short_term_memory = config.get(
@@ -2111,6 +2338,7 @@ class Agent:
       model=model,
       tools=tools,
       context_template=context_template,
+      context_summary=context_summary,
       max_iterations=max_iterations,
       max_execution_time=max_execution_time,
       max_messages_in_short_term_memory=max_messages_in_short_term_memory,

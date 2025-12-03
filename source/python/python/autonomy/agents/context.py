@@ -18,7 +18,8 @@ Context templates solve the problem of managing complex model inputs by:
 ## Key Components
 
 1. **ContextSection**: Base class for sections (optional - uses duck typing)
-   - Defines the interface: `get_messages(scope, conversation, context)`
+   - Defines the interface: `get_messages(memory, scope, conversation, context)`
+   - Memory is passed as first argument for accessing conversation history
    - Can be enabled/disabled independently
    - Supports shared context dict for inter-section communication
    - Any object with `get_messages()` can be a section
@@ -84,12 +85,12 @@ instructions = [{"role": "system", "content": {...}}]
 template = ContextTemplate(
   [
     SystemInstructionsSection(instructions),
-    ConversationHistorySection(memory),
+    ConversationHistorySection(),  # No memory needed at construction
   ]
 )
 
-# Build context
-messages = await template.build_context(scope="user123", conversation="chat456")
+# Build context - memory is passed when building
+messages = await template.build_context(memory, scope="user123", conversation="chat456")
 
 # Modify template dynamically
 template.add_section(AdditionalContextSection(name="rag"), index=1)
@@ -107,7 +108,8 @@ class KnowledgeRetrievalSection(ContextSection):
     super().__init__("knowledge_retrieval")
     self.vector_db = vector_db
 
-  async def get_messages(self, scope, conversation, context):
+  async def get_messages(self, memory, scope, conversation, context):
+    # Memory is passed as first argument - use it to access conversation history
     # Retrieve relevant documents
     docs = await self.vector_db.search(query)
     return [format_doc_as_message(doc) for doc in docs]
@@ -119,7 +121,8 @@ class SimpleSection:
     self.name = "simple"
     self.enabled = True
 
-  async def get_messages(self, scope, conversation, context):
+  async def get_messages(self, memory, scope, conversation, context):
+    # Memory is always passed, even if not used
     return [{"role": "system", "content": {"text": "Hello", "type": "text"}}]
 ```
 
@@ -130,7 +133,8 @@ def exclude_tool_calls(msg):
   return "tool_calls" not in msg
 
 
-history = ConversationHistorySection(memory, filter_fn=exclude_tool_calls, max_messages=50)
+# No memory needed at construction - it's passed when get_messages is called
+history = ConversationHistorySection(filter_fn=exclude_tool_calls, max_messages=50)
 ```
 
 ### Dynamic Context Providers
@@ -151,14 +155,14 @@ template.add_section(AdditionalContextSection(provider_fn=current_time_provider)
 ```python
 # Section 1: Analyze and store data
 class AnalysisSection(ContextSection):
-  async def get_messages(self, scope, conversation, params):
+  async def get_messages(self, memory, scope, conversation, params):
     params["sentiment"] = analyze_sentiment(conversation)
     return []
 
 
 # Section 2: Use stored data
 class ResponseSection(ContextSection):
-  async def get_messages(self, scope, conversation, params):
+  async def get_messages(self, memory, scope, conversation, params):
     sentiment = params.get("sentiment", "neutral")
     return [{"role": "system", "content": {"text": f"Sentiment: {sentiment}", "type": "text"}}]
 ```
@@ -184,10 +188,11 @@ template.add_section(AdditionalContextSection(provider_fn=rag_provider))
 
 ```python
 class SummarySection(ContextSection):
-  async def get_messages(self, scope, conversation, params):
-    msg_count = params.get("conversation_message_count", 0)
-    if msg_count > 20:
-      summary = await generate_summary(scope, conversation)
+  async def get_messages(self, memory, scope, conversation, params):
+    # Access conversation history via memory parameter
+    messages = await memory.get_messages_only(scope, conversation)
+    if len(messages) > 20:
+      summary = await generate_summary(messages)
       return [{"role": "system", "content": {"text": f"Summary: {summary}", "type": "text"}}]
     return []
 ```
@@ -240,9 +245,11 @@ See `autonomy/examples/context_templates/` for complete working examples:
 - `advanced_example.py` - Custom sections, filtering, and advanced patterns
 """
 
+import asyncio
 from typing import Dict, List, Optional, Callable, Any
 from ..logs import get_logger
 from ..memory.memory import Memory
+from ..models.model import Model
 
 logger = get_logger("context")
 
@@ -304,7 +311,7 @@ class ContextSection:
     self.name = name
     self.enabled = enabled
 
-  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, memory: Memory, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """
     Retrieve messages for this section.
 
@@ -312,6 +319,7 @@ class ContextSection:
     in subclasses or implement it in duck-typed sections.
 
     Args:
+      memory: Memory instance for retrieving conversation history
       scope: User/tenant identifier for memory isolation
       conversation: Conversation thread identifier
       params: Shared parameters dictionary for passing data between sections
@@ -360,7 +368,7 @@ class SystemInstructionsSection(ContextSection):
     super().__init__("system_instructions", enabled)
     self.instructions = instructions
 
-  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, memory: Memory, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Return system instructions."""
     if not self.enabled:
       return []
@@ -384,15 +392,14 @@ class ConversationHistorySection(ContextSection):
 
   Example:
     ```python
-    section = ConversationHistorySection(memory)
+    section = ConversationHistorySection()
     # Or with filtering:
-    section = ConversationHistorySection(memory, filter_fn=lambda msg: msg.get("role") != "system")
+    section = ConversationHistorySection(filter_fn=lambda msg: msg.get("role") != "system")
     ```
   """
 
   def __init__(
     self,
-    memory: Memory,
     enabled: bool = True,
     max_messages: Optional[int] = None,
     filter_fn: Optional[Callable[[dict], bool]] = None,
@@ -402,25 +409,23 @@ class ConversationHistorySection(ContextSection):
     Initialize conversation history section.
 
     Args:
-      memory: Memory instance to retrieve messages from
       enabled: Whether section is active (default: True)
       max_messages: Optional limit on number of messages to include
       filter_fn: Optional function to filter messages (returns True to include)
       transform_fn: Optional function to transform each message before inclusion
     """
     super().__init__("conversation_history", enabled)
-    self.memory = memory
     self.max_messages = max_messages
     self.filter_fn = filter_fn
     self.transform_fn = transform_fn
 
-  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, memory: Memory, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Retrieve conversation history from memory."""
     if not self.enabled:
       return []
 
     # Get messages from memory (without system instructions)
-    messages = await self.memory.get_messages_only(scope, conversation)
+    messages = await memory.get_messages_only(scope, conversation)
 
     # Apply filter if provided
     if self.filter_fn:
@@ -444,6 +449,408 @@ class ConversationHistorySection(ContextSection):
     params["conversation_message_count"] = len(messages)
 
     return messages
+
+
+SUMMARIZATION_INSTRUCTIONS = """Summarize the following conversation history concisely.
+Focus on:
+- Key questions asked by the user
+- Important facts and answers provided
+- Topics discussed
+- Any ongoing context that would be important for future questions
+
+Keep the summary brief but comprehensive. Use bullet points for clarity.
+
+Conversation to summarize:
+{conversation}
+
+Summary:"""
+
+
+class SummarizedHistorySection(ContextSection):
+  """
+  Conversation history section with async (non-blocking) summarization.
+
+  Unlike synchronous summarization, this section:
+  1. NEVER blocks the request on summarization
+  2. Returns cached summary immediately (even if slightly stale)
+  3. Schedules background summarization for cache updates
+  4. The next request benefits from the updated summary
+
+  This eliminates summarization latency from the request path,
+  resulting in significantly faster response times compared to sync summarization.
+
+  How it works:
+    - Messages accumulate normally until reaching `ceiling`
+    - When `ceiling` is exceeded, older messages are summarized
+    - After summarization, model sees ~`floor` messages (summary + recent)
+    - The verbatim window starts RIGHT AFTER where the summary ends (no hidden messages)
+    - Re-summarization triggers when `batch_size` (ceiling - floor) new messages accumulate
+
+  Cold Start Behavior:
+    - If no cached summary exists, returns all messages (like pre-threshold)
+    - Background task generates summary for subsequent requests
+    - After first summarization, all future requests use cached summary
+
+  Staleness:
+    - Summary may be 1-2 turns behind current conversation
+    - Recent messages (last N) are always current
+    - For knowledge-based agents, this is acceptable since they can re-search
+
+  Example:
+    ```python
+    from autonomy import Model
+    from autonomy.agents.context import SummarizedHistorySection, ContextTemplate
+
+    section = SummarizedHistorySection(
+      summary_model=Model("claude-haiku"),  # Use fast model for summaries
+      floor=10,  # Min messages visible after summarization
+      ceiling=20,  # Max messages before triggering summarization
+    )
+
+    template = ContextTemplate(
+      [
+        SystemInstructionsSection(instructions),
+        section,
+      ]
+    )
+    ```
+  """
+
+  def __init__(
+    self,
+    summary_model: Model,
+    floor: int = 10,
+    ceiling: int = 20,
+    size: int = 2048,
+    instructions: Optional[str] = None,
+    enabled: bool = True,
+    # Legacy parameter names (deprecated, use floor/ceiling/size instead)
+    recent_count: Optional[int] = None,
+    summarize_threshold: Optional[int] = None,
+    max_summary_tokens: Optional[int] = None,
+  ):
+    """
+    Initialize async summarized history section.
+
+    Args:
+      summary_model: Model to use for generating summaries (recommend fast model like Haiku)
+      floor: Minimum messages visible after summarization (default: 10)
+      ceiling: Maximum messages before triggering summarization (default: 20)
+      size: Maximum tokens for summary generation (default: 2048)
+      instructions: Custom prompt template that replaces the default SUMMARIZATION_INSTRUCTIONS.
+        Must include {conversation} placeholder for the conversation text.
+        Example: "Summarize this chat, preserving code:\n{conversation}\n\nSummary:"
+      enabled: Whether section is active (default: True)
+
+    Legacy Args (deprecated):
+      recent_count: Use `floor` instead
+      summarize_threshold: Use `ceiling` instead
+      max_summary_tokens: Use `size` instead
+    """
+    super().__init__("conversation_history", enabled)
+    self.summary_model = summary_model
+
+    # Support legacy parameter names with deprecation
+    if recent_count is not None:
+      logger.warning("SummarizedHistorySection: 'recent_count' is deprecated, use 'floor' instead")
+      floor = recent_count
+    if summarize_threshold is not None:
+      logger.warning("SummarizedHistorySection: 'summarize_threshold' is deprecated, use 'ceiling' instead")
+      ceiling = summarize_threshold
+    if max_summary_tokens is not None:
+      logger.warning("SummarizedHistorySection: 'max_summary_tokens' is deprecated, use 'size' instead")
+      size = max_summary_tokens
+
+    self.floor = floor
+    self.ceiling = ceiling
+    self.size = size
+    self.batch_size = ceiling - floor  # Re-summarize when this many new messages accumulate
+    self.instructions = instructions
+
+    # Validate configuration
+    if self.floor >= self.ceiling:
+      raise ValueError(f"floor ({self.floor}) must be less than ceiling ({self.ceiling})")
+    if self.floor < 1:
+      raise ValueError(f"floor ({self.floor}) must be at least 1")
+
+    # Cache storage - keyed by "scope:conversation"
+    self._summary_cache: Dict[str, str] = {}  # cached summary text
+    self._summarized_count: Dict[str, int] = {}  # count of messages summarized
+    self._pending_summarization: Dict[str, bool] = {}  # is summarization in progress?
+
+    # Per-conversation locks to prevent duplicate summarization
+    self._locks: Dict[str, asyncio.Lock] = {}
+
+    # Metrics for debugging
+    self._metrics = {
+      "cache_hits": 0,
+      "cache_misses": 0,
+      "background_tasks_started": 0,
+      "background_tasks_completed": 0,
+      "background_tasks_failed": 0,
+    }
+
+  def _get_lock(self, cache_key: str) -> asyncio.Lock:
+    """Get or create a lock for a conversation."""
+    if cache_key not in self._locks:
+      self._locks[cache_key] = asyncio.Lock()
+    return self._locks[cache_key]
+
+  def _format_messages_for_summary(self, messages: List[dict]) -> str:
+    """Format messages into a string for summarization."""
+    formatted = []
+    for msg in messages:
+      role = msg.get("role", "unknown")
+      content = msg.get("content", "")
+
+      # Handle different content formats
+      if isinstance(content, dict):
+        if "text" in content:
+          content = content["text"]
+        elif "content" in content:
+          content = content["content"]
+        else:
+          content = str(content)
+      elif isinstance(content, list):
+        # Handle list of content blocks
+        text_parts = []
+        for part in content:
+          if isinstance(part, dict) and "text" in part:
+            text_parts.append(part["text"])
+          elif isinstance(part, str):
+            text_parts.append(part)
+        content = " ".join(text_parts)
+
+      # Skip tool calls and tool results for summary (keep it high-level)
+      if role in ("tool", "function"):
+        continue
+
+      # Handle tool_calls in assistant messages
+      if role == "assistant" and "tool_calls" in msg:
+        tool_names = [tc.get("name", "unknown") for tc in msg.get("tool_calls", [])]
+        formatted.append(f"Assistant: [Used tools: {', '.join(tool_names)}]")
+        if content:
+          formatted.append(f"Assistant: {content[:500]}")
+      elif content:
+        formatted.append(f"{role.capitalize()}: {content[:500]}")
+
+    return "\n".join(formatted)
+
+  async def _generate_summary(self, messages: List[dict]) -> str:
+    """Generate a summary of the given messages."""
+    conversation_text = self._format_messages_for_summary(messages)
+
+    if not conversation_text.strip():
+      return ""
+
+    # Use custom instructions if provided (replaces entire prompt), otherwise use default
+    if self.instructions:
+      prompt = self.instructions.format(conversation=conversation_text)
+    else:
+      prompt = SUMMARIZATION_INSTRUCTIONS.format(conversation=conversation_text)
+
+    try:
+      response = await self.summary_model.complete_chat(
+        messages=[{"role": "user", "content": prompt}],
+        stream=False,
+        max_tokens=self.size,
+      )
+
+      # Extract text from response
+      if hasattr(response, "content"):
+        content = response.content
+        if isinstance(content, list) and len(content) > 0:
+          if hasattr(content[0], "text"):
+            return content[0].text
+          return str(content[0])
+        return str(content)
+      return str(response)
+
+    except Exception as e:
+      logger.error(f"Summarization failed: {e}")
+      # Return a simple fallback
+      return f"[Previous conversation - {len(messages)} messages]"
+
+  def _create_summary_message(
+    self,
+    summary: str,
+    summarized_count: int,
+    stale_count: Optional[int] = None,
+  ) -> dict:
+    """Create a summary message dict."""
+    staleness_note = ""
+    if stale_count and stale_count > 0:
+      staleness_note = f" (summary may be {stale_count} messages behind)"
+
+    return {
+      "role": "system",
+      "content": {
+        "text": f"[CONVERSATION SUMMARY - {summarized_count} earlier messages{staleness_note}]\n{summary}\n[END SUMMARY - Recent messages follow]",
+        "type": "text",
+      },
+    }
+
+  async def _background_summarize(self, cache_key: str, messages: List[dict]):
+    """
+    Background task to generate and cache summary.
+
+    This runs after the main request returns, so it doesn't add latency.
+    The generated summary will be available for the next request.
+    """
+    lock = self._get_lock(cache_key)
+
+    # Quick check if already in progress (without acquiring lock)
+    if self._pending_summarization.get(cache_key):
+      logger.debug(f"Summarization already in progress for {cache_key}")
+      return
+
+    async with lock:
+      # Double-check after acquiring lock
+      if self._pending_summarization.get(cache_key):
+        return
+
+      self._pending_summarization[cache_key] = True
+      self._metrics["background_tasks_started"] += 1
+
+      try:
+        logger.info(f"Starting background summarization for {cache_key} ({len(messages)} messages)")
+        summary = await self._generate_summary(messages)
+
+        # Update cache
+        self._summary_cache[cache_key] = summary
+        self._summarized_count[cache_key] = len(messages)
+
+        self._metrics["background_tasks_completed"] += 1
+        logger.info(f"Background summarization completed for {cache_key}")
+
+      except Exception as e:
+        self._metrics["background_tasks_failed"] += 1
+        logger.error(f"Background summarization failed for {cache_key}: {e}")
+
+      finally:
+        self._pending_summarization[cache_key] = False
+
+  async def get_messages(
+    self,
+    memory: Memory,
+    scope: str,
+    conversation: str,
+    params: Dict[str, Any],
+  ) -> List[dict]:
+    """
+    Retrieve conversation history with async summarization.
+
+    This method NEVER blocks on summarization. It returns immediately with:
+    - Cached summary + recent messages (if cache exists)
+    - All messages (if no cache yet - cold start)
+
+    Background summarization is scheduled if the cache is stale.
+
+    Algorithm:
+    - Below ceiling: return all messages verbatim
+    - Above ceiling: return [summary] + messages[summarized_count:]
+    - Re-summarize when batch_size (ceiling - floor) new messages accumulate
+    - Verbatim window starts RIGHT AFTER where summary ends (no hidden messages)
+    """
+    if not self.enabled:
+      return []
+
+    # Get messages from memory
+    messages = await memory.get_messages_only(scope, conversation)
+    total_messages = len(messages)
+    params["conversation_message_count"] = total_messages
+
+    # If below ceiling, return all messages (no summarization needed)
+    if total_messages <= self.ceiling:
+      logger.debug(f"[CONTEXT→{self.name}] Below ceiling ({total_messages}/{self.ceiling}), returning all messages")
+      return messages
+
+    cache_key = f"{scope}:{conversation}"
+
+    # Check cache status
+    cached_summary = self._summary_cache.get(cache_key)
+    summarized_count = self._summarized_count.get(cache_key, 0)
+
+    # Calculate how many messages should be summarized to maintain floor verbatim messages
+    target_summarized = total_messages - self.floor
+
+    # Determine if we need to (re-)summarize
+    # Re-summarize when batch_size new messages have accumulated since last summary
+    new_since_summary = target_summarized - summarized_count
+    should_summarize = (
+      # First time summarization: we have messages to summarize but no summary yet
+      (target_summarized > 0 and summarized_count == 0)
+      or
+      # Re-summarization: batch_size new messages have accumulated
+      (new_since_summary >= self.batch_size)
+    )
+
+    # Schedule background summarization if needed (non-blocking)
+    if should_summarize and not self._pending_summarization.get(cache_key):
+      messages_to_summarize = messages[:target_summarized]
+      logger.debug(
+        f"[CONTEXT→{self.name}] Scheduling summarization for {cache_key} "
+        f"({len(messages_to_summarize)} messages, new_since_summary={new_since_summary})"
+      )
+      asyncio.create_task(self._background_summarize(cache_key, messages_to_summarize))
+
+    # Return immediately with whatever we have
+    if cached_summary:
+      # Cache hit - return cached summary + ALL messages after the summarized portion
+      # IMPORTANT: verbatim_start = summarized_count ensures NO hidden messages
+      self._metrics["cache_hits"] += 1
+      verbatim_start = summarized_count
+      stale_count = new_since_summary if new_since_summary > 0 else 0
+
+      logger.debug(
+        f"[CONTEXT→{self.name}] Cache hit for {cache_key} "
+        f"(summarized={summarized_count}, verbatim={total_messages - verbatim_start}, stale_by={stale_count})"
+      )
+
+      summary_message = self._create_summary_message(
+        cached_summary,
+        summarized_count,
+        stale_count if stale_count > 0 else None,
+      )
+      return [summary_message] + messages[verbatim_start:]
+    else:
+      # Cache miss (cold start) - return all messages
+      # Background task will generate summary for next request
+      self._metrics["cache_misses"] += 1
+      logger.debug(f"[CONTEXT→{self.name}] Cache miss for {cache_key}, returning all {total_messages} messages")
+      return messages
+
+  def get_metrics(self) -> Dict[str, int]:
+    """Get summarization metrics for debugging."""
+    return self._metrics.copy()
+
+  def clear_cache(self, scope: Optional[str] = None, conversation: Optional[str] = None):
+    """
+    Clear cached summaries.
+
+    Args:
+      scope: If provided with conversation, clear only that conversation's cache
+      conversation: If provided with scope, clear only that conversation's cache
+
+    If neither provided, clears all caches.
+    """
+    if scope and conversation:
+      cache_key = f"{scope}:{conversation}"
+      self._summary_cache.pop(cache_key, None)
+      self._summarized_count.pop(cache_key, None)
+      logger.debug(f"[CONTEXT→{self.name}] Cleared cache for {cache_key}")
+    else:
+      self._summary_cache.clear()
+      self._summarized_count.clear()
+      logger.debug(f"[CONTEXT→{self.name}] Cleared all summary caches")
+
+  def get_cache_info(self) -> Dict[str, Any]:
+    """Get information about cached summaries."""
+    return {
+      "cached_conversations": len(self._summary_cache),
+      "pending_summarizations": sum(1 for v in self._pending_summarization.values() if v),
+      "conversations": list(self._summary_cache.keys()),
+    }
 
 
 class AdditionalContextSection(ContextSection):
@@ -514,7 +921,7 @@ class AdditionalContextSection(ContextSection):
     self._static_messages = []
     logger.debug(f"[CONTEXT→{self.name}] Cleared {count} message(s)")
 
-  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, memory: Memory, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Retrieve additional context messages."""
     if not self.enabled:
       return []
@@ -564,7 +971,7 @@ class WorkspaceReminderSection(ContextSection):
     super().__init__("workspace_reminder", enabled)
     self.frequency = frequency
 
-  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, memory: Memory, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Generate workspace reminder message."""
     if not self.enabled:
       return []
@@ -747,7 +1154,7 @@ class FrameworkInstructionsSection(ContextSection):
 
     return "\n\n".join(instructions)
 
-  async def get_messages(self, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
+  async def get_messages(self, memory: Memory, scope: str, conversation: str, params: Dict[str, Any]) -> List[dict]:
     """Generate framework instructions message."""
     if not self.enabled:
       return []
@@ -855,11 +1262,14 @@ class ContextTemplate:
         return True
     return False
 
-  async def build_context(self, scope: str, conversation: str, params: Optional[Dict[str, Any]] = None) -> List[dict]:
+  async def build_context(
+    self, memory: Memory, scope: str, conversation: str, params: Optional[Dict[str, Any]] = None
+  ) -> List[dict]:
     """
     Build context by combining all enabled sections.
 
     Args:
+      memory: Memory instance for retrieving conversation history
       scope: User/tenant identifier for memory isolation
       conversation: Conversation thread identifier
       params: Optional dict of parameters to share with sections
@@ -881,7 +1291,7 @@ class ContextTemplate:
         continue
 
       try:
-        messages = await section.get_messages(scope, conversation, section_params)
+        messages = await section.get_messages(memory, scope, conversation, section_params)
         message_count = len(messages)
         all_messages.extend(messages)
         section_counts.append(f"{section.name}={message_count}")
@@ -910,7 +1320,6 @@ class ContextTemplate:
 
 
 def create_default_template(
-  memory: Memory,
   instructions: List[dict],
   enable_ask_for_user_input: bool = False,
   enable_filesystem: bool = False,
@@ -929,7 +1338,6 @@ def create_default_template(
   4. Conversation history
 
   Args:
-    memory: Memory instance
     instructions: System instruction messages
     enable_ask_for_user_input: Whether ask_user_for_input tool is enabled
     enable_filesystem: Whether filesystem tools are enabled
@@ -956,6 +1364,6 @@ def create_default_template(
     sections.append(WorkspaceReminderSection(frequency=workspace_reminder_frequency))
 
   # Conversation history always comes last
-  sections.append(ConversationHistorySection(memory))
+  sections.append(ConversationHistorySection())
 
   return ContextTemplate(sections)

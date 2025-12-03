@@ -9,6 +9,8 @@ from .agents import (
   VoiceConfig,
   ContextSection,
   AdditionalContextSection,
+  SummarizedHistorySection,
+  ContextSummaryConfig,
 )
 from .evals import Eval, Metric, TestCase, TestOk, TestError
 from .logs import (
@@ -93,6 +95,8 @@ __all__ = [
   "ConversationResponse",
   "ContextSection",
   "AdditionalContextSection",
+  "SummarizedHistorySection",
+  "ContextSummaryConfig",
   # from .autonomy_in_rust_for_python
   "RustMailbox",
   "McpClient",

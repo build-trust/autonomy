@@ -10,11 +10,24 @@ from autonomy.agents.context import FrameworkInstructionsSection
 from autonomy.agents.agent import system_message
 
 
+class MockMemory:
+  """Mock memory for testing."""
+
+  def __init__(self):
+    self.instructions = [{"role": "system", "content": {"text": "You are a test assistant", "type": "text"}}]
+    self.messages = []
+
+  async def get_messages_only(self, scope: str, conversation: str):
+    """Return mock messages."""
+    return self.messages.copy()
+
+
 @pytest.mark.asyncio
 async def test_framework_instructions_without_ask_user():
   """Test framework instructions without ask_user_for_input tool."""
+  memory = MockMemory()
   section = FrameworkInstructionsSection(enable_ask_for_user_input=False)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   assert len(messages) == 1
   instructions = messages[0]["content"]["text"]
@@ -35,8 +48,9 @@ async def test_framework_instructions_without_ask_user():
 
 async def test_framework_instructions_with_ask_user():
   """Test framework instructions with ask_user_for_input tool enabled."""
+  memory = MockMemory()
   section = FrameworkInstructionsSection(enable_ask_for_user_input=True)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   assert len(messages) == 1
   instructions = messages[0]["content"]["text"]
@@ -54,8 +68,9 @@ async def test_framework_instructions_with_ask_user():
 
 async def test_framework_instructions_format():
   """Test that framework instructions are properly formatted."""
+  memory = MockMemory()
   section = FrameworkInstructionsSection(enable_ask_for_user_input=True)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   assert len(messages) == 1
   assert messages[0]["role"] == "system"
@@ -73,8 +88,9 @@ async def test_framework_instructions_format():
 
 async def test_framework_instructions_default_parameter():
   """Test FrameworkInstructionsSection with default parameter."""
+  memory = MockMemory()
   section = FrameworkInstructionsSection()
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   assert len(messages) == 1
   instructions = messages[0]["content"]["text"]
@@ -98,12 +114,13 @@ async def test_framework_instructions_combined_with_user():
   """Test that framework instructions work alongside user instructions in template."""
   from autonomy.agents.context import ContextTemplate, SystemInstructionsSection
 
+  memory = MockMemory()
   user_msg = {"role": "system", "content": {"text": "You are a helpful assistant.", "type": "text"}}
   framework_section = FrameworkInstructionsSection(enable_ask_for_user_input=True)
 
   template = ContextTemplate([SystemInstructionsSection([user_msg]), framework_section])
 
-  messages = await template.build_context("scope", "conv")
+  messages = await template.build_context(memory, "scope", "conv")
 
   # Should have both messages
   assert len(messages) == 2
@@ -114,8 +131,9 @@ async def test_framework_instructions_combined_with_user():
 
 async def test_framework_instructions_content_accuracy():
   """Test that framework instructions accurately describe tools."""
+  memory = MockMemory()
   section = FrameworkInstructionsSection(enable_ask_for_user_input=True)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]
 
@@ -130,8 +148,9 @@ async def test_framework_instructions_content_accuracy():
 
 async def test_framework_instructions_no_duplication():
   """Test that framework instructions don't have obvious duplication."""
+  memory = MockMemory()
   section = FrameworkInstructionsSection(enable_ask_for_user_input=True)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]
 
@@ -151,6 +170,7 @@ async def test_framework_instructions_no_duplication():
 
 async def test_framework_instructions_with_subagents():
   """Test framework instructions with subagent configurations."""
+  memory = MockMemory()
   subagent_configs = {
     "researcher": {
       "instructions": "You are a research assistant specialized in finding information.",
@@ -163,7 +183,7 @@ async def test_framework_instructions_with_subagents():
   }
 
   section = FrameworkInstructionsSection(enable_ask_for_user_input=False, subagent_configs=subagent_configs)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]
 
@@ -180,8 +200,9 @@ async def test_framework_instructions_with_subagents():
 
 async def test_framework_instructions_without_subagents():
   """Test framework instructions without subagent configurations."""
+  memory = MockMemory()
   section = FrameworkInstructionsSection(enable_ask_for_user_input=False, subagent_configs=None)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]
 
@@ -192,6 +213,7 @@ async def test_framework_instructions_without_subagents():
 
 async def test_framework_instructions_all_features():
   """Test framework instructions with all features enabled."""
+  memory = MockMemory()
   subagent_configs = {
     "helper": {
       "instructions": "You are a helpful helper.",
@@ -200,7 +222,7 @@ async def test_framework_instructions_all_features():
   }
 
   section = FrameworkInstructionsSection(enable_ask_for_user_input=True, subagent_configs=subagent_configs)
-  messages = await section.get_messages("scope", "conv", {})
+  messages = await section.get_messages(memory, "scope", "conv", {})
 
   instructions = messages[0]["content"]["text"]
 
