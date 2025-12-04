@@ -481,26 +481,9 @@
 
     <div class="container">
       <div class="transcript-panel">
-        <div class="header">
-          <h1>🚀 Autonomy Docs Assistant</h1>
-          <p>Ask questions about Autonomy - the platform for building autonomous AI products</p>
-        </div>
-
         <div id="transcriptContainer" class="transcript-container">
           <div style="color: #6e7781; font-size: 13px; text-align: center; padding: 20px">
             Click the voice button to start a conversation...
-          </div>
-        </div>
-
-        <div class="suggestions">
-          <h3>Try asking about</h3>
-          <div class="suggestion-chips">
-            <span class="suggestion-chip">What is Autonomy?</span>
-            <span class="suggestion-chip">How do I create an agent?</span>
-            <span class="suggestion-chip">What are workers?</span>
-            <span class="suggestion-chip">How do I deploy my app?</span>
-            <span class="suggestion-chip">What models are available?</span>
-            <span class="suggestion-chip">How do I give agents tools?</span>
           </div>
         </div>
       </div>
@@ -570,7 +553,7 @@
             isConnected = true;
             connectionStatus.textContent = "Connected";
             connectionStatus.className = "connection-status connected";
-            updateStatus("Connected! Click to start talking");
+            updateStatus("Click to start a conversation.");
 
             ws.send(JSON.stringify({ type: "config" }));
           };
@@ -639,11 +622,13 @@
 
           case "speech_started":
             console.log("🎤 Speech started (interrupted=" + data.interrupted + ")");
-            if (data.interrupted) {
-              console.log("🔇 Clearing audio queue due to interruption");
+            // Always clear audio queue when user starts speaking
+            // Audio may still be scheduled/playing even if isSpeaking is false
+            if (scheduledSources.length > 0) {
+              console.log("🔇 Clearing audio queue - user started speaking");
               clearAudioQueue();
-              isSpeaking = false;
             }
+            isSpeaking = false;
             setCircleState("listening");
             updateStatus("Listening...");
             break;
@@ -651,7 +636,7 @@
           case "speech_stopped":
             console.log("⏸️ Speech stopped");
             setCircleState("processing");
-            updateStatus("Searching docs...");
+            updateStatus("Thinking...");
             break;
 
           case "response_complete":
