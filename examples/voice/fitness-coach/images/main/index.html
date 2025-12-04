@@ -562,10 +562,12 @@
             break;
 
           case "speech_started":
-            // Always clear audio on speech start for responsive interruption
-            console.log("🎤 Speech started - clearing any playing audio");
-            clearAudioQueue();
-            isSpeaking = false;
+            console.log("🎤 Speech started (interrupted=" + data.interrupted + ")");
+            if (data.interrupted) {
+              console.log("🔇 Clearing audio queue due to interruption");
+              clearAudioQueue();
+              isSpeaking = false;
+            }
             setCircleState("listening");
             updateStatus("Listening...");
             break;

@@ -722,18 +722,26 @@ class VoiceSession:
           self.is_responding = False
           logger.debug("📝 Response ended")
 
-        # Track output audio buffer state
-        if event_type == "output_audio_buffer.started":
-          self.is_output_audio_active = True
-          logger.debug("🔊 Output audio started")
+        # Track output audio buffer state using actual OpenAI Realtime API events
+        # Note: output_audio_buffer.started/stopped don't exist in the API
+        # We use response.audio.delta (first chunk) and response.audio.done to track state
+        if event_type == "response.audio.delta":
+          if not self.is_output_audio_active:
+            self.is_output_audio_active = True
+            logger.debug("🔊 Output audio started")
 
-        if event_type == "output_audio_buffer.stopped":
-          self.is_output_audio_active = False
-          logger.debug("🔇 Output audio stopped")
+        # Reset audio active flag when audio stream completes
+        if event_type == "response.audio.done":
+          if self.is_output_audio_active:
+            self.is_output_audio_active = False
+            logger.debug("🔇 Output audio stopped")
 
         # Detect interruption: user started speaking while assistant is responding/playing audio
         if event_type == "input_audio_buffer.speech_started":
           was_interrupted = self.is_responding or self.is_output_audio_active
+          logger.debug(
+            f"🎤 Speech started: is_responding={self.is_responding}, is_output_audio_active={self.is_output_audio_active}, was_interrupted={was_interrupted}"
+          )
           if was_interrupted:
             await self._handle_interruption()
           # Mark the event so _translate_event knows this was an interruption

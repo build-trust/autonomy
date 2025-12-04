@@ -638,9 +638,12 @@
             break;
 
           case "speech_started":
-            console.log("🎤 Speech started - clearing any playing audio");
-            clearAudioQueue();
-            isSpeaking = false;
+            console.log("🎤 Speech started (interrupted=" + data.interrupted + ")");
+            if (data.interrupted) {
+              console.log("🔇 Clearing audio queue due to interruption");
+              clearAudioQueue();
+              isSpeaking = false;
+            }
             setCircleState("listening");
             updateStatus("Listening...");
             break;

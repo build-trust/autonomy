@@ -160,7 +160,7 @@ async def main(node: Node):
     context_summary={
       "floor": 10,
       "ceiling": 20,
-      "model": Model("nova-micro-v1"),
+      "model": Model("claude-sonnet-4-v1"),
     },
     voice={
       "voice": "alloy",
