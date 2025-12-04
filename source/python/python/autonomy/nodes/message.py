@@ -622,6 +622,39 @@ class MessageConverter:
     def structure_conversation_role(data: str, cls) -> ConversationRole:
       return cls(data)
 
+    # TextContent - handle both string and dict inputs
+    @self.converter.register_structure_hook
+    def structure_text_content(obj, cls) -> TextContent:
+      if isinstance(obj, str):
+        return TextContent(text=obj)
+      if isinstance(obj, dict):
+        return TextContent(text=obj.get("text", ""), type=MessageContentType(obj.get("type", "text")))
+      raise ValueError(f"Cannot structure TextContent from {type(obj)}")
+
+    # ImageContent - handle dict inputs
+    @self.converter.register_structure_hook
+    def structure_image_content(obj: dict, cls) -> ImageContent:
+      quality_str = obj.get("quality", "auto")
+      quality = ImageQuality(quality_str) if isinstance(quality_str, str) else quality_str
+      return ImageContent(
+        encoded=obj.get("encoded"),
+        quality=quality,
+        type=MessageContentType(obj.get("type", "image")),
+      )
+
+    # MessageContent (Union of TextContent and ImageContent)
+    @self.converter.register_structure_hook
+    def structure_message_content(obj, cls) -> MessageContent:
+      if isinstance(obj, str):
+        return TextContent(text=obj)
+      if isinstance(obj, dict):
+        content_type = obj.get("type", "text")
+        if content_type == "image":
+          return ImageContent(type=MessageContentType.IMAGE, source=obj.get("source", {}))
+        else:
+          return TextContent(text=obj.get("text", ""), type=MessageContentType(content_type))
+      raise ValueError(f"Cannot structure MessageContent from {type(obj)}")
+
     # ConversationMessage
     @self.converter.register_structure_hook
     def structure_conversation_message(obj: dict, cls) -> ConversationMessage:
@@ -635,6 +668,16 @@ class MessageConverter:
       typ = mapping.get(role)
       if typ is None:
         raise ValueError(f"Unknown conversation role: {role}")
+
+      # Pre-process content field to handle string -> TextContent conversion
+      obj = dict(obj)  # Make a copy to avoid mutating the original
+      if "content" in obj:
+        content = obj["content"]
+        if isinstance(content, str):
+          obj["content"] = {"text": content, "type": "text"}
+        elif content is None:
+          obj["content"] = {"text": "", "type": "text"}
+
       return self.converter.structure(obj, typ)
 
     # MessageType
