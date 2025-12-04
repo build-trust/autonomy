@@ -41,6 +41,10 @@
           "agents/subagents",
           "agents/human-in-the-loop"
         ]
+      },
+      {
+        "group": "GUIDES",
+        "pages": ["guides/box"]
       }
     ]
   },
