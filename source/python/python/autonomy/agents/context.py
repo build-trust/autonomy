@@ -248,7 +248,7 @@ See `autonomy/examples/context_templates/` for complete working examples:
 import asyncio
 from typing import Dict, List, Optional, Callable, Any
 from ..logs import get_logger
-from ..memory.memory import Memory
+from ..memory.memory import Memory, find_tool_pair_boundary, validate_tool_pairing
 from ..models.model import Model
 
 logger = get_logger("context")
@@ -800,6 +800,17 @@ class SummarizedHistorySection(ContextSection):
       # IMPORTANT: verbatim_start = summarized_count ensures NO hidden messages
       self._metrics["cache_hits"] += 1
       verbatim_start = summarized_count
+
+      # Adjust verbatim_start to preserve tool_use/tool_result pairs
+      # This prevents orphaned tool results that would cause Claude API errors
+      adjusted_verbatim_start = find_tool_pair_boundary(messages, verbatim_start)
+      if adjusted_verbatim_start != verbatim_start:
+        logger.debug(
+          f"[CONTEXT→{self.name}] Adjusted verbatim_start from {verbatim_start} to "
+          f"{adjusted_verbatim_start} to preserve tool pairs"
+        )
+        verbatim_start = adjusted_verbatim_start
+
       stale_count = new_since_summary if new_since_summary > 0 else 0
 
       logger.debug(
@@ -812,7 +823,16 @@ class SummarizedHistorySection(ContextSection):
         summarized_count,
         stale_count if stale_count > 0 else None,
       )
-      return [summary_message] + messages[verbatim_start:]
+
+      result_messages = [summary_message] + messages[verbatim_start:]
+
+      # Validate tool pairing before returning (debug safety check)
+      # Only validate the conversation messages, not the summary
+      is_valid, error = validate_tool_pairing(messages[verbatim_start:])
+      if not is_valid:
+        logger.error(f"[CONTEXT→{self.name}] Tool pairing validation failed for {cache_key}: {error}")
+
+      return result_messages
     else:
       # Cache miss (cold start) - return all messages
       # Background task will generate summary for next request

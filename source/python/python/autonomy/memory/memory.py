@@ -1,6 +1,6 @@
 import asyncio
 import psycopg
-from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
+from typing import Optional, Dict, List, Tuple, Set, TYPE_CHECKING
 from collections import defaultdict
 from os import environ
 from urllib.parse import quote
@@ -14,6 +14,175 @@ logger = get_logger("memory")
 
 MAX_MESSAGES_IN_SHORT_TERM_MEMORY_DEFAULT = 100
 MAX_TOKENS_IN_SHORT_TERM_MEMORY_DEFAULT = 8000
+
+
+# =============================================================================
+# Tool Pair Detection Utilities
+# =============================================================================
+# These functions help preserve the pairing between tool_use (assistant messages
+# with tool_calls) and tool_result (messages with role: "tool") required by
+# Claude's API. Breaking this pairing causes "Expected toolResult blocks" errors.
+
+
+def get_tool_use_ids(message: dict) -> List[str]:
+  """
+  Extract tool_call IDs from an assistant message with tool_calls.
+
+  Args:
+    message: A message dict that may contain tool_calls
+
+  Returns:
+    List of tool_call IDs, or empty list if none found
+  """
+  if message.get("role") == "assistant" and "tool_calls" in message:
+    return [tc.get("id") for tc in message.get("tool_calls", []) if tc.get("id")]
+  return []
+
+
+def get_tool_result_id(message: dict) -> Optional[str]:
+  """
+  Extract tool_call_id from a tool result message.
+
+  Args:
+    message: A message dict that may be a tool result
+
+  Returns:
+    The tool_call_id if this is a tool result message, None otherwise
+  """
+  if message.get("role") == "tool":
+    return message.get("tool_call_id")
+  return None
+
+
+def find_tool_pair_boundary(messages: List[dict], start_index: int) -> int:
+  """
+  Find a safe boundary that doesn't split tool pairs.
+
+  Given a starting index, move backwards if needed to include any tool_use
+  messages whose results appear at or after start_index. This prevents
+  orphaned tool results.
+
+  Args:
+    messages: List of conversation messages
+    start_index: The proposed starting index for the verbatim window
+
+  Returns:
+    Adjusted index that won't leave orphaned tool results (may be <= start_index)
+  """
+  if start_index <= 0 or start_index >= len(messages):
+    return start_index
+
+  # Build a map of tool_call_id -> index of the assistant message containing it
+  tool_use_index: Dict[str, int] = {}
+  for i, msg in enumerate(messages):
+    for tool_id in get_tool_use_ids(msg):
+      tool_use_index[tool_id] = i
+
+  # Find the minimum index we need to include to avoid orphaned tool results
+  min_required_index = start_index
+
+  for i in range(start_index, len(messages)):
+    tool_result_id = get_tool_result_id(messages[i])
+    if tool_result_id and tool_result_id in tool_use_index:
+      tool_use_idx = tool_use_index[tool_result_id]
+      if tool_use_idx < min_required_index:
+        min_required_index = tool_use_idx
+        logger.debug(f"Tool pair boundary: tool result at index {i} requires tool_use at index {tool_use_idx}")
+
+  if min_required_index < start_index:
+    logger.debug(f"Adjusted boundary from {start_index} to {min_required_index} to preserve tool pairs")
+
+  return min_required_index
+
+
+def find_safe_trim_count(messages: List[dict], requested_trim_count: int) -> int:
+  """
+  Find the maximum number of messages that can be safely trimmed from the front.
+
+  This ensures we don't trim a tool_use message while leaving its tool_result,
+  or vice versa.
+
+  Args:
+    messages: List of conversation messages
+    requested_trim_count: How many messages we want to trim
+
+  Returns:
+    The actual number of messages that can be safely trimmed (may be less than requested)
+  """
+  if requested_trim_count <= 0 or not messages:
+    return 0
+
+  # Build maps of tool pairs
+  # tool_call_id -> index of assistant message with tool_calls
+  tool_use_index: Dict[str, int] = {}
+  # tool_call_id -> index of tool result message
+  tool_result_index: Dict[str, int] = {}
+
+  for i, msg in enumerate(messages):
+    for tool_id in get_tool_use_ids(msg):
+      tool_use_index[tool_id] = i
+    tool_result_id = get_tool_result_id(msg)
+    if tool_result_id:
+      tool_result_index[tool_result_id] = i
+
+  # Find all tool_call_ids that have both a use and a result
+  paired_tool_ids = set(tool_use_index.keys()) & set(tool_result_index.keys())
+
+  # Find the maximum safe trim count
+  safe_trim_count = requested_trim_count
+
+  for tool_id in paired_tool_ids:
+    use_idx = tool_use_index[tool_id]
+    result_idx = tool_result_index[tool_id]
+
+    # If trimming would remove the tool_use but keep the result, we can't trim that far
+    if use_idx < safe_trim_count <= result_idx:
+      # We can only trim up to (but not including) the tool_use
+      safe_trim_count = min(safe_trim_count, use_idx)
+      logger.debug(f"Safe trim reduced to {safe_trim_count}: tool_use at {use_idx}, result at {result_idx}")
+
+    # If trimming would remove the result but keep the tool_use, we can't trim that far
+    # (This shouldn't normally happen as results come after uses, but handle it anyway)
+    if result_idx < safe_trim_count <= use_idx:
+      safe_trim_count = min(safe_trim_count, result_idx)
+      logger.debug(f"Safe trim reduced to {safe_trim_count}: result at {result_idx}, tool_use at {use_idx}")
+
+  return safe_trim_count
+
+
+def validate_tool_pairing(messages: List[dict]) -> Tuple[bool, Optional[str]]:
+  """
+  Validate that all tool_use blocks have corresponding tool_result blocks.
+
+  Args:
+    messages: List of conversation messages to validate
+
+  Returns:
+    Tuple of (is_valid, error_message). error_message is None if valid.
+  """
+  tool_use_ids: Set[str] = set()
+  tool_result_ids: Set[str] = set()
+
+  for msg in messages:
+    for tool_id in get_tool_use_ids(msg):
+      tool_use_ids.add(tool_id)
+    tool_result_id = get_tool_result_id(msg)
+    if tool_result_id:
+      tool_result_ids.add(tool_result_id)
+
+  # Check for orphaned tool results (results without corresponding uses)
+  orphaned_results = tool_result_ids - tool_use_ids
+  if orphaned_results:
+    return False, f"Orphaned tool results (no matching tool_use): {orphaned_results}"
+
+  # Check for orphaned tool uses (uses without corresponding results)
+  # Note: This is less critical as the model can still process, but log it
+  orphaned_uses = tool_use_ids - tool_result_ids
+  if orphaned_uses:
+    # This might be okay if tool calls are still pending, so just debug log
+    logger.debug(f"Tool calls without results (may be pending): {orphaned_uses}")
+
+  return True, None
 
 
 class Memory:
@@ -337,26 +506,57 @@ class Memory:
   async def _trim_short_term_memory(self, scope: str, conversation: str):
     """
     Trim short-term memory to stay within configured limits.
-    Removes oldest messages first (FIFO).
+    Removes oldest messages first (FIFO), but preserves tool_use/tool_result pairs.
+
+    This method ensures that when trimming messages, we don't break the pairing
+    between tool_use (assistant messages with tool_calls) and tool_result
+    (messages with role: "tool"), which would cause Claude API errors.
     """
     messages = self.short_term_memory[(scope, conversation)]
     initial_count = len(messages)
 
     if self.max_tokens_in_short_term_memory and len(messages) > 1:
-      # Token-aware trimming
+      # Token-aware trimming with tool pair preservation
       while await self._estimate_tokens(messages) > self.max_tokens_in_short_term_memory and len(messages) > 1:
-        messages.pop(0)  # Remove oldest
-        self.metrics["messages_trimmed"] += 1
-        logger.debug(f"Trimmed message from short-term memory (token limit) for {scope}/{conversation}")
+        # Calculate safe trim count (at least 1 if possible)
+        safe_trim = find_safe_trim_count(messages, 1)
+        if safe_trim > 0:
+          messages.pop(0)
+          self.metrics["messages_trimmed"] += 1
+          logger.debug(f"Trimmed message from short-term memory (token limit) for {scope}/{conversation}")
+        else:
+          # Can't trim without breaking tool pairs, stop trimming
+          logger.debug(f"Cannot trim further without breaking tool pairs (token limit) for {scope}/{conversation}")
+          break
 
-    # Count-based trimming
-    while len(messages) > self.max_messages_in_short_term_memory and len(messages) > 1:
-      messages.pop(0)  # Remove oldest
-      self.metrics["messages_trimmed"] += 1
-      logger.debug(f"Trimmed message from short-term memory (count limit) for {scope}/{conversation}")
+    # Count-based trimming with tool pair preservation
+    if len(messages) > self.max_messages_in_short_term_memory:
+      # Calculate how many messages we need to trim
+      requested_trim = len(messages) - self.max_messages_in_short_term_memory
+
+      # Find safe trim count that preserves tool pairs
+      safe_trim = find_safe_trim_count(messages, requested_trim)
+
+      if safe_trim < requested_trim:
+        logger.debug(
+          f"Reduced trim from {requested_trim} to {safe_trim} to preserve tool pairs for {scope}/{conversation}"
+        )
+
+      # Trim the safe number of messages
+      for _ in range(safe_trim):
+        messages.pop(0)
+        self.metrics["messages_trimmed"] += 1
+
+      if safe_trim > 0:
+        logger.debug(f"Trimmed {safe_trim} messages from short-term memory (count limit) for {scope}/{conversation}")
 
     if len(messages) < initial_count:
-      logger.debug(f"Trimmed {initial_count - len(messages)} messages from {scope}/{conversation}")
+      logger.debug(f"Trimmed {initial_count - len(messages)} messages total from {scope}/{conversation}")
+
+      # Validate tool pairing after trimming (debug safety check)
+      is_valid, error = validate_tool_pairing(messages)
+      if not is_valid:
+        logger.error(f"Tool pairing validation failed after trimming for {scope}/{conversation}: {error}")
 
   async def clear_short_term_memory(self, scope: str, conversation: str):
     """Clear short-term memory for a conversation (messages remain in long-term memory if enabled)."""
