@@ -1,24 +1,22 @@
 ---
 title: "Voice"
-description: "Build real-time voice agents with low-latency audio interaction."
+description: "Give agents the ability to listen and speak."
 icon: "microphone"
 ---
 
-Voice agents enable real-time audio conversations with your users. They use a
-**Voice Interface pattern** where a fast voice model handles immediate user
-interaction while delegating complex tasks to a more powerful primary agent.
+Agents can have a voice intereface. A fast voice model handles immediate user
+interaction and delegates complex tasks to a more powerful primary agent.
 
 ---
 
 ## Architecture
 
-The Voice Interface pattern uses two agents working together:
+1. **Voice Interface Agent** - An interface agent that uses a low-latency,
+real-time audio model to handle greetings, chitchat, and simple clarifications
+directly.
 
-1. **Voice Agent** - Uses OpenAI's Realtime API for low-latency voice interaction.
-   Handles greetings, chitchat, and simple clarifications directly.
-
-2. **Primary Agent** - Your main agent with tools and powerful reasoning.
-   Handles complex questions, database lookups, and tool-based tasks.
+2. **Primary Agent** - The main agent with tools and all the capabilities of
+Autonomy agents. Handles complex questions, database lookups, and tool-based tasks.
 
 When the voice agent receives a complex request, it says a filler phrase
 (like "Let me check on that") and delegates to the primary agent. The primary
