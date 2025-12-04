@@ -915,35 +915,23 @@ class VoiceSession:
 
   async def _handle_interruption(self):
     """
-    Handle user interruption using two-part cancellation.
+    Handle user interruption by cancelling the response.
 
     This method is called when the user starts speaking while the assistant
-    is responding or playing audio. It:
-    1. Cancels the in-progress response (response.cancel)
-    2. Clears the output audio buffer (output_audio_buffer.clear)
-
-    This ensures both the response generation and audio playback are stopped
-    immediately, allowing the user to speak without the assistant talking over them.
+    is responding or playing audio. It cancels the in-progress response,
+    which stops both response generation and audio playback.
     """
-    logger.info("⚡ User interruption detected - cancelling response and clearing audio")
+    logger.info("⚡ User interruption detected - cancelling response")
 
-    # 1. Cancel the response if one is in progress
+    # Cancel the response if one is in progress
     if self.is_responding:
       try:
         await self.websocket.send(json.dumps({"type": "response.cancel"}))
         self.is_responding = False
+        self.is_output_audio_active = False
         logger.debug("📝 Response cancelled due to interruption")
       except Exception as e:
         logger.warning(f"Failed to cancel response: {e}")
-
-    # 2. Clear output audio buffer if audio is active
-    if self.is_output_audio_active:
-      try:
-        await self.websocket.send(json.dumps({"type": "output_audio_buffer.clear"}))
-        self.is_output_audio_active = False
-        logger.debug("🔇 Output audio buffer cleared due to interruption")
-      except Exception as e:
-        logger.warning(f"Failed to clear output audio buffer: {e}")
 
   def _translate_event(self, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
