@@ -2,75 +2,47 @@
 title: "What is Autonomy?"
 icon: "rabbit"
 mode: "wide"
-description: "A platform to ship autonomous products."
+description: "A platform-as-a-service to ship autonomous products."
 ---
 
-Autonomy is a foundation to build and scale products that use teams of
-**deep work agents** to autonomously perform long and complex tasks. Each agent
-can plan, take notes on a filesystem, **curate context** on every turn, and
-delegate work to **parallel sub-agents**.
+Autonomy is a platform-as-a-service (PaaS). Use it to build and scale products that use teams of **deep work agents** to autonomously perform long and complex tasks. Each agent can plan, take notes on a filesystem, **curate context** on every turn, and delegate work to **parallel sub-agents**.
 
 ---
 
-<iframe width="100%" height="450" frameborder="0"
-    src="https://www.youtube.com/embed/-fPcRCgqluk"
-    title="An Introduction to Autonomy"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-    allowfullscreen />
+<iframe width="100%" height="450" frameborder="0" src="https://www.youtube.com/embed/-fPcRCgqluk" title="An Introduction to Autonomy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen />
 
 ---
 
 ## Autonomy Framework
 
-The Autonomy Framework is an **open-source python framework** to develop
-apps that use thousands of collaborating **autonomous agents** to quickly and
-reliably get things done.
+The Autonomy Framework is an **open-source python framework** to develop apps that use thousands of collaborating **autonomous agents** to quickly and reliably get things done.
 
-Your apps can easily create **deep work agents** that excel at long and
-complex tasks. Each agent can access a **dedicated filesystem** to save plans,
-take **notes**, and record memories.
+Your apps can easily create **deep work agents** that excel at long and complex tasks. Each agent can access a **dedicated filesystem** to save plans, take **notes**, and record memories.
 
-Agents can create many **sub-agents** that concentrate on sub-tasks.
-**Parallel agents**, each focused on a small part, achieve the overall goal faster.
-They are also more successful because the context that they provide to their
-language model contains much less noise.
+Agents can create many **sub-agents** that concentrate on sub-tasks. **Parallel agents**, each focused on a small part, achieve the overall goal faster. They are also more successful because the context that they provide to their language model contains much less noise.
 
 ## Autonomy Computer
 
-The Autonomy Computer is a **cloud-based runtime** to deploy, connect, and scale
-apps built using the Autonomy Framework. It provides infrastructure to run highly
-scalable and secure autonomous AI products.
+The Autonomy Computer is a **cloud-based runtime** to deploy, connect, and scale apps built using the Autonomy Framework. It provides infrastructure to run highly scalable and secure autonomous AI products.
 
-Using a simple [YAML config](/applications/file-structure#autonomy-yaml),
-you can spin up a **[dedicated cluster](/applications/runtime-architecture#cluster)
-of nodes** in seconds. These nodes are automatically connected together using
-high-throughput, encrypted **messaging channels**.
+Using a simple [YAML config](/applications/file-structure#autonomy-yaml), you can spin up a [**dedicated cluster
+of nodes**](/applications/runtime-architecture#cluster) in seconds. These nodes are automatically connected together using high-throughput, encrypted **messaging channels**.
 
-Agents invoke tools to take actions and gather data. The Autonomy Computer
-can **provision tools** in containers right alongside the nodes that are running
-your agents. These tools can be Python functions, simple binaries, or MCP servers.
-You can also create **private links to enterprise data**.
+Agents invoke tools to take actions and gather data. The Autonomy Computer can **provision tools** in containers right alongside the nodes that are running your agents. These tools can be Python functions, simple binaries, or MCP servers. You can also create **private links to enterprise data**.
 
-The runtime is designed for **multi-tenant**, **streaming** workloads. Agents
-run as **stateful concurrent actors** that asynchronously send and receive messages.
-This enables effortless horizontal scaling and fan-out through powerful patterns
-like **distributed agentic map-reduce.**
+The runtime is designed for **multi-tenant**, **streaming** workloads. Agents run as **stateful concurrent actors** that asynchronously send and receive messages. This enables effortless horizontal scaling and fan-out through powerful patterns like **distributed agentic map-reduce.**
 
 ## Autonomy Command
 
-The Autonomy Command is a command-line tool to build apps using the
-Autonomy Framework and deploy them to the Autonomy Computer. It packages source
-code into container images and runs them in your cluster.
+The Autonomy Command is a command-line tool to build apps using the Autonomy Framework and deploy them to the Autonomy Computer. It packages source code into container images and runs them in your cluster.
 
 ---
 
 <CardGroup cols={2}>
-  <Card href="https://autonomy.computer/discord"
-    title="Join us on Discord" icon="discord" iconType="solid" arrow="true">
+  <Card title="Join us on Discord" icon="discord" iconType="solid" href="https://autonomy.computer/discord">
     Connect with other developers building with Autonomy.
   </Card>
-  <Card href="/get-started"
-    title="Get Started" icon="rocket" iconType="solid">
+  <Card title="Get Started" icon="rocket" iconType="solid" href="/get-started">
     Set up Autonomy and deploy your first autonomous app.
   </Card>
 </CardGroup>
