@@ -4,24 +4,16 @@ description: "Give agents the ability to listen and speak."
 icon: "microphone"
 ---
 
-Agents can have a voice intereface. A fast voice model handles immediate user
-interaction and delegates complex tasks to a more powerful primary agent.
+Agents can have a voice intereface. A fast voice model handles immediate user interaction and delegates complex tasks to a more powerful primary agent.
 
 ---
 
 ## Architecture
 
-1. **Voice Interface Agent** - An interface agent that uses a low-latency,
-real-time audio model to handle greetings, chitchat, and simple clarifications
-directly.
+1. **Voice Interface Agent** - An interface agent that uses a low-latency, real-time audio model to handle greetings, chitchat, and simple clarifications directly.
+2. **Primary Agent** - The main agent with tools and all the capabilities of Autonomy agents. Handles complex questions, database lookups, and tool-based tasks.
 
-2. **Primary Agent** - The main agent with tools and all the capabilities of
-Autonomy agents. Handles complex questions, database lookups, and tool-based tasks.
-
-When the voice agent receives a complex request, it says a filler phrase
-(like "Let me check on that") and delegates to the primary agent. The primary
-agent processes the request, potentially calling tools, and returns a response
-that the voice agent speaks verbatim.
+When the voice agent receives a complex request, it says a filler phrase (like "Let me check on that") and delegates to the primary agent. The primary agent processes the request, potentially calling tools, and returns a response that the voice agent speaks verbatim.
 
 ---
 
@@ -39,18 +31,14 @@ async def main(node):
     name="assistant",
     instructions="You are a helpful customer service agent.",
     model=Model("claude-sonnet-4-v1"),
-    voice={
-      "realtime_model": "gpt-4o-realtime-preview",
-      "voice": "nova",
-    },
+    voice={"voice": "nova"},
   )
 
 
 Node.start(main)
 ```
 
-Once running, connect to your voice agent via WebSocket.
-The agent also remains available via the standard HTTP API for text interactions.
+Once running, connect to your voice agent via WebSocket. The agent also remains available via the standard HTTP API for text interactions.
 
 ---
 
@@ -58,18 +46,16 @@ The agent also remains available via the standard HTTP API for text interactions
 
 The `voice` parameter accepts a dictionary with the following options:
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `realtime_model` | Model for voice agent (must support realtime API) | `gpt-4o-realtime-preview` |
-| `voice` | TTS voice ID (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`) | `echo` |
-| `allowed_actions` | Actions the voice agent handles without delegating | See below |
-| `instructions` | Custom voice agent instructions (auto-generated if not set) | `None` |
-| `filler_phrases` | Phrases to say before delegating to primary agent | See below |
-| `input_audio_format` | Audio format for input (`pcm16`, `g711_ulaw`, `g711_alaw`) | `pcm16` |
-| `output_audio_format` | Audio format for output (`pcm16`, `g711_ulaw`, `g711_alaw`) | `pcm16` |
-| `vad_threshold` | Voice Activity Detection sensitivity (0.0-1.0) | `0.5` |
-| `vad_prefix_padding_ms` | Audio to include before speech detection | `300` |
-| `vad_silence_duration_ms` | Silence duration to detect end of speech | `500` |
+| Option                    | Description                                                        | Default                   |
+| ------------------------- | ------------------------------------------------------------------ | ------------------------- |
+| `realtime_model`          | Model for voice agent (must support realtime API)                  | `gpt-4o-realtime-preview` |
+| `voice`                   | TTS voice ID (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`) | `echo`                    |
+| `instructions`            | Custom voice agent instructions (auto-generated if not set)        | `None`                    |
+| `input_audio_format`      | Audio format for input (`pcm16`, `g711_ulaw`, `g711_alaw`)         | `pcm16`                   |
+| `output_audio_format`     | Audio format for output (`pcm16`, `g711_ulaw`, `g711_alaw`)        | `pcm16`                   |
+| `vad_threshold`           | Voice Activity Detection sensitivity (0.0-1.0)                     | `0.5`                     |
+| `vad_prefix_padding_ms`   | Audio to include before speech detection                           | `300`                     |
+| `vad_silence_duration_ms` | Silence duration to detect end of speech                           | `500`                     |
 
 ### Default Allowed Actions
 
@@ -124,8 +110,7 @@ Node.start(main)
 
 ## Voice Agents with Tools
 
-Voice agents work seamlessly with tools. The primary agent has access to all
-tools and uses them when handling delegated requests:
+Voice agents work seamlessly with tools. The primary agent has access to all tools and uses them when handling delegated requests:
 
 ```python images/main/main.py
 from autonomy import Agent, Model, Node, Tool
@@ -145,13 +130,7 @@ async def main(node):
     Use the lookup_order tool to find order information.""",
     model=Model("claude-sonnet-4-v1"),
     tools=[Tool(lookup_order)],
-    voice={
-      "voice": "nova",
-      "filler_phrases": [
-        "Let me look up your order.",
-        "One moment, checking our system.",
-      ],
-    },
+    voice={"voice": "nova"},
   )
 
 
@@ -201,13 +180,7 @@ async def main(node):
     Search the knowledge base to answer questions accurately.""",
     model=Model("claude-sonnet-4-v1"),
     tools=[KnowledgeTool(knowledge=knowledge, name="search_docs")],
-    voice={
-      "voice": "shimmer",
-      "filler_phrases": [
-        "Let me search the docs for that.",
-        "One moment, I'll look that up.",
-      ],
-    },
+    voice={"voice": "shimmer"},
   )
 
 
@@ -218,8 +191,7 @@ Node.start(main)
 
 ## Memory Isolation
 
-Voice sessions support the same memory isolation as text conversations.
-Pass `scope` and `conversation` parameters when connecting:
+Voice sessions support the same memory isolation as text conversations. Pass `scope` and `conversation` parameters when connecting:
 
 ```bash
 # WebSocket connection with scope and conversation
@@ -232,9 +204,7 @@ This ensures each user's voice conversation history is isolated.
 
 ## Complete Example: Software Engineering Interviewer
 
-This example demonstrates a voice agent that conducts first-round screening
-interviews for software engineering candidates. The agent assesses technical
-fundamentals, problem-solving ability, and communication skills.
+This example demonstrates a voice agent that conducts first-round screening interviews for software engineering candidates. The agent assesses technical fundamentals, problem-solving ability, and communication skills.
 
 <CodeGroup>
 
@@ -278,26 +248,13 @@ async def main(node: Node):
     name="interviewer",
     instructions=INSTRUCTIONS,
     model=Model("claude-sonnet-4-v1"),
-    voice={
-      "voice": "alloy",
-      "allowed_actions": [
-        "greetings and introductions",
-        "small talk to put candidate at ease",
-        "clarifying questions",
-        "acknowledging responses",
-      ],
-      "filler_phrases": [
-        "Let me think about that.",
-        "That's a good point.",
-        "Interesting, let me follow up.",
-        "One moment.",
-      ],
-    },
+    voice={"voice": "alloy"},
   )
 
 
 Node.start(main)
 ```
+
 
 ```html images/main/index.html
 <!doctype html>
@@ -1167,11 +1124,13 @@ Node.start(main)
 </html>
 ```
 
+
 ```bash images/main/Dockerfile
 FROM ghcr.io/build-trust/autonomy-python
 COPY . .
 ENTRYPOINT ["python", "main.py"]
 ```
+
 
 ```yaml autonomy.yaml
 name: interview
@@ -1190,7 +1149,7 @@ pods:
 Connect via WebSocket for voice:
 
 ```
-ws://localhost:8000/agents/interviewer/voice
+ws://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/interviewer/voice
 ```
 
 Or use HTTP for text:
