@@ -49,12 +49,7 @@ async def main(node):
 Node.start(main)
 ```
 
-Once running, connect to your voice agent via WebSocket:
-
-```
-ws://localhost:8000/agents/assistant/voice
-```
-
+Once running, connect to your voice agent via WebSocket.
 The agent also remains available via the standard HTTP API for text interactions.
 
 ---
@@ -97,67 +92,6 @@ Before delegating complex requests, the voice agent says one of:
 - "Let me see."
 
 ---
-
-## Customizing Behavior
-
-### Specify What Voice Agent Handles Directly
-
-Control which interactions the voice agent handles without delegating:
-
-```python images/main/main.py
-from autonomy import Agent, Model, Node
-
-
-async def main(node):
-  await Agent.start(
-    node=node,
-    name="receptionist",
-    instructions="You are a medical office receptionist.",
-    model=Model("claude-sonnet-4-v1"),
-    voice={
-      "voice": "nova",
-      "allowed_actions": [
-        "greetings and introductions",
-        "confirming appointment times",
-        "asking for patient name",
-        "basic office hour questions",
-        "thanking the caller",
-      ],
-    },
-  )
-
-
-Node.start(main)
-```
-
-### Custom Filler Phrases
-
-Set context-appropriate filler phrases for your use case:
-
-```python images/main/main.py
-from autonomy import Agent, Model, Node
-
-
-async def main(node):
-  await Agent.start(
-    node=node,
-    name="support",
-    instructions="You are a technical support agent.",
-    model=Model("claude-sonnet-4-v1"),
-    voice={
-      "voice": "echo",
-      "filler_phrases": [
-        "Let me look up your account.",
-        "One moment while I check that.",
-        "Let me pull up that information.",
-        "Just a second, I'm checking our system.",
-      ],
-    },
-  )
-
-
-Node.start(main)
-```
 
 ### VAD Settings for Responsive Interaction
 
