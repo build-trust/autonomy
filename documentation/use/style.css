@@ -12,78 +12,73 @@
 }
 
 /* --------------------------------------------------------------------------
-   Sidebar Layout & Sizing
+   Sidebar Layout & Sizing (Desktop Only)
    -------------------------------------------------------------------------- */
-
-/* Sidebar width, positioning, and spacing */
-#sidebar-content {
-    width: 18rem !important;
-    padding-top: 0.5rem !important;
-}
 
 /* Sidebar layout container spacing */
 .almond-layout {
     padding-top: 0.5rem !important;
 }
 
-/* --------------------------------------------------------------------------
-   Content Area Layout (Left-Aligned)
-   -------------------------------------------------------------------------- */
+/* Desktop-only sidebar and content layout adjustments */
+@media (min-width: 1024px) {
+    /* Sidebar width, positioning, and spacing */
+    #sidebar-content {
+        width: 18rem !important;
+        padding-top: 0.5rem !important;
+    }
 
-/* Adjust content container for wider sidebar */
-#content-container {
-    margin-left: 18rem !important;
+    /* Adjust content container for wider sidebar */
+    #content-container {
+        margin-left: 18rem !important;
+    }
+
+    /* Adjust the content container left margin for large screens */
+    .lg\:ml-\[16\.5rem\] {
+        margin-left: 18rem !important;
+    }
+
+    /* Override the centered content layout */
+    .peer.is-center ~ .peer-\[\.is-center\]\:max-w-3xl {
+        max-width: 50rem !important;
+        margin-left: 2.5rem !important;
+        margin-right: auto !important;
+    }
+
+    /* Ensure content wrapper respects the left alignment */
+    #content-area {
+        max-width: 50rem !important;
+        margin-left: 2.5rem !important;
+        margin-right: auto !important;
+    }
+
+    /* Override any centered prose elements */
+    .prose {
+        max-width: 50rem !important;
+        margin-left: 0 !important;
+        margin-right: auto !important;
+    }
+
+    /* Override the main content container if needed */
+    .peer.is-center ~ * {
+        max-width: 50rem !important;
+        margin-left: 2.5rem !important;
+        margin-right: auto !important;
+    }
+
+    /* Add right margin to the outer flex container to show more black background */
+    .almond-layout > .flex.rounded-2xl {
+        margin-right: 0.5rem !important;
+    }
 }
 
-/* Adjust the content container left margin for large screens */
-.lg\:ml-\[16\.5rem\] {
-    margin-left: 18rem !important;
-}
-
-/* Override the centered content layout */
-.peer.is-center ~ .peer-\[\.is-center\]\:max-w-3xl {
-    max-width: 50rem !important;
-    margin-left: 2.5rem !important;
-    margin-right: auto !important;
-}
-
-/* Override for larger screens */
+/* Override for extra-large screens */
 @media (min-width: 1536px) {
     .\32xl\:max-w-2xl {
         max-width: 50rem !important;
         margin-left: 2.5rem !important;
         margin-right: auto !important;
     }
-}
-
-/* Ensure content wrapper respects the left alignment */
-#content-area {
-    max-width: 50rem !important;
-    margin-left: 2.5rem !important;
-    margin-right: auto !important;
-}
-
-/* Override any centered prose elements */
-.prose {
-    max-width: 50rem !important;
-    margin-left: 0 !important;
-    margin-right: auto !important;
-}
-
-/* Override the main content container if needed */
-.peer.is-center ~ * {
-    max-width: 50rem !important;
-    margin-left: 2.5rem !important;
-    margin-right: auto !important;
-}
-
-/* --------------------------------------------------------------------------
-   Increase gap on the right edge
-   -------------------------------------------------------------------------- */
-
-/* Add right margin to the outer flex container to show more black background */
-.almond-layout > .flex.rounded-2xl {
-    margin-right: 0.5rem !important;
 }
 
 /* ==========================================================================
