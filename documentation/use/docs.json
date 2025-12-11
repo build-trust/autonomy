@@ -44,7 +44,7 @@
       },
       {
         "group": "GUIDES",
-        "pages": ["guides/box"]
+        "pages": ["guides/box", "guides/docs-agents"]
       }
     ]
   },

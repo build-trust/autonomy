@@ -1,0 +1,1559 @@
+---
+title: "Voice Agents for your Docs"
+icon: "book-open"
+description: "How to add agents to your product that answer questions grounded in your docs in Mintlify, GitBook, etc."
+---
+
+This guide walks through building an Autonomy application that creates
+voice-enabled agents to answer questions about your product grounded in your
+docs. You can give your customers a conversational way to learn about your product.
+
+The complete source code is available at [github.com/build-trust/autonomy/examples/voice/docs](https://github.com/build-trust/autonomy/tree/main/examples/voice/docs).
+
+---
+
+## What You'll Build
+
+- Users speak questions and hear answers based on information that is in your documentation.
+- Your docs are indexed for semantic search using vector embeddings.
+- A fast voice agent handles immediate interaction while a primary agent retrieves accurate information.
+- Documentation is periodically reloaded to stay current.
+- Streaming text and voice interfaces.
+
+---
+
+## Before you begin
+
+Before starting, ensure you have:
+
+1. [Sign up and install the `autonomy` command.](/get-started)
+2. Documentation hosted somewhere with a URL (Mintlify, GitBook, GitHub, etc.)
+3. Docker running on your machine.
+
+---
+
+## How It Works
+
+When a user speaks to the agent:
+
+- A **voice agent** receives audio over a websocket and transcribes it. It speaks a filler phrase ("Good question.") and then delegates the question to a primary agent.
+- The **primary agent** searches a knowledge base for relevant documentation and comes up with a concise answer using the retrieved docs, which the voice agent speaks verbatim.
+
+This two-agent pattern ensures low latency for the user while maintaining accuracy through retrieval-augmented generation.
+
+<CardGroup cols={2}>
+  <Card href="/agents/voice" title="Voice" icon="microphone" iconType="solid">
+    Learn more about voice agent architecture.
+  </Card>
+  <Card href="/agents/knowledge" title="Knowledge bases" icon="file-magnifying-glass" iconType="solid">
+    Learn more about knowledge bases.
+  </Card>
+</CardGroup>
+
+---
+
+## Application Structure
+
+```text File Structure:
+docs-voice-agent/
+|-- autonomy.yaml           # Deployment configuration
+|-- images/
+|   |-- main/
+|       |-- Dockerfile      # Container definition
+|       |-- main.py         # Application entry point
+|       |-- index.html      # Voice interface
+```
+
+---
+
+## Step 1: Create the Knowledge Base
+
+First, set up a knowledge base that will index your documentation:
+
+```python images/main/main.py
+from autonomy import Knowledge, KnowledgeTool, Model, NaiveChunker
+
+def create_knowledge():
+  return Knowledge(
+    name="autonomy_docs",
+    searchable=True,
+    model=Model("embed-english-v3"),   # Embedding model for semantic search
+    max_results=5,                     # Return top 5 relevant chunks
+    max_distance=0.4,                  # Similarity threshold
+    chunker=NaiveChunker(
+      max_characters=1024,             # Chunk size
+      overlap=128                      # Overlap between chunks
+    ),
+  )
+```
+
+**Key configuration options:**
+
+| Option | Description |
+|--------|-------------|
+| `model` | Embedding model for vector search. `embed-english-v3` works well for English docs. |
+| `max_results` | Number of relevant chunks to retrieve per query. |
+| `max_distance` | Similarity threshold (0.0 = exact match, 1.0 = very different). Lower values are stricter. |
+| `chunker` | Strategy for splitting documents. Larger chunks preserve context; smaller chunks improve precision. |
+
+---
+
+## Step 2: Load Your Documentation
+
+##### Option A: From a URL Index (Mintlify, GitBook)
+
+Many documentation platforms provide an `llms.txt` or sitemap file listing all pages. Here's how to load docs from URLs:
+
+```python images/main/main.py
+import re
+import httpx
+from autonomy import Knowledge
+
+LLMS_TXT_URL = "https://autonomy.computer/docs/llms.txt"  # Change to your docs URL
+
+async def load_documents(knowledge: Knowledge):
+  async with httpx.AsyncClient() as client:
+    response = await client.get(LLMS_TXT_URL)
+    llms_txt = response.text
+
+  # Parse markdown links: [Title](https://url.md)
+  links = re.findall(r"\[([^\]]+)\]\((https://[^\)]+\.md)\)", llms_txt)
+
+  count = 0
+  for title, url in links:
+    try:
+      await knowledge.add_document(
+        document_name=title,
+        document_url=url,
+        content_type="text/markdown",
+      )
+      count += 1
+    except Exception:
+      pass
+
+  return count
+```
+
+##### Option B: From Text Content Directly
+
+If you have documentation content as text:
+
+```python images/main/main.py
+await knowledge.add_text(
+  document_name="getting-started",
+  text="""
+  # Getting Started
+  
+  Welcome to our platform. Here's how to get started...
+  """
+)
+```
+
+##### Option C: From Various File Formats
+
+The Knowledge class supports many formats via text extraction:
+
+```python images/main/main.py
+# Markdown
+await knowledge.add_document(
+  document_name="api-reference",
+  document_url="https://raw.githubusercontent.com/your-org/docs/main/api.md",
+  content_type="text/markdown"
+)
+
+# HTML
+await knowledge.add_document(
+  document_name="tutorial",
+  document_url="https://your-site.com/tutorial.html",
+  content_type="text/html"
+)
+```
+
+---
+
+## Step 3: Create the Agents
+
+Now create the agent with voice capabilities and the knowledge tool.
+
+##### Primary Agent Instructions
+
+The primary agent handles complex questions using the knowledge base:
+
+```python images/main/main.py
+# Customize this for your product/documentation.
+# Key things to change:
+# - Replace "Autonomy" with your product name
+# - Replace "autonomous products" with what your product does
+# - Adjust the personality and tone to match your brand
+# - Update the tool name reference (search_autonomy_docs -> your tool name)
+
+INSTRUCTIONS = """
+You are a developer advocate for Autonomy.
+Autonomy is a platform that developers use to ship autonomous products.
+
+You can access a knowledge base containing the complete Autonomy docs.
+ALWAYS use the search_autonomy_docs tool to find accurate information before answering.
+
+IMPORTANT: Keep your responses concise - ideally 2-4 sentences. You are primarily
+used through a voice interface, so brevity is essential. Get to the point quickly
+and avoid lengthy explanations unless specifically asked for more detail.
+
+- Ask "why" questions to build empathy.
+- Early in the conversation, ask questions to learn why they are talking to you. Tailor depth accordingly: technical for engineers, general for others.
+
+- Start short. Offer to go deeper if there's more to cover.
+- Lead with the point. State the main idea in the first line. Support it with short sections that follow simple logic.
+- Build momentum. Each sentence sets up the next.
+
+- Always search the knowledge base first.
+- Use the exact nouns, verbs, and adjectives that are in the docs, not synonyms.
+- If you can't find it, say so. Don't make stuff up. Use it as an opportunity to build trust by asking curious questions. And suggest that they search the autonomy docs page.
+
+- Use active voice, strong verbs, and short sentences.
+- Be clear, direct, confident. Teach with calm authority.
+"""
+```
+
+##### Voice Agent Instructions
+
+The voice agent handles immediate interaction and delegates to the primary agent:
+
+```python images/main/main.py
+# Customize this for your product/documentation.
+# Key things to change:
+# - Replace "Autonomy" with your product name
+# - Replace "autonomous products" with what your product does  
+# - Adjust the personality to match your brand voice
+# - Modify the example lead-in phrases to fit your tone
+
+VOICE_INSTRUCTIONS = """
+You are a developer advocate for Autonomy.
+Autonomy is a platform that developers use to ship autonomous products.
+
+# Critical Rules
+
+- Before giving your full response, speak a short, casual lead-in that feels spontaneous and human.
+  - Use a light reaction or framing cue that fits ordinary conversation and feels like a reaction to what they just said.
+  - For example, you might say something like "Good question", "Glad you asked.", "Right, great question. So.", "Here's a clear way to view it.", "Here's the core idea,", "Let's start with the basics," or a similar phrase in that style. You may invent new variations each time.
+  - Keep it brief, warm, and conversational.
+  - Do not mention looking up, searching, finding, checking, getting, thinking, loading, or waiting. Keep the lead-in a few seconds long.
+- After speaking the lead-in, delegate to the primary agent for the rest of the response.
+- NEVER answer questions about Autonomy from your own knowledge - always delegate.
+
+# Conversational Pattern
+
+This two-step pattern is REQUIRED:
+  User: "How do agents work?"
+  You: "Good question." [speak this lead-in first, then delegate]
+  [after delegation returns]
+  You: [speak the answer from the primary agent]
+
+# What You Can Handle Directly
+- Greetings: "Hello", "Hi there"
+- Clarifications: "Could you repeat that?"
+- Farewells: "Goodbye", "Thanks"
+
+# After Receiving Response
+Read the primary agent's response verbatim. Do NOT change it in any way or add anything to it.
+
+# Personality
+- Be friendly, conversational, and human - not robotic
+- Be clear, direct, confident, and encouraging
+- Use active voice, strong verbs, and short sentences
+"""
+```
+
+##### Starting the Agent
+
+```python images/main/main.py
+from autonomy import Agent, Model, KnowledgeTool, Node
+
+async def main(node: Node):
+  global knowledge_tool
+
+  knowledge = create_knowledge()
+  knowledge_tool = KnowledgeTool(knowledge=knowledge, name="search_autonomy_docs")
+
+  await Agent.start(
+    node=node,
+    name="docs",
+    instructions=INSTRUCTIONS,
+    model=Model("claude-sonnet-4-v1", max_tokens=256),
+    tools=[knowledge_tool],
+    context_summary={
+      "floor": 20,
+      "ceiling": 30,
+      "model": Model("claude-sonnet-4-v1"),
+    },
+    voice={
+      "voice": "alloy",
+      "instructions": VOICE_INSTRUCTIONS,
+      "vad_threshold": 0.7,
+      "vad_silence_duration_ms": 700,
+    },
+  )
+
+  await load_documents(knowledge)
+  asyncio.create_task(periodic_refresh())
+```
+
+##### Voice Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `voice` | TTS voice: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer` | `echo` |
+| `realtime_model` | Model for voice agent | `gpt-4o-realtime-preview` |
+| `vad_threshold` | Voice detection sensitivity (0.0-1.0). Higher = less sensitive. | `0.5` |
+| `vad_silence_duration_ms` | Silence before end of speech detection | `500` |
+
+---
+
+## Step 4: Add Auto-Refresh
+
+Keep your knowledge base current by periodically reloading documentation:
+
+```python images/main/main.py
+import asyncio
+from fastapi import FastAPI
+from autonomy import HttpServer
+
+REFRESH_INTERVAL_SECONDS = 1800  # 30 minutes
+
+app = FastAPI()
+knowledge_tool = None
+
+async def refresh_knowledge():
+  global knowledge_tool
+  new_knowledge = create_knowledge()
+  count = await load_documents(new_knowledge)
+  knowledge_tool.knowledge = new_knowledge
+  return count
+
+async def periodic_refresh():
+  while True:
+    await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+    try:
+      await refresh_knowledge()
+    except Exception:
+      pass
+
+@app.post("/refresh")
+async def refresh_endpoint():
+  count = await refresh_knowledge()
+  return {"status": "ok", "documents_loaded": count}
+```
+
+---
+
+## Step 5: Create the Deployment Configuration
+
+Create the `autonomy.yaml` file:
+
+```yaml autonomy.yaml
+name: docs
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+Create the Dockerfile:
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+---
+
+## Step 6: Build the Voice UI
+
+Create an `index.html` file in your container image directory. When present, Autonomy automatically serves it at the root URL. See [User Interfaces](/applications/user-interfaces) for more options.
+
+##### Key Components
+
+The voice UI handles several important tasks:
+
+**1. WebSocket Connection for Voice (Multi-Tenant)**
+
+Connect to the voice agent via WebSocket. Notice how `scope` and `conversation` are set in the URL - this enables multi-tenant isolation:
+
+```javascript images/main/index.html
+const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const wsUrl = `${protocol}//${window.location.host}/agents/docs/voice?scope=${visitorId}&conversation=${id()}`;
+
+ws = new WebSocket(wsUrl);
+
+ws.onmessage = async (event) => {
+  const data = JSON.parse(event.data);
+  await handleServerMessage(data);
+};
+```
+
+- **`scope`** - Set to `visitorId` (stored in localStorage), isolates memory per user. Each visitor gets their own conversation history.
+- **`conversation`** - Set to a unique ID per session, isolates memory per conversation. A user can have multiple separate conversations.
+
+This means the app automatically supports multiple users without any backend changes. See [Memory](/agents/memory) for more on isolation.
+
+**2. Audio Capture with AudioWorklet**
+
+Capture microphone input and convert to PCM16 format:
+
+```javascript images/main/index.html
+mediaStream = await navigator.mediaDevices.getUserMedia({
+  audio: {
+    channelCount: 1,
+    sampleRate: 24000,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+});
+
+// AudioWorklet processes audio in real-time
+workletNode.port.onmessage = (e) => {
+  const { pcm16 } = e.data;
+  const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(pcm16)));
+  ws.send(JSON.stringify({ type: "audio", audio: audioBase64 }));
+};
+```
+
+**3. Audio Playback Queue**
+
+Play streamed audio responses with proper scheduling:
+
+```javascript images/main/index.html
+async function playAudioChunk(base64Audio) {
+  const audioBytes = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
+  const pcm16 = new Int16Array(audioBytes.buffer);
+  const float32 = new Float32Array(pcm16.length);
+
+  for (let i = 0; i < pcm16.length; i++) {
+    float32[i] = pcm16[i] / 32768.0;
+  }
+
+  const audioBuffer = playbackAudioContext.createBuffer(1, float32.length, 24000);
+  audioBuffer.getChannelData(0).set(float32);
+
+  const source = playbackAudioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(playbackAudioContext.destination);
+  source.start(nextPlayTime);
+  nextPlayTime += audioBuffer.duration;
+}
+```
+
+**4. Handle Server Events**
+
+Process different message types from the voice agent:
+
+```javascript images/main/index.html
+async function handleServerMessage(data) {
+  switch (data.type) {
+    case "audio":
+      await playAudioChunk(data.audio);
+      break;
+    case "transcript":
+      addTranscript(data.role, data.text);
+      break;
+    case "speech_started":
+      clearAudioQueue(); // Stop playback when user speaks
+      break;
+    case "response_complete":
+      // Ready for next input
+      break;
+  }
+}
+```
+
+**5. Transcript Display**
+
+Show conversation history with role-based styling:
+
+```javascript images/main/index.html
+function addTranscript(role, text) {
+  const item = document.createElement("div");
+  item.className = "transcript-item " + role;
+  item.innerHTML = `
+    <div class="role">${role === "user" ? "You" : "Assistant"}</div>
+    <div>${text}</div>
+  `;
+  transcriptContainer.appendChild(item);
+  transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+}
+```
+
+The complete `index.html` is included in the [Complete Example](#complete-example) below.
+
+---
+
+## Step 7: Deploy
+
+Deploy to Autonomy Computer:
+
+```bash
+autonomy zone deploy
+```
+
+---
+
+## Using Your Agent
+
+##### Voice Interface
+
+Once deployed, open your zone URL in a browser to access the voice interface:
+
+```
+https://${CLUSTER}-docs.cluster.autonomy.computer
+```
+
+Click the voice button and start asking questions about your documentation!
+
+##### Text Chat Interface
+
+You can also build a text chat interface that uses the streaming HTTP API with a typewriter effect. The [Autonomy website](https://autonomy.computer) uses this approach:
+
+```javascript /dev/null/chat.js
+// Fetch with streaming enabled
+const response = await fetch(`/agents/docs?stream=true`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ 
+    message: userMessage, 
+    scope: visitorId,        // Multi-tenant: isolate per user
+    conversation: chatId     // Isolate per conversation
+  }),
+});
+
+// Read the stream
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let pendingText = "";
+let displayedText = "";
+
+// Typewriter loop - display text gradually for better UX
+const typewriterLoop = async () => {
+  while (!streamDone || pendingText.length > 0) {
+    if (pendingText.length > 0) {
+      const chars = pendingText.slice(0, 3); // Display 3 chars at a time
+      pendingText = pendingText.slice(3);
+      displayedText += chars;
+      updateMessageDisplay(displayedText);
+      await new Promise(r => setTimeout(r, 2)); // Small delay between chunks
+    }
+  }
+};
+
+// Read stream and queue text for typewriter
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  
+  const chunk = decoder.decode(value, { stream: true });
+  // Parse SSE data and add to pendingText
+  // The typewriter loop displays it gradually
+}
+```
+
+Key features:
+- **Streaming API** - Use `?stream=true` to get Server-Sent Events as the agent responds
+- **Typewriter effect** - Queue incoming text and display it gradually for a natural feel
+- **Multi-tenant** - Pass `scope` and `conversation` for user isolation (same as voice)
+
+##### HTTP API
+
+You can also interact via HTTP for text-based queries:
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message": "How do I get started?"}' \
+  "https://${CLUSTER}-docs.cluster.autonomy.computer/agents/docs"
+```
+
+For streaming responses:
+
+```bash
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message": "What features are available?"}' \
+  "https://${CLUSTER}-docs.cluster.autonomy.computer/agents/docs?stream=true"
+```
+
+##### Manual Refresh
+
+Trigger a knowledge base refresh:
+
+```bash
+curl --request POST \
+  "https://${CLUSTER}-docs.cluster.autonomy.computer/refresh"
+```
+
+---
+
+## Complete Example
+
+Here are all the files for the complete example:
+
+<CodeGroup>
+
+```python images/main/main.py
+import re
+import asyncio
+import httpx
+
+from fastapi import FastAPI
+from autonomy import (
+  Node,
+  Agent,
+  Model,
+  Knowledge,
+  KnowledgeTool,
+  NaiveChunker,
+  HttpServer,
+)
+
+
+INSTRUCTIONS = """
+You are a developer advocate for Autonomy.
+Autonomy is a platform that developers use to ship autonomous products.
+
+You can access a knowledge base containing the complete Autonomy docs.
+ALWAYS use the search_autonomy_docs tool to find accurate information before answering.
+
+IMPORTANT: Keep your responses concise - ideally 2-4 sentences. You are primarily
+used through a voice interface, so brevity is essential. Get to the point quickly
+and avoid lengthy explanations unless specifically asked for more detail.
+
+- Ask "why" questions to build empathy.
+- Early in the conversation, ask questions to learn why they are talking to you. Tailor depth accordingly: technical for engineers, general for others.
+
+- Start short. Offer to go deeper if there's more to cover.
+- Lead with the point. State the main idea in the first line. Support it with short sections that follow simple logic.
+- Build momentum. Each sentence sets up the next.
+
+- Always search the knowledge base first.
+- Use the exact nouns, verbs, and adjectives that are in the docs, not synonyms.
+- If you can't find it, say so. Don't make stuff up. Use it as an opportunity to build trust by asking curious questions. And suggest that they search the autonomy docs page.
+
+- Use active voice, strong verbs, and short sentences.
+- Be clear, direct, confident. Teach with calm authority.
+"""
+
+
+VOICE_INSTRUCTIONS = """
+You are a developer advocate for Autonomy.
+Autonomy is a platform that developers use to ship autonomous products.
+
+# Critical Rules
+
+- Before giving your full response, speak a short, casual lead-in that feels spontaneous and human.
+  - Use a light reaction or framing cue that fits ordinary conversation and feels like a reaction to what they just said.
+  - For example, you might say something like "Good question", "Glad you asked.", "Right, great question. So.", "Here's a clear way to view it.", "Here's the core idea,", "Let's start with the basics," or a similar phrase in that style. You may invent new variations each time.
+  - Keep it brief, warm, and conversational.
+  - Do not mention looking up, searching, finding, checking, getting, thinking, loading, or waiting. Keep the lead-in a few seconds long.
+- After speaking the lead-in, delegate to the primary agent for the rest of the response.
+- NEVER answer questions about Autonomy from your own knowledge - always delegate.
+
+# Conversational Pattern
+
+This two-step pattern is REQUIRED:
+  User: "How do agents work?"
+  You: "Good question." [speak this lead-in first, then delegate]
+  [after delegation returns]
+  You: [speak the answer from the primary agent]
+
+# What You Can Handle Directly
+- Greetings: "Hello", "Hi there"
+- Clarifications: "Could you repeat that?"
+- Farewells: "Goodbye", "Thanks"
+
+# After Receiving Response
+Read the primary agent's response verbatim. Do NOT change it in any way or add anything to it.
+
+# Personality
+- Be friendly, conversational, and human - not robotic
+- Be clear, direct, confident, and encouraging
+- Use active voice, strong verbs, and short sentences
+"""
+
+
+LLMS_TXT_URL = "https://autonomy.computer/docs/llms.txt"
+REFRESH_INTERVAL_SECONDS = 1800
+
+app = FastAPI()
+knowledge_tool = None
+
+
+def create_knowledge():
+  return Knowledge(
+    name="autonomy_docs",
+    searchable=True,
+    model=Model("embed-english-v3"),
+    max_results=5,
+    max_distance=0.4,
+    chunker=NaiveChunker(max_characters=1024, overlap=128),
+  )
+
+
+async def load_documents(knowledge: Knowledge):
+  async with httpx.AsyncClient() as client:
+    response = await client.get(LLMS_TXT_URL)
+    llms_txt = response.text
+
+  links = re.findall(r"\[([^\]]+)\]\((https://[^\)]+\.md)\)", llms_txt)
+
+  count = 0
+  for title, url in links:
+    try:
+      await knowledge.add_document(
+        document_name=title,
+        document_url=url,
+        content_type="text/markdown",
+      )
+      count += 1
+    except Exception:
+      pass
+
+  return count
+
+
+async def refresh_knowledge():
+  global knowledge_tool
+  new_knowledge = create_knowledge()
+  count = await load_documents(new_knowledge)
+  knowledge_tool.knowledge = new_knowledge
+  return count
+
+
+async def periodic_refresh():
+  while True:
+    await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
+    try:
+      await refresh_knowledge()
+    except Exception:
+      pass
+
+
+@app.post("/refresh")
+async def refresh_endpoint():
+  count = await refresh_knowledge()
+  return {"status": "ok", "documents_loaded": count}
+
+
+async def main(node: Node):
+  global knowledge_tool
+
+  knowledge = create_knowledge()
+  knowledge_tool = KnowledgeTool(knowledge=knowledge, name="search_autonomy_docs")
+
+  await Agent.start(
+    node=node,
+    name="docs",
+    instructions=INSTRUCTIONS,
+    model=Model("claude-sonnet-4-v1", max_tokens=256),
+    tools=[knowledge_tool],
+    context_summary={
+      "floor": 20,
+      "ceiling": 30,
+      "model": Model("claude-sonnet-4-v1"),
+    },
+    voice={
+      "voice": "alloy",
+      "instructions": VOICE_INSTRUCTIONS,
+      "vad_threshold": 0.7,
+      "vad_silence_duration_ms": 700,
+    },
+  )
+
+  await load_documents(knowledge)
+  asyncio.create_task(periodic_refresh())
+
+
+Node.start(main, http_server=HttpServer(app=app))
+```
+
+```bash images/main/Dockerfile
+FROM ghcr.io/build-trust/autonomy-python
+COPY . .
+ENTRYPOINT ["python", "main.py"]
+```
+
+```yaml autonomy.yaml
+name: docs
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+```
+
+```html images/main/index.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Autonomy Docs - Voice Assistant</title>
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: #fafbfc;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #24292e;
+        overflow: hidden;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        height: 100vh;
+        padding: 0;
+        max-width: none;
+      }
+
+      .transcript-panel {
+        width: 70%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 40px;
+        background: #fafbfc;
+      }
+
+      .voice-panel {
+        width: 30%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 40px;
+        padding: 40px;
+        background: #f6f8fa;
+        border-left: 1px solid #e1e4e8;
+      }
+
+      .header {
+        margin-bottom: 20px;
+      }
+
+      .header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #24292e;
+        margin-bottom: 8px;
+      }
+
+      .header p {
+        font-size: 14px;
+        color: #586069;
+      }
+
+      .circle-container {
+        position: relative;
+        width: 200px;
+        height: 200px;
+      }
+
+      .voice-circle {
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow:
+          0 10px 40px rgba(99, 102, 241, 0.25),
+          inset 0 2px 10px rgba(255, 255, 255, 0.1);
+        position: relative;
+        border: 2px solid rgba(99, 102, 241, 0.3);
+      }
+
+      .voice-circle:hover {
+        transform: scale(1.05);
+        box-shadow:
+          0 15px 50px rgba(99, 102, 241, 0.35),
+          inset 0 2px 10px rgba(255, 255, 255, 0.15);
+      }
+
+      .voice-circle.listening {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      }
+
+      .voice-circle.speaking {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      }
+
+      .voice-circle.processing {
+        background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+      }
+
+      .voice-circle.delegating {
+        background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+      }
+
+      .waveform-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        height: 40px;
+      }
+
+      .waveform-bar {
+        width: 6px;
+        height: 20px;
+        background: white;
+        border-radius: 3px;
+        transition: height 0.15s ease;
+      }
+
+      .voice-circle:hover .waveform-bar {
+        animation: none;
+      }
+
+      .voice-circle.listening .waveform-bar,
+      .voice-circle.speaking .waveform-bar,
+      .voice-circle.processing .waveform-bar,
+      .voice-circle.delegating .waveform-bar {
+        animation: wave 0.5s ease-in-out infinite;
+      }
+
+      @keyframes wave {
+        0%, 100% { height: 20px; }
+        50% { height: 40px; }
+      }
+
+      .status-text {
+        font-size: 14px;
+        color: #586069;
+        text-align: center;
+        min-height: 20px;
+      }
+
+      .status-text.active {
+        color: #24292e;
+      }
+
+      .transcript-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .transcript-item {
+        padding: 12px 16px;
+        border-radius: 8px;
+        max-width: 80%;
+        line-height: 1.5;
+      }
+
+      .transcript-item.user {
+        background: #e1e4e8;
+        align-self: flex-end;
+        margin-left: auto;
+      }
+
+      .transcript-item.assistant {
+        background: #f1f8ff;
+        border: 1px solid #c8e1ff;
+        align-self: flex-start;
+      }
+
+      .transcript-item .role {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        color: #586069;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .control-button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: #e1e4e8;
+        color: #24292e;
+      }
+
+      .control-button:hover {
+        background: #d1d5da;
+      }
+
+      .control-button.danger {
+        background: #ffeef0;
+        color: #cb2431;
+        display: none;
+      }
+
+      .control-button.danger:hover {
+        background: #ffdce0;
+      }
+
+      .connection-status {
+        font-size: 12px;
+        padding: 4px 12px;
+        border-radius: 12px;
+        background: #e1e4e8;
+        color: #586069;
+      }
+
+      .connection-status.connected {
+        background: #dcffe4;
+        color: #22863a;
+      }
+
+      .connection-status.disconnected {
+        background: #ffeef0;
+        color: #cb2431;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="transcript-panel">
+        <div class="header">
+          <h1>Autonomy Docs</h1>
+          <p>Ask questions about Autonomy documentation</p>
+        </div>
+        <div class="transcript-container" id="transcriptContainer">
+          <div style="color: #6e7781; font-size: 13px; text-align: center; padding: 20px">
+            Click the circle to start a conversation
+          </div>
+        </div>
+      </div>
+
+      <div class="voice-panel">
+        <div class="circle-container">
+          <button class="voice-circle" id="voiceCircle">
+            <div class="waveform-icon">
+              <div class="waveform-bar"></div>
+              <div class="waveform-bar"></div>
+              <div class="waveform-bar"></div>
+              <div class="waveform-bar"></div>
+              <div class="waveform-bar"></div>
+            </div>
+          </button>
+        </div>
+        <div class="status-text" id="status">Click to start</div>
+        <div class="connection-status" id="connectionStatus">Connecting...</div>
+        <div class="controls">
+          <button class="control-button danger" id="endButton">End Session</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const id = () => Math.random().toString(36).slice(2);
+      const visitorId = (localStorage.autonomy_visitor ||= id());
+
+      // State
+      let ws = null;
+      let mediaStream = null;
+      let audioContext = null;
+      let workletNode = null;
+      let isRecording = false;
+      let isConnected = false;
+
+      // Audio playback
+      let playbackAudioContext = null;
+      let nextPlayTime = 0;
+      let scheduledSources = [];
+      let isSpeaking = false;
+
+      // DOM elements
+      const voiceCircle = document.getElementById("voiceCircle");
+      const status = document.getElementById("status");
+      const endButton = document.getElementById("endButton");
+      const connectionStatus = document.getElementById("connectionStatus");
+      const transcriptContainer = document.getElementById("transcriptContainer");
+
+      // Connect to WebSocket
+      async function connect() {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}/agents/docs/voice?scope=${visitorId}&conversation=${id()}`;
+
+        try {
+          updateStatus("Connecting...");
+          ws = new WebSocket(wsUrl);
+
+          ws.onopen = () => {
+            isConnected = true;
+            connectionStatus.textContent = "Connected";
+            connectionStatus.className = "connection-status connected";
+            updateStatus("Click to start a conversation.");
+            ws.send(JSON.stringify({ type: "config" }));
+          };
+
+          ws.onmessage = async (event) => {
+            const data = JSON.parse(event.data);
+            await handleServerMessage(data);
+          };
+
+          ws.onerror = (error) => {
+            updateStatus("Connection error");
+          };
+
+          ws.onclose = (event) => {
+            isConnected = false;
+            connectionStatus.textContent = "Disconnected";
+            connectionStatus.className = "connection-status disconnected";
+            if (isRecording) stopRecording();
+            updateStatus("Disconnected. Refresh to reconnect.");
+          };
+        } catch (error) {
+          updateStatus("Failed to connect");
+        }
+      }
+
+      // Handle messages from server
+      async function handleServerMessage(data) {
+        switch (data.type) {
+          case "connected":
+            break;
+          case "audio":
+            isSpeaking = true;
+            await playAudioChunk(data.audio);
+            setCircleState("speaking");
+            updateStatus("Speaking...");
+            break;
+          case "transcript":
+            addTranscript(data.role, data.text);
+            break;
+          case "speech_started":
+            if (scheduledSources.length > 0) clearAudioQueue();
+            isSpeaking = false;
+            setCircleState("listening");
+            updateStatus("Listening...");
+            break;
+          case "speech_stopped":
+            setCircleState("processing");
+            updateStatus("Thinking...");
+            break;
+          case "response_complete":
+            isSpeaking = false;
+            setCircleState("listening");
+            updateStatus("Listening...");
+            break;
+          case "error":
+            if (data.error && !data.error.includes("no active response")) {
+              updateStatus("Error: " + data.error);
+            }
+            break;
+        }
+      }
+
+      // Start recording
+      async function startRecording() {
+        if (!isConnected) {
+          updateStatus("Reconnecting...");
+          await connect();
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          if (!isConnected) {
+            updateStatus("Failed to connect. Please try again.");
+            return;
+          }
+        }
+
+        if (isRecording) {
+          stopRecording();
+          return;
+        }
+
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              sampleRate: 24000,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+
+          audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: 24000,
+          });
+
+          const workletCode = `
+            class PCMProcessor extends AudioWorkletProcessor {
+              constructor() {
+                super();
+                this.bufferSize = 4096;
+                this.buffer = new Float32Array(this.bufferSize);
+                this.bufferIndex = 0;
+              }
+
+              process(inputs, outputs, parameters) {
+                const input = inputs[0];
+                if (input && input[0]) {
+                  const inputData = input[0];
+                  for (let i = 0; i < inputData.length; i++) {
+                    this.buffer[this.bufferIndex++] = inputData[i];
+                    if (this.bufferIndex >= this.bufferSize) {
+                      const pcm16 = new Int16Array(this.bufferSize);
+                      for (let j = 0; j < this.bufferSize; j++) {
+                        const s = Math.max(-1, Math.min(1, this.buffer[j]));
+                        pcm16[j] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                      }
+                      this.port.postMessage({ pcm16: pcm16.buffer, maxLevel: Math.max(...this.buffer.map(Math.abs)) }, [pcm16.buffer]);
+                      this.buffer = new Float32Array(this.bufferSize);
+                      this.bufferIndex = 0;
+                    }
+                  }
+                }
+                return true;
+              }
+            }
+            registerProcessor('pcm-processor', PCMProcessor);
+          `;
+
+          const blob = new Blob([workletCode], { type: "application/javascript" });
+          const workletUrl = URL.createObjectURL(blob);
+
+          try {
+            await audioContext.audioWorklet.addModule(workletUrl);
+          } finally {
+            URL.revokeObjectURL(workletUrl);
+          }
+
+          const source = audioContext.createMediaStreamSource(mediaStream);
+          workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
+
+          workletNode.port.onmessage = (e) => {
+            if (!isRecording || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+            const { pcm16, maxLevel } = e.data;
+
+            if (isSpeaking && scheduledSources.length > 0 && maxLevel > 0.02) {
+              clearAudioQueue();
+              isSpeaking = false;
+              setCircleState("listening");
+              updateStatus("Listening...");
+            }
+
+            const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(pcm16)));
+            ws.send(JSON.stringify({ type: "audio", audio: audioBase64 }));
+          };
+
+          source.connect(workletNode);
+          workletNode.connect(audioContext.destination);
+
+          isRecording = true;
+          setCircleState("listening");
+          updateStatus("Listening...");
+          endButton.style.display = "block";
+
+          transcriptContainer.innerHTML =
+            '<div style="color: #6e7781; font-size: 13px; text-align: center; padding: 20px">Conversation started...</div>';
+        } catch (error) {
+          updateStatus("Microphone access denied");
+        }
+      }
+
+      // Stop recording
+      function stopRecording() {
+        if (!isRecording) return;
+        isRecording = false;
+
+        if (workletNode) {
+          workletNode.disconnect();
+          workletNode = null;
+        }
+
+        if (mediaStream) {
+          mediaStream.getTracks().forEach((track) => track.stop());
+          mediaStream = null;
+        }
+
+        if (audioContext) {
+          audioContext.close();
+          audioContext = null;
+        }
+
+        setCircleState("");
+        updateStatus("Stopped");
+        endButton.style.display = "none";
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "close" }));
+        }
+      }
+
+      // Clear audio queue
+      function clearAudioQueue() {
+        scheduledSources.forEach((source) => {
+          try { source.stop(); } catch (e) {}
+        });
+        scheduledSources = [];
+        if (playbackAudioContext) {
+          nextPlayTime = playbackAudioContext.currentTime;
+        }
+      }
+
+      // Play audio chunk
+      async function playAudioChunk(base64Audio) {
+        try {
+          if (!playbackAudioContext) {
+            playbackAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+              sampleRate: 24000,
+            });
+            nextPlayTime = playbackAudioContext.currentTime;
+          }
+
+          const audioBytes = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
+          const pcm16 = new Int16Array(audioBytes.buffer);
+          const float32 = new Float32Array(pcm16.length);
+
+          for (let i = 0; i < pcm16.length; i++) {
+            float32[i] = pcm16[i] / 32768.0;
+          }
+
+          const audioBuffer = playbackAudioContext.createBuffer(1, float32.length, 24000);
+          audioBuffer.getChannelData(0).set(float32);
+
+          const source = playbackAudioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(playbackAudioContext.destination);
+
+          source.onended = () => {
+            scheduledSources = scheduledSources.filter((s) => s !== source);
+          };
+          scheduledSources.push(source);
+
+          if (nextPlayTime < playbackAudioContext.currentTime) {
+            nextPlayTime = playbackAudioContext.currentTime;
+          }
+          source.start(nextPlayTime);
+          nextPlayTime += audioBuffer.duration;
+        } catch (error) {
+          console.error("Error playing audio:", error);
+        }
+      }
+
+      // Set circle visual state
+      function setCircleState(state) {
+        voiceCircle.classList.remove("listening", "speaking", "processing", "delegating");
+        if (state) voiceCircle.classList.add(state);
+      }
+
+      // Update status text
+      function updateStatus(message) {
+        status.textContent = message;
+        status.className = "status-text" + (message.includes("...") ? " active" : "");
+      }
+
+      // Add transcript to UI
+      function addTranscript(role, text) {
+        const placeholder = transcriptContainer.querySelector('div[style*="color: #6e7781"]');
+        if (placeholder) placeholder.remove();
+
+        const item = document.createElement("div");
+        item.className = "transcript-item " + role;
+        item.innerHTML = `
+          <div class="role">${role === "user" ? "You" : "Autonomy Docs"}</div>
+          <div>${text}</div>
+        `;
+        transcriptContainer.appendChild(item);
+        transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+      }
+
+      // End session
+      function endSession() {
+        stopRecording();
+        clearAudioQueue();
+        scheduledSources = [];
+        isSpeaking = false;
+        if (ws) {
+          ws.close();
+          ws = null;
+        }
+        if (playbackAudioContext) {
+          playbackAudioContext.close();
+          playbackAudioContext = null;
+        }
+        updateStatus("Session ended. Click to start again.");
+      }
+
+      // Event listeners
+      voiceCircle.addEventListener("click", startRecording);
+      endButton.addEventListener("click", endSession);
+
+      // Connect on load
+      window.addEventListener("load", connect);
+
+      // Cleanup on unload
+      window.addEventListener("beforeunload", () => {
+        stopRecording();
+        if (ws) ws.close();
+      });
+    </script>
+  </body>
+</html>
+```
+
+</CodeGroup>
+
+---
+
+## Alternative: Using Filesystem Instead of Knowledge
+
+If you prefer not to use vector embeddings, you can use [Filesystem Tools](/agents/filesystem) as an alternative approach. This is simpler to set up but uses keyword matching instead of semantic search.
+
+##### Useful Filesystem Tools for Documentation
+
+| Tool | Description |
+|------|-------------|
+| `search_in_files` | Search for regex patterns across files. Great for finding specific terms or code snippets. |
+| `find_files` | Find files matching glob patterns like `**/*.md` or `docs/*.json`. Useful for discovering what documentation exists. |
+| `list_directory` | List files and directories. Helps the agent navigate the documentation structure. |
+| `read_file` | Read file contents. Use after finding relevant files. |
+
+##### Filesystem Example
+
+```python images/main/main.py
+from autonomy import Agent, FilesystemTools, Model, Node
+import httpx
+
+async def main(node: Node):
+  # Download docs to the filesystem
+  await download_docs_to_filesystem()
+  
+  await Agent.start(
+    node=node,
+    name="docs",
+    instructions="""
+    You are a documentation assistant.
+    
+    Use these tools to find and read documentation:
+    - find_files: Find docs by pattern (e.g., "**/*.md" for all markdown files)
+    - list_directory: Explore the documentation structure
+    - search_in_files: Search for specific terms across all docs
+    - read_file: Read the content of specific files
+    
+    Keep responses concise for voice interaction.
+    """,
+    model=Model("claude-sonnet-4-v1", max_tokens=256),
+    tools=[FilesystemTools(visibility="agent")],
+    voice={
+      "voice": "alloy",
+      "instructions": VOICE_INSTRUCTIONS,
+      "vad_threshold": 0.7,
+      "vad_silence_duration_ms": 700,
+    },
+  )
+
+Node.start(main)
+```
+
+With `visibility="agent"`, all documentation files are shared across all conversations, making them accessible to every user.
+
+<Card href="/agents/filesystem" title="Filesystem access" icon="folder-tree" iconType="solid">
+  Learn more about filesystem tools and visibility options.
+</Card>
+
+---
+
+## Platform-Specific Tips
+
+##### Mintlify
+
+Mintlify provides an `llms.txt` file at `https://your-docs.mintlify.dev/llms.txt` containing links to all documentation pages in markdown format.
+
+##### GitBook
+
+GitBook exports can be accessed via their API or by scraping the sitemap at `https://your-space.gitbook.io/sitemap.xml`.
+
+##### ReadTheDocs
+
+ReadTheDocs provides downloadable formats. Use the HTML or PDF export URLs.
+
+##### GitHub Pages / Docusaurus
+
+For static site generators, parse the sitemap or maintain a list of documentation URLs.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Knowledge base returns no results">
+    - Check that `max_distance` isn't too strict (try 0.5 or higher).
+    - Verify documents loaded successfully by checking the `/refresh` endpoint response.
+    - Ensure the embedding model matches your content language.
+  </Accordion>
+  
+  <Accordion title="Voice not working in browser">
+    - Ensure your browser has microphone permissions.
+    - Use Chrome or Edge for best WebSocket and Web Audio API support.
+    - Check the browser console for WebSocket connection errors.
+  </Accordion>
+  
+  <Accordion title="Agent gives inaccurate answers">
+    - Adjust the instructions to emphasize using the search tool first.
+    - Increase `max_results` to provide more context.
+    - Lower `max_distance` to retrieve more relevant chunks.
+  </Accordion>
+  
+  <Accordion title="Responses are too slow">
+    - Reduce `max_tokens` in the model configuration.
+    - Use a faster model for the primary agent.
+    - Ensure your knowledge base isn't too large.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Build with a Coding Agent
+
+See the guide on building Autonomy apps [using coding agents](/build-with-a-coding-agent).
+
+---
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card href="/agents/voice" title="Voice" icon="microphone" iconType="solid">
+    Deep dive into voice agent configuration.
+  </Card>
+  <Card href="/agents/knowledge" title="Knowledge bases" icon="file-magnifying-glass" iconType="solid">
+    Advanced knowledge base features.
+  </Card>
+  <Card href="/applications/programming-interfaces" title="APIs" icon="code" iconType="solid">
+    Add custom endpoints to your application.
+  </Card>
+  <Card href="/agents/filesystem" title="Filesystem" icon="folder-tree" iconType="solid">
+    Alternative to knowledge with file-based search.
+  </Card>
+</CardGroup>
