@@ -21,7 +21,7 @@ async def main(node):
     node=node,
     name="henry",
     instructions="You are Henry, an expert legal assistant",
-    model=Model("claude-sonnet-4-v1")
+    model=Model("claude-sonnet-4")
   )
 
 
@@ -32,21 +32,94 @@ You can easily switch models by changing the model name in your `Model()` constr
 
 ## Supported Models
 
-Autonomy supports a wide range of models from different providers:
+Autonomy supports a curated set of models from leading providers. All models are accessed
+through the Model Gateway, which handles routing, load balancing, and failover automatically.
 
-| Model              | Provider  | Description                                    |
-|--------------------|-----------|------------------------------------------------|
-| claude-opus-4-v1   | Anthropic | Most capable model for complex tasks           |
-| claude-sonnet-4-v1 | Anthropic | Balanced performance and cost                  |
-| nova-premier-v1    | Amazon    | High-performance model from AWS                |
-| deepseek-r1        | DeepSeek  | Advanced reasoning capabilities                |
-| nova-pro-v1        | Amazon    | Professional-grade AWS model                   |
-| llama4-maverick    | Meta      | High-performance Llama 4 variant               |
-| llama4-scout       | Meta      | Efficient Llama 4 variant                      |
-| nova-lite-v1       | Amazon    | Lightweight and cost-effective AWS model       |
-| nova-micro-v1      | Amazon    | Ultra-lightweight, most cost-effective option  |
+### Anthropic Claude
+
+Claude models are accessed via AWS Bedrock with automatic failover to Anthropic's direct API.
+
+| Model | Alias | Also Known As | Description |
+|-------|-------|---------------|-------------|
+| Claude Sonnet 4.5 | `claude-sonnet-4-5` | | Latest generation, best for complex reasoning |
+| Claude Haiku 4.5 | `claude-haiku-4-5` | | Fast and cost-effective |
+| Claude Opus 4.5 | `claude-opus-4-5` | | Most capable, for the hardest tasks |
+| Claude Sonnet 4 | `claude-sonnet-4` | `claude-sonnet-4-v1` | Stable release, balanced performance |
+| Claude Opus 4 | `claude-opus-4` | `claude-opus-4-v1` | Stable release, highest capability |
+
+### Amazon Nova
+
+Amazon's Nova models offer excellent price-performance for various workloads.
+
+| Model | Alias | Also Known As | Description |
+|-------|-------|---------------|-------------|
+| Nova Micro | `nova-micro` | `nova-micro-v1` | Ultra-lightweight, most cost-effective |
+| Nova Lite | `nova-lite` | `nova-lite-v1` | Lightweight and fast |
+| Nova Pro | `nova-pro` | `nova-pro-v1` | Professional-grade performance |
+| Nova Premier | `nova-premier` | `nova-premier-v1` | Highest capability Nova model |
+
+### Meta Llama
+
+Open-weight models from Meta with strong performance.
+
+| Model | Alias | Description |
+|-------|-------|-------------|
+| Llama 4 Maverick | `llama4-maverick` | High-performance Llama 4 |
+| Llama 4 Scout | `llama4-scout` | Efficient Llama 4 variant |
+| Llama 3.3 70B | `llama3-3-70b` | Stable Llama 3.3 release |
+
+### OpenAI
+
+| Model | Alias | Description |
+|-------|-------|-------------|
+| GPT-4o | `gpt-4o` | OpenAI's flagship model |
+| GPT-4o Mini | `gpt-4o-mini` | Fast and cost-effective |
+
+### Embedding Models
+
+For text embeddings and semantic search:
+
+| Model | Alias | Provider | Description |
+|-------|-------|----------|-------------|
+| Cohere Embed English | `embed-english` | Bedrock | English text embeddings |
+| Cohere Embed Multilingual | `embed-multilingual` | Bedrock | Multilingual embeddings |
+| Titan Embed | `titan-embed` | Bedrock | Amazon Titan embeddings |
+| Text Embedding 3 Small | `text-embedding-3-small` | OpenAI | OpenAI small embeddings (1536 dims) |
+| Text Embedding 3 Large | `text-embedding-3-large` | OpenAI | OpenAI large embeddings (3072 dims) |
+
+### Audio Models
+
+For text-to-speech and speech-to-text:
+
+| Model | Alias | Type | Description |
+|-------|-------|------|-------------|
+| TTS-1 | `tts-1` | Text-to-Speech | Standard quality, low latency |
+| TTS-1 HD | `tts-1-hd` | Text-to-Speech | High definition audio |
+| Whisper | `whisper-1` | Speech-to-Text | Transcription and translation |
+
+### Realtime Models
+
+For real-time voice conversations:
+
+| Model | Alias | Description |
+|-------|-------|-------------|
+| GPT-4o Realtime Preview | `gpt-4o-realtime-preview` | Real-time voice with GPT-4o |
+| GPT Realtime | `gpt-realtime` | Standard realtime model |
+| GPT Realtime Mini | `gpt-realtime-mini` | Lightweight realtime model |
 
 For detailed pricing information for each model, see the [Pricing](/pricing) page.
+
+## Model Selection Guide
+
+Choose your model based on your use case:
+
+| Use Case | Recommended Model | Why |
+|----------|-------------------|-----|
+| Complex reasoning | `claude-sonnet-4-5` | Best reasoning capabilities |
+| Fast responses | `claude-haiku-4-5` | Optimized for speed |
+| Cost-sensitive | `nova-micro` | Most cost-effective |
+| General purpose | `claude-sonnet-4` | Good balance of capability and cost |
+| Maximum capability | `claude-opus-4-5` | For the hardest tasks |
 
 ## Parameters
 
@@ -66,7 +139,7 @@ async def main(node):
     node=node,
     name="analyst",
     instructions="You are a financial analyst",
-    model=Model("claude-sonnet-4-v1", temperature=0.2)
+    model=Model("claude-sonnet-4", temperature=0.2)
   )
 
 
@@ -83,7 +156,7 @@ from autonomy import Model, Node, SystemMessage, UserMessage
 
 
 async def main(node):
-  model = Model("claude-sonnet-4-v1")
+  model = Model("claude-sonnet-4")
 
   response = model.complete_chat([
     SystemMessage("You are a helpful assistant."),
@@ -105,7 +178,7 @@ from autonomy import Model, Node, SystemMessage, UserMessage
 
 
 async def main(node):
-  model = Model("claude-sonnet-4-v1")
+  model = Model("claude-sonnet-4")
 
   streaming_response = model.complete_chat([
       SystemMessage("You are a helpful assistant."),
@@ -116,6 +189,28 @@ async def main(node):
     if hasattr(chunk, "choices") and chunk.choices and chunk.choices[0].delta.content:
       content = chunk.choices[0].delta.content
       print(content, end="")
+
+
+Node.start(main)
+```
+
+## Embeddings
+
+Generate embeddings for semantic search and similarity:
+
+```python images/main/main.py
+from autonomy import Model, Node
+
+
+async def main(node):
+  model = Model("embed-english")
+
+  embeddings = await model.embeddings([
+    "Hello world",
+    "How are you?"
+  ])
+  
+  print(f"Embedding dimension: {len(embeddings[0])}")
 
 
 Node.start(main)
