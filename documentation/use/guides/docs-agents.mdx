@@ -1,12 +1,35 @@
 ---
-title: "Voice Agents for your Docs"
+title: "From static docs to in-product agents"
 icon: "book-open"
-description: "How to add agents to your product that answer questions grounded in your docs in Mintlify, GitBook, etc."
+description: "Use Autonomy to embed your documentation into your product as intelligent agents that deliver tailored answers based on the user, context, and intent."
 ---
 
-This guide walks through building an Autonomy application that creates
-voice-enabled agents to answer questions about your product grounded in your
-docs. You can give your customers a conversational way to learn about your product.
+Most documentation lives outside the product and treats every reader the same.
+Autonomy lets you change that. By running documentation agents inside your application,
+you give users answers that reflect who they are, what they are trying to do, and where
+they are in the product. The same agents can power text chat or voice interfaces,
+while staying connected to docs stored in Mintlify, GitHub, or any other system.
+
+We use this exact pattern on our own website. The chat and voice experience at
+https://autonomy.computer#learn runs on Autonomy and connects directly to our
+documentation stored in Mintlify and GitHub. The agents receive custom instructions
+that adapt responses for different audiences, such as developers, analysts, investors,
+and first-time visitors. This lets us serve the same source documentation in different
+ways, without duplicating content or building separate experiences.
+
+
+<Frame>
+  <img src="/guides/images/docs-agents/docs-agents.png"
+      alt="From docs to in-product agents" />
+</Frame>
+
+This guide will show you how to build an Autonomy app that creates
+voice-enabled agents to answer questions about your product in a way that is grounded
+in your documentation.
+
+
+
+
 
 The complete source code is available at [github.com/build-trust/autonomy/examples/voice/docs](https://github.com/build-trust/autonomy/tree/main/examples/voice/docs).
 
