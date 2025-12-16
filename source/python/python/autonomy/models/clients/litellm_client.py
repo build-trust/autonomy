@@ -335,10 +335,6 @@ def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional
         response = bedrock_client.create_inference_profile(
           inferenceProfileName=inference_profile_name,
           modelSource={"copyFrom": model_source_arn},
-          tags=[
-            {"key": "ockam.ai/clusterID", "value": cluster_id},
-            {"key": "ockam.ai/modelID", "value": model_identifier},
-          ],
         )
         created_arn = response["inferenceProfileArn"]
         # Cache the newly created ARN
