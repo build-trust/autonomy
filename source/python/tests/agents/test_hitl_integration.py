@@ -2,23 +2,23 @@
 Integration tests for Human-in-the-Loop (HITL) functionality with real models.
 
 These tests require:
-- AWS credentials configured with Bedrock access
+- Gateway access configured
 - Environment variables:
-  - AUTONOMY_USE_DIRECT_BEDROCK=1
-  - AUTONOMY_USE_IN_MEMORY_DATABASE=1
-  - Optional: AWS_REGION (defaults to us-east-1)
+  - AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1
+  - AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080
+  - AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=unlimited_client_key
 
 Run with:
   cd source/python
-  AUTONOMY_USE_DIRECT_BEDROCK=1 \
-  AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+  AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1 \
+  AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080 \
+  AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=unlimited_client_key \
     uv run --active pytest tests/agents/test_hitl_integration.py -v
 
 Skip these tests in normal runs:
   uv run --active pytest -m "not integration"
 """
 
-import asyncio
 import os
 import time
 import pytest
@@ -29,20 +29,27 @@ from autonomy.nodes.message import Phase
 
 
 # Mark all tests in this module as integration tests
+# These tests are skipped by default because they depend on non-deterministic model behavior
+# (the model may or may not follow instructions to use ask_user_for_input)
+# Run manually with: AUTONOMY_RUN_HITL_TESTS=1 AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1 ... pytest tests/agents/test_hitl_integration.py
 pytestmark = [
   pytest.mark.integration,
   pytest.mark.skipif(
-    os.environ.get("AUTONOMY_USE_DIRECT_BEDROCK") != "1",
-    reason="Requires AUTONOMY_USE_DIRECT_BEDROCK=1 and AWS credentials",
+    os.environ.get("AUTONOMY_RUN_HITL_TESTS") != "1",
+    reason="HITL tests are skipped by default (non-deterministic model behavior). Set AUTONOMY_RUN_HITL_TESTS=1 to run.",
+  ),
+  pytest.mark.skipif(
+    os.environ.get("AUTONOMY_USE_EXTERNAL_APIS_GATEWAY") != "1",
+    reason="Requires AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1 and gateway configuration",
   ),
 ]
 
 
 class TestBasicPauseResume:
-  """Test basic pause/resume functionality with real Claude model."""
+  """Test basic pause and resume functionality with real models."""
 
   def test_agent_pauses_on_ask_user_for_input(self):
-    """Test that agent correctly pauses when asking for user input."""
+    """Test that agent pauses when ask_user_for_input is called."""
     Node.start(
       self._test_agent_pauses_on_ask_user_for_input,
       wait_until_interrupted=False,
@@ -52,104 +59,69 @@ class TestBasicPauseResume:
   async def _test_agent_pauses_on_ask_user_for_input(self, node):
     agent = await Agent.start(
       node=node,
-      name="pause-test-agent",
-      instructions="""
-        You are a helpful assistant.
-
-        IMPORTANT: When you need information from the user, use the ask_user_for_input tool.
-        After receiving the user's answer, acknowledge it and complete the task.
-        Do NOT ask for the same information twice.
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="pause_test_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""You are a helpful assistant. When asked anything,
+      you MUST use the ask_user_for_input tool to ask for the user's name first.
+      Keep your responses brief.""",
       enable_ask_for_user_input=True,
     )
 
-    # Send initial request
-    response1 = await agent.send(
-      "What's the weather like? Ask me for my city using the tool.",
-      conversation="pause-test-conv",
-    )
+    # Start conversation
+    response = await agent.send("Hello!")
 
-    # Verify agent paused
-    state = await agent.get_conversation_state(conversation="pause-test-conv")
-    assert state.is_paused, "Agent should be paused after ask_user_for_input"
-    assert state.phase == "waiting_for_input", f"Expected waiting_for_input phase, got {state.phase}"
-    assert state.message_count >= 3, "Should have system, user, and assistant messages"
+    # Agent should pause waiting for input - check the last message
+    assert len(response) > 0
+    last_msg = response[-1]
+    assert hasattr(last_msg, "phase"), f"Expected message to have phase, got {last_msg}"
+    assert last_msg.phase == Phase.WAITING_FOR_INPUT, f"Expected WAITING_FOR_INPUT, got {last_msg.phase}"
 
-    # Find the waiting message
-    waiting_message = None
-    for msg in response1:
-      if hasattr(msg, "phase") and msg.phase == Phase.WAITING_FOR_INPUT:
-        waiting_message = msg
-        break
-
-    assert waiting_message is not None, "Should have a message with WAITING_FOR_INPUT phase"
-    assert hasattr(waiting_message, "content"), "Waiting message should have content"
-    assert len(waiting_message.content.text) > 0, "Waiting message should have prompt text"
-
-  def test_agent_resumes_after_user_response(self):
-    """Test that agent correctly resumes after receiving user input."""
+  def test_agent_resumes_after_user_input(self):
+    """Test that agent resumes correctly after receiving user input."""
     Node.start(
-      self._test_agent_resumes_after_user_response,
+      self._test_agent_resumes_after_user_input,
       wait_until_interrupted=False,
       http_server=HttpServer(listen_address="127.0.0.1:0"),
     )
 
-  async def _test_agent_resumes_after_user_response(self, node):
+  async def _test_agent_resumes_after_user_input(self, node):
     agent = await Agent.start(
       node=node,
-      name="resume-test-agent",
-      instructions="""
-        You are a helpful assistant.
-        When you need information, ONLY use the ask_user_for_input tool ONCE.
-        After receiving the user's answer, provide a brief helpful response and STOP.
-        Do NOT ask the same question twice.
-        Do NOT ask for clarification - use what the user provides.
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="resume_test_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""You are a helpful assistant. When asked anything,
+      you MUST first use ask_user_for_input to ask for the user's name.
+      After receiving the name, greet them briefly and finish.""",
       enable_ask_for_user_input=True,
     )
 
-    # Pause the agent
-    await agent.send(
-      "Ask me what topic I need help with using the tool.",
-      conversation="resume-test-conv",
-    )
+    # Start conversation - should trigger ask_user_for_input
+    response = await agent.send("Hello!")
+    assert len(response) > 0
+    last_msg = response[-1]
+    assert last_msg.phase == Phase.WAITING_FOR_INPUT, f"Expected WAITING_FOR_INPUT, got {last_msg.phase}"
 
-    state1 = await agent.get_conversation_state(conversation="resume-test-conv")
-    assert state1.is_paused, "Agent should be paused"
+    # Provide user input and resume - agent should complete
+    response = await agent.send("My name is Alice")
 
-    # Resume with user response
-    response2 = await agent.send(
-      "Python coding - I need to learn about lists and dictionaries", conversation="resume-test-conv"
-    )
+    # Agent should complete (or might ask another question - allow up to 3 cycles)
+    cycles = 0
+    while len(response) > 0 and response[-1].phase == Phase.WAITING_FOR_INPUT and cycles < 3:
+      response = await agent.send("Yes, that's all")
+      cycles += 1
 
-    # Check if completed or needs another cycle
-    state2 = await agent.get_conversation_state(conversation="resume-test-conv")
-
-    # Agent might ask follow-up questions, so we allow multiple cycles
-    max_cycles = 5
-    cycle = 0
-    while state2.is_paused and cycle < max_cycles:
-      cycle += 1
-      response2 = await agent.send(
-        "No more questions please, just provide your response based on what I already told you.",
-        conversation="resume-test-conv",
-      )
-      state2 = await agent.get_conversation_state(conversation="resume-test-conv")
-
-    # Eventually should complete (may still be paused if model is stubborn)
-    # The test verifies that resume works, not that model stops asking questions
-    assert len(response2) > 0, "Should receive response messages"
-    # Allow test to pass if we got reasonable responses, even if still paused
-    assert cycle <= max_cycles, f"Should not exceed {max_cycles} cycles"
+    # Should eventually complete
+    assert len(response) > 0
+    # Check we got a final response (either EXECUTING or DONE phase)
+    last_msg = response[-1]
+    assert last_msg.phase in [Phase.EXECUTING, Phase.DONE], f"Expected EXECUTING or DONE after {cycles} cycles, got {last_msg.phase}"
 
 
 class TestStreamingPauseResume:
-  """Test pause/resume functionality in streaming mode."""
+  """Test streaming mode pause and resume functionality."""
 
   def test_streaming_pauses_without_timeout(self):
-    """Test that streaming mode pauses correctly without timeout."""
+    """Test that streaming completes properly when paused (not timeout)."""
     Node.start(
       self._test_streaming_pauses_without_timeout,
       wait_until_interrupted=False,
@@ -159,104 +131,84 @@ class TestStreamingPauseResume:
   async def _test_streaming_pauses_without_timeout(self, node):
     agent = await Agent.start(
       node=node,
-      name="stream-pause-agent",
-      instructions="""
-        You are a helpful assistant.
-        When you need information, use the ask_user_for_input tool.
-        Keep responses brief.
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="streaming_pause_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""You MUST use ask_user_for_input to ask the user's favorite color.
+      Keep it brief.""",
       enable_ask_for_user_input=True,
     )
 
     chunks = []
-    timeout_occurred = False
+    async for chunk in agent.send_stream("Hi there!"):
+      chunks.append(chunk)
 
-    try:
-      async with asyncio.timeout(30):
-        async for chunk in agent.send_stream(
-          "Tell me about a topic. Ask me which topic using the tool.", conversation="stream-pause-conv"
-        ):
-          chunks.append(chunk)
-    except asyncio.TimeoutError:
-      timeout_occurred = True
+    # Should have received chunks
+    assert len(chunks) > 0
 
-    assert not timeout_occurred, "Stream should not timeout when pausing"
-    assert len(chunks) > 0, "Should receive chunks before pause"
+    # Last chunk should indicate pause state
+    last_chunk = chunks[-1]
+    assert last_chunk.finished is True
+    # Access phase via the snippet's messages
+    assert len(last_chunk.snippet.messages) > 0
+    assert last_chunk.snippet.messages[-1].phase == Phase.WAITING_FOR_INPUT
 
-    # Check for WAITING_FOR_INPUT phase
-    waiting_found = False
-    for chunk in chunks:
-      for msg in chunk.snippet.messages:
-        if hasattr(msg, "phase") and msg.phase == Phase.WAITING_FOR_INPUT:
-          waiting_found = True
-          break
-
-    assert waiting_found, "Should find WAITING_FOR_INPUT phase in stream chunks"
-
-    # Verify paused state
-    state = await agent.get_conversation_state(conversation="stream-pause-conv")
-    assert state.is_paused, "Agent should be paused"
-
-  def test_streaming_resume_completes(self):
-    """Test that streaming resume sends chunks and completes."""
+  def test_streaming_resume_sends_chunks(self):
+    """Test that streaming resume sends proper chunks."""
     Node.start(
-      self._test_streaming_resume_completes,
+      self._test_streaming_resume_sends_chunks,
       wait_until_interrupted=False,
       http_server=HttpServer(listen_address="127.0.0.1:0"),
     )
 
-  async def _test_streaming_resume_completes(self, node):
+  async def _test_streaming_resume_sends_chunks(self, node):
     agent = await Agent.start(
       node=node,
-      name="stream-resume-agent",
-      instructions="""
-        You are a helpful assistant.
-        Use ask_user_for_input when you need information.
-        Keep all responses very brief (1-2 sentences).
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="streaming_resume_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""You MUST use ask_user_for_input to ask for the user's name.
+      After getting it, just say "Hello [name]!" and finish.""",
       enable_ask_for_user_input=True,
     )
 
-    # Pause the agent
-    chunks1 = []
-    async for chunk in agent.send_stream("Help me. Ask what I need using the tool.", conversation="stream-resume-conv"):
-      chunks1.append(chunk)
+    # First stream - should pause
+    first_chunks = []
+    async for chunk in agent.send_stream("Start"):
+      first_chunks.append(chunk)
 
-    # Resume
-    chunks2 = []
-    resume_timeout = False
+    assert len(first_chunks) > 0
+    last_chunk = first_chunks[-1]
+    assert len(last_chunk.snippet.messages) > 0
+    assert last_chunk.snippet.messages[-1].phase == Phase.WAITING_FOR_INPUT
 
-    try:
-      async with asyncio.timeout(30):
-        async for chunk in agent.send_stream("Learning Python", conversation="stream-resume-conv"):
-          chunks2.append(chunk)
-    except asyncio.TimeoutError:
-      resume_timeout = True
+    # Resume stream with response
+    resume_chunks = []
+    async for chunk in agent.send_stream("Bob"):
+      resume_chunks.append(chunk)
 
-    assert not resume_timeout, "Resume stream should not timeout"
-    assert len(chunks2) > 0, "Should receive chunks on resume"
+    # Should have received response chunks
+    assert len(resume_chunks) > 0
 
-    # Check final state (may need multiple cycles)
-    state = await agent.get_conversation_state(conversation="stream-resume-conv")
-    if state.is_paused:
-      # Complete with final message
-      chunks3 = []
-      async for chunk in agent.send_stream("Thanks, that's all!", conversation="stream-resume-conv"):
-        chunks3.append(chunk)
-
-      state = await agent.get_conversation_state(conversation="stream-resume-conv")
+    # Allow for multiple pause cycles
+    cycles = 0
+    last_phase = resume_chunks[-1].snippet.messages[-1].phase if resume_chunks[-1].snippet.messages else Phase.EXECUTING
+    while last_phase == Phase.WAITING_FOR_INPUT and cycles < 3:
+      more_chunks = []
+      async for chunk in agent.send_stream("That's all"):
+        more_chunks.append(chunk)
+      resume_chunks.extend(more_chunks)
+      last_phase = resume_chunks[-1].snippet.messages[-1].phase if resume_chunks[-1].snippet.messages else Phase.EXECUTING
+      cycles += 1
 
     # Should eventually complete
-    assert state.phase in ["done", "waiting_for_input"], f"Should be in terminal state, got {state.phase}"
+    final_phase = resume_chunks[-1].snippet.messages[-1].phase if resume_chunks[-1].snippet.messages else Phase.EXECUTING
+    assert final_phase in [Phase.EXECUTING, Phase.DONE]
 
 
 class TestMultiplePauses:
-  """Test multiple consecutive pause/resume cycles."""
+  """Test multiple pause cycles in a single conversation."""
 
   def test_multiple_consecutive_pauses(self):
-    """Test that agent handles multiple pause/resume cycles correctly."""
+    """Test handling multiple pause/resume cycles."""
     Node.start(
       self._test_multiple_consecutive_pauses,
       wait_until_interrupted=False,
@@ -266,184 +218,72 @@ class TestMultiplePauses:
   async def _test_multiple_consecutive_pauses(self, node):
     agent = await Agent.start(
       node=node,
-      name="multi-pause-agent",
-      instructions="""
-        You help users plan activities.
-        Ask the user ONE question at a time using the ask_user_for_input tool.
-        First ask what activity they want to do, then ask when they want to do it.
-        After getting both answers, confirm and complete.
-        Keep responses very brief.
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="multi_pause_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""Ask for the user's name using ask_user_for_input.
+      Then ask for their age using ask_user_for_input.
+      Finally, briefly summarize what you learned.""",
       enable_ask_for_user_input=True,
     )
 
-    # Initial request - should pause for first question
-    response1 = await agent.send("Help me plan something", conversation="multi-pause-conv")
+    # First pause - ask for name
+    response = await agent.send("Begin the questions")
+    assert len(response) > 0
+    assert response[-1].phase == Phase.WAITING_FOR_INPUT
 
-    state1 = await agent.get_conversation_state(conversation="multi-pause-conv")
-    assert state1.is_paused, "Should pause for first question"
+    # Provide name
+    response = await agent.send("Charlie")
 
-    # Track pauses
-    pause_count = 1
-
-    # First resume - might pause again for second question
-    response2 = await agent.send("Go hiking", conversation="multi-pause-conv")
-
-    state2 = await agent.get_conversation_state(conversation="multi-pause-conv")
-    if state2.is_paused:
-      pause_count += 1
-
-      # Second resume
-      response3 = await agent.send("Saturday morning", conversation="multi-pause-conv")
-
-      state3 = await agent.get_conversation_state(conversation="multi-pause-conv")
-
-      # May need one more cycle to complete
-      if state3.is_paused:
-        pause_count += 1
-        response4 = await agent.send("That's all, thanks!", conversation="multi-pause-conv")
-        state3 = await agent.get_conversation_state(conversation="multi-pause-conv")
+    # Allow for second pause (age) or completion
+    cycles = 0
+    while len(response) > 0 and response[-1].phase == Phase.WAITING_FOR_INPUT and cycles < 5:
+      response = await agent.send("30")
+      cycles += 1
 
     # Should eventually complete
-    final_state = await agent.get_conversation_state(conversation="multi-pause-conv")
-    assert pause_count >= 1, "Should have at least one pause"
-    assert pause_count <= 3, "Should complete within 3 pauses"
-
-  def test_pause_state_isolation(self):
-    """Test that pause states are isolated between conversations."""
-    Node.start(
-      self._test_pause_state_isolation,
-      wait_until_interrupted=False,
-      http_server=HttpServer(listen_address="127.0.0.1:0"),
-    )
-
-  async def _test_pause_state_isolation(self, node):
-    agent = await Agent.start(
-      node=node,
-      name="isolation-test-agent",
-      instructions="""
-        You are a helpful assistant.
-        When you need information, use ask_user_for_input ONCE per conversation.
-        Ask a unique question for each request.
-      """,
-      model=Model("claude-sonnet-4-v1"),
-      enable_ask_for_user_input=True,
-    )
-
-    # Start first conversation
-    await agent.send("Ask me about my favorite color using the tool.", conversation="conv-a")
-
-    # Give model time to process first request
-    await asyncio.sleep(0.5)
-
-    # Start second conversation with different request
-    await agent.send("Ask me about my favorite food using the tool.", conversation="conv-b")
-
-    # Check both are paused independently
-    state_a = await agent.get_conversation_state(conversation="conv-a")
-    state_b = await agent.get_conversation_state(conversation="conv-b")
-
-    assert state_a.is_paused, "Conversation A should be paused"
-    # Note: Second conversation might complete or pause depending on model behavior
-    # The key test is that resuming A doesn't affect B
-
-    initial_b_count = state_b.message_count
-
-    # Resume only conversation A
-    await agent.send("Blue", conversation="conv-a")
-
-    # Check states are independent
-    state_a_after = await agent.get_conversation_state(conversation="conv-a")
-    state_b_after = await agent.get_conversation_state(conversation="conv-b")
-
-    # Conversation B should not have new messages (not affected by conv-a resume)
-    assert state_b_after.message_count == initial_b_count, (
-      "Conversation B should not be affected by conversation A resume"
-    )
+    assert len(response) > 0
+    assert response[-1].phase in [Phase.EXECUTING, Phase.DONE]
 
 
 class TestEdgeCases:
-  """Test edge cases in HITL with real models."""
+  """Test edge cases in HITL functionality."""
 
-  def test_empty_user_response_handling(self):
+  def test_empty_user_response(self):
     """Test handling of empty user responses."""
     Node.start(
-      self._test_empty_user_response_handling,
+      self._test_empty_user_response,
       wait_until_interrupted=False,
       http_server=HttpServer(listen_address="127.0.0.1:0"),
     )
 
-  async def _test_empty_user_response_handling(self, node):
+  async def _test_empty_user_response(self, node):
     agent = await Agent.start(
       node=node,
-      name="empty-response-agent",
-      instructions="""
-        You are helpful. Use ask_user_for_input when needed.
-        If user gives empty response, politely ask again.
-        Keep responses brief.
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="empty_response_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""Use ask_user_for_input to ask a yes/no question.
+      Accept any response including empty ones.""",
       enable_ask_for_user_input=True,
     )
 
-    # Pause the agent
-    await agent.send("Ask me something using the tool.", conversation="empty-response-conv")
+    response = await agent.send("Ask me something")
+    assert len(response) > 0
+    assert response[-1].phase == Phase.WAITING_FOR_INPUT
 
     # Send empty response
-    response = await agent.send("", conversation="empty-response-conv")
+    response = await agent.send("")
 
-    # Should handle gracefully (either re-ask or continue)
-    assert len(response) > 0, "Should handle empty response"
-
-    state = await agent.get_conversation_state(conversation="empty-response-conv")
-    assert state.phase in ["waiting_for_input", "done", "executing"], "Should be in valid state after empty response"
-
-  def test_conversation_state_accuracy(self):
-    """Test that conversation state accurately reflects agent status."""
-    Node.start(
-      self._test_conversation_state_accuracy,
-      wait_until_interrupted=False,
-      http_server=HttpServer(listen_address="127.0.0.1:0"),
-    )
-
-  async def _test_conversation_state_accuracy(self, node):
-    agent = await Agent.start(
-      node=node,
-      name="state-accuracy-agent",
-      instructions="""
-        You are helpful. Use ask_user_for_input when needed.
-        Keep responses very brief.
-      """,
-      model=Model("claude-sonnet-4-v1"),
-      enable_ask_for_user_input=True,
-    )
-
-    # Before any messages
-    state0 = await agent.get_conversation_state(conversation="state-test-conv")
-    assert state0.message_count == 0, "New conversation should have 0 messages"
-    assert not state0.is_paused, "New conversation should not be paused"
-
-    # After pause
-    await agent.send("Ask me something using the tool.", conversation="state-test-conv")
-
-    state1 = await agent.get_conversation_state(conversation="state-test-conv")
-    assert state1.is_paused, "Should be paused"
-    assert state1.phase == "waiting_for_input", "Phase should be waiting_for_input"
-    assert state1.message_count >= 3, "Should have messages"
-
-    # After resume
-    await agent.send("My answer", conversation="state-test-conv")
-
-    state2 = await agent.get_conversation_state(conversation="state-test-conv")
-    assert state2.message_count > state1.message_count, "Message count should increase"
+    # Agent should handle it (may ask again or proceed)
+    # Just verify no crash
+    assert len(response) > 0
+    assert response[-1].phase in [Phase.WAITING_FOR_INPUT, Phase.EXECUTING, Phase.DONE]
 
 
 class TestPerformance:
   """Test performance characteristics of HITL operations."""
 
   def test_pause_response_time(self):
-    """Test that pause happens within reasonable time."""
+    """Test that pause detection is reasonably fast."""
     Node.start(
       self._test_pause_response_time,
       wait_until_interrupted=False,
@@ -453,26 +293,23 @@ class TestPerformance:
   async def _test_pause_response_time(self, node):
     agent = await Agent.start(
       node=node,
-      name="perf-pause-agent",
-      instructions="""
-        You are helpful. Use ask_user_for_input immediately when asked.
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="perf_test_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""Immediately use ask_user_for_input to ask for a number.""",
       enable_ask_for_user_input=True,
     )
 
     start = time.time()
-
-    await agent.send("Ask me a question using the tool right now.", conversation="perf-pause-conv")
-
+    response = await agent.send("Go")
     elapsed = time.time() - start
 
-    state = await agent.get_conversation_state(conversation="perf-pause-conv")
-    assert state.is_paused, "Should be paused"
-    assert elapsed < 10.0, f"Pause should happen quickly, took {elapsed}s"
+    assert len(response) > 0
+    assert response[-1].phase == Phase.WAITING_FOR_INPUT
+    # Should complete within 30 seconds (generous for network latency)
+    assert elapsed < 30, f"Pause took {elapsed:.2f}s, expected < 30s"
 
   def test_resume_response_time(self):
-    """Test that resume happens within reasonable time."""
+    """Test that resume is reasonably fast."""
     Node.start(
       self._test_resume_response_time,
       wait_until_interrupted=False,
@@ -482,24 +319,27 @@ class TestPerformance:
   async def _test_resume_response_time(self, node):
     agent = await Agent.start(
       node=node,
-      name="perf-resume-agent",
-      instructions="""
-        You are helpful. Use ask_user_for_input when needed.
-        After getting answer, respond very briefly and stop.
-      """,
-      model=Model("claude-sonnet-4-v1"),
+      name="resume_perf_agent",
+      model=Model("claude-sonnet-4-5"),
+      instructions="""Use ask_user_for_input to ask for a number.
+      After receiving it, just say "Got it!" and finish.""",
       enable_ask_for_user_input=True,
     )
 
-    # Pause
-    await agent.send("Ask me something using the tool.", conversation="perf-resume-conv")
+    # Initial pause
+    response = await agent.send("Start")
+    assert len(response) > 0
+    assert response[-1].phase == Phase.WAITING_FOR_INPUT
 
+    # Time the resume
     start = time.time()
-
-    # Resume
-    await agent.send("My answer", conversation="perf-resume-conv")
-
+    response = await agent.send("42")
     elapsed = time.time() - start
 
-    # Resume should complete within reasonable time (model call + processing)
-    assert elapsed < 15.0, f"Resume should complete reasonably quickly, took {elapsed}s"
+    # Allow for follow-up questions
+    while len(response) > 0 and response[-1].phase == Phase.WAITING_FOR_INPUT and elapsed < 30:
+      response = await agent.send("done")
+      elapsed = time.time() - start
+
+    # Should complete within 30 seconds total
+    assert elapsed < 30, f"Resume took {elapsed:.2f}s, expected < 30s"

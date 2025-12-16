@@ -8,6 +8,7 @@ from autonomy.knowledge.noop import NoopKnowledge
 from autonomy.nodes.message import ConversationRole
 from mock_utils import (
   MockModel,
+  DelayedToolNameMockModel,
   create_simple_mock_model,
   create_tool_mock_model,
   calculator_tool,
@@ -3351,6 +3352,67 @@ class TestAgentTools:
     second_response = tool_responses[1].content.text
     assert "Backup processing completed" in second_response
 
+  def test_streaming_tool_call_with_delayed_name(self):
+    """Test that streaming tool calls work when name arrives in a later chunk.
+
+    This tests a regression fix where some models stream tool calls with
+    the name arriving in a subsequent chunk after the initial tool call structure.
+    Previously, this caused the tool to be called with name='unknown'.
+    """
+    Node.start(
+      self._test_streaming_tool_call_with_delayed_name,
+      wait_until_interrupted=False,
+      http_server=HttpServer(listen_address="127.0.0.1:0"),
+    )
+
+  async def _test_streaming_tool_call_with_delayed_name(self, node):
+    def calculator(expression: str) -> str:
+      """Calculate mathematical expressions safely"""
+      try:
+        allowed_chars = set("0123456789+-*/().")
+        if not all(c in allowed_chars or c.isspace() for c in expression):
+          return "Error: Invalid characters in expression"
+        result = eval(expression)
+        return str(result)
+      except Exception as e:
+        return f"Error: {str(e)}"
+
+    # Use the DelayedToolNameMockModel which sends tool name in a later chunk
+    model = DelayedToolNameMockModel(
+      [
+        {
+          "role": "assistant",
+          "tool_calls": [{"name": "calculator", "arguments": '{"expression": "7 * 8"}'}],
+        },
+        {"role": "assistant", "content": "The result is 56."},
+      ]
+    )
+
+    agent = await Agent.start(
+      node=node,
+      name="delayed-name-test",
+      model=model,
+      instructions="You are a helpful assistant.",
+      tools=[Tool(calculator)],
+    )
+
+    response = await agent.send("What is 7 times 8?")
+
+    # Find tool call messages
+    tool_call_messages = [msg for msg in response if msg.role == ConversationRole.ASSISTANT and msg.tool_calls]
+    tool_response_messages = [msg for msg in response if msg.role == ConversationRole.TOOL]
+
+    # Verify tool was called (not with 'unknown' name)
+    assert len(tool_call_messages) >= 1, "Should have at least one tool call message"
+    assert len(tool_response_messages) >= 1, "Should have at least one tool response"
+
+    # Verify the tool name was correctly accumulated (not 'unknown')
+    tool_call = tool_call_messages[0].tool_calls[0]
+    assert tool_call.function.name == "calculator", f"Expected 'calculator', got '{tool_call.function.name}'"
+
+    # Verify the calculation result
+    assert "56" in tool_response_messages[0].content.text, "Calculator should have returned 56"
+
 
 """
 Enhanced Comprehensive Agent Test Suite
@@ -3363,7 +3425,14 @@ implementations and realistic test scenarios.
 import pytest
 from typing import List, Dict, Optional
 
-from mock_utils import MockModel, ErrorMockModel, multiply_numbers, error_test_tool, complex_test_tool
+from mock_utils import (
+  MockModel,
+  ErrorMockModel,
+  DelayedToolNameMockModel,
+  multiply_numbers,
+  error_test_tool,
+  complex_test_tool,
+)
 
 
 class TestEnhancedAgentSuite:

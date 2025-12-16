@@ -22,8 +22,8 @@ class TestModel:
   def test_model_initialization(self):
     """Test basic model initialization."""
     with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
-      model = Model("claude-3-5-sonnet-v2")
-      assert model.name == "claude-3-5-sonnet-v2"
+      model = Model("claude-sonnet-4-5")
+      assert model.name == "claude-sonnet-4-5"
       assert model.client is not None
 
   def test_model_list(self):
@@ -31,7 +31,7 @@ class TestModel:
     models = Model.list()
     assert isinstance(models, list)
     assert len(models) > 0
-    assert "claude-3-5-sonnet-v2" in models
+    assert "claude-sonnet-4-5" in models
 
   def test_model_list_by_provider(self):
     """Test provider-based model listing."""
@@ -43,31 +43,33 @@ class TestModel:
 
   def test_unsupported_model_error(self):
     """Test that unsupported models raise ValueError."""
-    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
-      with pytest.raises(ValueError, match="Model 'invalid-model' is not supported"):
-        Model("invalid-model")
+    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}, clear=True):
+      # Clear gateway env vars to ensure we use the LiteLLM client
+      env = {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}
+      with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(ValueError, match="Model 'invalid-model' is not supported"):
+          Model("invalid-model")
 
   def test_provider_detection_litellm_proxy(self):
     """Test provider detection for LiteLLM proxy."""
-    with patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}):
-      model = Model("claude-3-5-sonnet-v2")
+    # Clear gateway env vars to ensure we use the LiteLLM client
+    env = {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}
+    with patch.dict(os.environ, env, clear=True):
+      model = Model("claude-sonnet-4-5")
       assert hasattr(model.client, "name")
       assert model.client.name.startswith("litellm_proxy/")
 
   def test_provider_detection_bedrock(self):
     """Test provider detection for AWS Bedrock."""
-    # Create a clean environment without LITELLM_PROXY_API_BASE
-    env_without_proxy = {k: v for k, v in os.environ.items() if k != "LITELLM_PROXY_API_BASE"}
-    env_without_proxy.update(
-      {
-        "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
-        "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
-        "AWS_DEFAULT_REGION": "us-east-1",
-      }
-    )
+    # Create a clean environment without LITELLM_PROXY_API_BASE or gateway vars
+    env_without_proxy = {
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1",
+    }
 
     with patch.dict(os.environ, env_without_proxy, clear=True):
-      model = Model("claude-3-5-sonnet-v2")
+      model = Model("claude-sonnet-4-5")
       assert hasattr(model.client, "name")
       assert model.client.name.startswith("bedrock/")
 
@@ -80,61 +82,71 @@ class TestModel:
         assert model.client.name.startswith("ollama")
 
   @patch("autonomy.models.clients.litellm_client.router")
-  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   async def test_complete_chat_non_streaming(self, mock_router):
     """Test non-streaming chat completion."""
-    # Mock the router response
-    mock_response = MagicMock()
-    mock_response.choices[0].message.content = "Hello! How can I help you?"
-    mock_router.acompletion = AsyncMock(return_value=mock_response)
+    # Clear gateway env vars to ensure we use the LiteLLM client
+    env = {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}
+    with patch.dict(os.environ, env, clear=True):
+      # Mock the router response
+      mock_response = MagicMock()
+      mock_response.choices[0].message.content = "Hello! How can I help you?"
+      mock_router.acompletion = AsyncMock(return_value=mock_response)
 
-    model = Model("claude-3-5-sonnet-v2")
-    messages = [{"role": "user", "content": "Hello"}]
+      model = Model("claude-sonnet-4-5")
+      messages = [{"role": "user", "content": "Hello"}]
 
-    response = await model.complete_chat(messages)
-    assert response is not None
-    mock_router.acompletion.assert_called_once()
+      response = await model.complete_chat(messages)
+      assert response is not None
+      mock_router.acompletion.assert_called_once()
 
-  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_token_counting(self):
     """Test token counting functionality."""
-    model = Model("claude-3-5-sonnet-v2")
-    messages = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]
+    # Clear gateway env vars to ensure we use the LiteLLM client
+    env = {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}
+    with patch.dict(os.environ, env, clear=True):
+      model = Model("claude-sonnet-4-5")
+      messages = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]
 
-    # Mock litellm token_counter
-    with patch("autonomy.models.clients.litellm_client.litellm.token_counter", return_value=10):
-      token_count = model.count_tokens(messages)
-      assert token_count == 10
+      # Mock litellm token_counter
+      with patch("autonomy.models.clients.litellm_client.litellm.token_counter", return_value=10):
+        token_count = model.count_tokens(messages)
+        assert token_count == 10
 
-  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_conversation_message_support(self):
     """Test support for ConversationMessage objects."""
-    model = Model("claude-3-5-sonnet-v2")
+    # Clear gateway env vars to ensure we use the LiteLLM client
+    env = {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}
+    with patch.dict(os.environ, env, clear=True):
+      model = Model("claude-sonnet-4-5")
 
-    # Create ConversationMessage objects
-    user_msg = UserMessage(content="Hello")
-    assistant_msg = AssistantMessage(content="Hi there!")
-    messages = [user_msg, assistant_msg]
+      # Create ConversationMessage objects
+      user_msg = UserMessage(content="Hello")
+      assistant_msg = AssistantMessage(content="Hi there!")
+      messages = [user_msg, assistant_msg]
 
-    # This should not raise an error
-    with patch("autonomy.models.clients.litellm_client.litellm.token_counter", return_value=10):
-      token_count = model.count_tokens(messages)
-      assert token_count == 10
+      # This should not raise an error
+      with patch("autonomy.models.clients.litellm_client.litellm.token_counter", return_value=10):
+        token_count = model.count_tokens(messages)
+        assert token_count == 10
 
-  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_model_properties(self):
     """Test model property accessors."""
-    model = Model("claude-3-5-sonnet-v2")
-    assert model.name == "claude-3-5-sonnet-v2"
-    assert hasattr(model, "client")
-    assert model.resolved_name.endswith("claude-3-5-sonnet-20241022-v2:0")
+    # Clear gateway env vars to ensure we use the LiteLLM client
+    env = {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}
+    with patch.dict(os.environ, env, clear=True):
+      model = Model("claude-sonnet-4-5")
+      assert model.name == "claude-sonnet-4-5"
+      assert hasattr(model, "client")
+      assert model.resolved_name.endswith("claude-sonnet-4-5-20250929-v1:0")
 
-  @patch.dict(os.environ, {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"})
   def test_tools_support_detection(self):
     """Test tools support detection."""
-    # Most models support tools
-    model = Model("claude-3-5-sonnet-v2")
-    assert model.support_tools() == True
+    # Clear gateway env vars to ensure we use the LiteLLM client
+    env = {"LITELLM_PROXY_API_BASE": "http://127.0.0.1:4000"}
+    with patch.dict(os.environ, env, clear=True):
+      # Most models support tools
+      model = Model("claude-sonnet-4-5")
+      assert model.support_tools() == True
 
     # DeepSeek models don't support tools
     with patch.dict(os.environ, {}, clear=True):
@@ -151,15 +163,13 @@ class TestModel:
         assert model.support_forced_assistant_answer() == True
 
     # Bedrock models don't support forced assistant answers
-    with patch.dict(
-      os.environ,
-      {
-        "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
-        "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
-        "AWS_DEFAULT_REGION": "us-east-1",
-      },
-    ):
-      model = Model("claude-3-5-sonnet-v2")
+    env = {
+      "AWS_WEB_IDENTITY_TOKEN_FILE": "/tmp/token",
+      "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/test-role",
+      "AWS_DEFAULT_REGION": "us-east-1",
+    }
+    with patch.dict(os.environ, env, clear=True):
+      model = Model("claude-sonnet-4-5")
       assert model.support_forced_assistant_answer() == False
 
 
@@ -270,27 +280,26 @@ class TestProviderAliases:
 
   def test_claude_models_available(self):
     """Test that Claude models are available in multiple providers."""
-    claude_models = ["claude-3-5-haiku-v1", "claude-3-5-sonnet-v1", "claude-3-5-sonnet-v2"]
+    claude_models = ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-5", "claude-sonnet-4", "claude-opus-4"]
 
     for model in claude_models:
       assert model in PROVIDER_ALIASES["litellm_proxy"]
       assert model in PROVIDER_ALIASES["bedrock"]
 
   def test_llama_models_available(self):
-    """Test that Llama models are available in multiple providers."""
+    """Test that Llama models are available in Ollama provider."""
+    # Llama models are only available via Ollama (disabled in litellm_proxy and bedrock)
     llama_models = ["llama3.2", "llama3.3"]
 
     for model in llama_models:
-      assert model in PROVIDER_ALIASES["litellm_proxy"]
-      assert model in PROVIDER_ALIASES["bedrock"]
       assert model in PROVIDER_ALIASES["ollama"]
 
   def test_embedding_models_available(self):
     """Test that embedding models are available."""
     embedding_models = [
-      "embed-english-v3",
-      "embed-multilingual-v3",
-      "titan-embed-text-v1",
+      "embed-english",
+      "embed-multilingual",
+      "titan-embed",
       "nomic-embed-text",
     ]
 

@@ -234,6 +234,83 @@ class ErrorMockModel(MockModel):
     return super().complete_chat(messages, stream, **kwargs)
 
 
+class DelayedToolNameMockModel(MockModel):
+  """
+  Mock model that simulates tool name arriving in a later chunk.
+
+  Some models stream tool calls where the first chunk has no name,
+  and the name arrives in a subsequent chunk. This tests that the
+  agent properly accumulates the tool name from later chunks.
+  """
+
+  def __init__(self, messages: List[Dict[str, Any]] = None):
+    super().__init__(messages)
+
+  async def _complete_chat_streaming(self, provided_message: Dict[str, Any]):
+    """
+    Override streaming to send tool name in a later chunk.
+
+    Simulates:
+    1. First chunk: tool call with id, index, but name=None
+    2. Second chunk: name arrives
+    3. Subsequent chunks: arguments stream in
+    """
+    delta = Mock()
+    delta.reasoning_content = None
+    delta.content = None
+    delta.tool_calls = []
+
+    # Stream regular content first
+    content = provided_message.get("content", "")
+    if content:
+      for character in content:
+        delta.content = str(character)
+        delta.tool_calls = []
+        yield Mock(choices=[Mock(delta=deepcopy(delta), finish_reason=None)])
+
+    # Stream tool calls with delayed name
+    tool_calls = provided_message.get("tool_calls", [])
+    if tool_calls:
+      delta.content = ""
+      for provided_tool_call in tool_calls:
+        # First chunk: tool call structure with NO name
+        function = Mock()
+        function.name = None  # Name not available yet
+        function.arguments = ""
+
+        tool_call = Mock()
+        tool_call.type = "function"
+        tool_call.id = f"tool_call_{self.tool_call_counter}"
+        tool_call.index = str(self.tool_call_counter)
+        self.tool_call_counter += 1
+        tool_call.function = function
+        delta.tool_calls = [tool_call]
+
+        yield Mock(choices=[Mock(delta=deepcopy(delta), finish_reason=None)])
+
+        # Second chunk: name arrives
+        function.name = provided_tool_call["name"]
+        tool_call.id = None  # ID only sent once
+        tool_call.type = None
+
+        yield Mock(choices=[Mock(delta=deepcopy(delta), finish_reason=None)])
+
+        # Reset name for subsequent argument chunks
+        function.name = None
+
+        # Stream tool arguments
+        arguments = provided_tool_call.get("arguments", "")
+        for character in arguments:
+          function.arguments = str(character)
+          yield Mock(choices=[Mock(delta=deepcopy(delta), finish_reason=None)])
+
+    # Final termination chunk
+    delta.content = None
+    delta.reasoning_content = None
+    delta.tool_calls = []
+    yield Mock(choices=[Mock(delta=deepcopy(delta), finish_reason="stop")])
+
+
 class ToolCallMockModel(MockModel):
   """
   Specialized mock model for testing tool integration.

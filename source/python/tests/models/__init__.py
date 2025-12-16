@@ -4,7 +4,8 @@ Test suite for the autonomy.models module.
 This package contains comprehensive tests for:
 - Model class and its functionality
 - LiteLLMClient implementation
-- BedrockClient implementation
+- GatewayClient implementation (OpenAI SDK)
+- AnthropicGatewayClient implementation (Anthropic SDK)
 - DefaultModelClient fallback implementation
 - Model constants and configuration
 - Message normalization and utilities
@@ -13,7 +14,7 @@ This package contains comprehensive tests for:
 Test Structure:
 - test_model.py: Tests for the main Model class
 - test_litellm_client.py: Tests for LiteLLM client implementation
-- test_bedrock_client.py: Tests for AWS Bedrock client implementation
+- test_gateway_client.py: Tests for gateway client implementations
 - test_default_client.py: Tests for the default/fallback client
 - test_models_constants.py: Tests for model constants and mappings
 
@@ -165,22 +166,15 @@ def mock_litellm_response(content="Test response", tool_calls=None, finish_reaso
   return mock_response
 
 
-def mock_bedrock_response(content="Test response", tool_use=None, usage=None):
-  """Create a mock Bedrock response."""
-  response = {"content": [{"text": content}], "usage": usage or {"input_tokens": 10, "output_tokens": 5}}
-
-  if tool_use:
-    response["content"].append(
-      {
-        "toolUse": {
-          "toolUseId": tool_use.get("id", "call_1"),
-          "name": tool_use.get("name", "test_tool"),
-          "input": tool_use.get("input", {}),
-        }
-      }
-    )
-
-  return response
+def mock_gateway_response(content="Test response", tool_calls=None, finish_reason="stop"):
+  """Create a mock gateway response (OpenAI format)."""
+  mock_response = MagicMock()
+  mock_response.choices = [MagicMock()]
+  mock_response.choices[0].message.content = content
+  mock_response.choices[0].message.role = "assistant"
+  mock_response.choices[0].message.tool_calls = tool_calls
+  mock_response.choices[0].finish_reason = finish_reason
+  return mock_response
 
 
 # Export commonly used test utilities
@@ -189,5 +183,5 @@ __all__ = [
   "assert_tool_call_structure",
   "assert_response_structure",
   "mock_litellm_response",
-  "mock_bedrock_response",
+  "mock_gateway_response",
 ]
