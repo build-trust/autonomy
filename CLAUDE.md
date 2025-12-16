@@ -40,16 +40,6 @@ The `autonomy` command line tool:
   - The HTTP API is then available at `http://localhost:32100`.
   - Logs are then available at `http://localhost:32101`.
 - To pick models, look at the list of models defined in `source/python/python/autonomy/models`
-- To test examples locally (if dev machine is signed into AWS with access to the right models):
-  - Run the example directly using environment variables:
-    ```
-    cd examples/001/images && \
-      AUTONOMY_USE_DIRECT_BEDROCK=1 \
-      AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
-        uv run --active main.py
-    ```
-  - Replace `examples/001/images` with the path to the specific example you want to test.
-  - This approach bypasses the full autonomy deployment and uses AWS Bedrock directly.
 
 ## Testing Strategy
 
