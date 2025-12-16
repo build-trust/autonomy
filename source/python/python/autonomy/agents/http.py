@@ -21,7 +21,7 @@ from ..nodes.message import (
   FlowReference,
 )
 from ..nodes.node import Node
-from ..logs.logs import InfoContext, get_logging_config
+from ..logs.logs import InfoContext, get_logging_config, get_log_levels, set_log_level, set_log_levels, LEVELS
 from .agent import get_agent_voice_config, AgentReference
 from .voice import VoiceAgent, VoiceConfig
 
@@ -237,6 +237,59 @@ class HttpServer(InfoContext):
     async def get_tool_by_name(name: str, node=Depends(self.get_node)):
       with self.info(f"Get tool: {name}", f"Retrieved tool: {name}"):
         return find_tool(node, name)
+
+    @self.app.get("/logs/levels")
+    async def get_logging_levels():
+      """
+      Get current log levels for all modules.
+
+      Returns a dictionary of module names to their log levels.
+      """
+      return {
+        "levels": get_log_levels(),
+        "available_levels": list(LEVELS.keys()),
+      }
+
+    @self.app.post("/logs/levels")
+    async def set_logging_levels(request: Request):
+      """
+      Dynamically change log levels at runtime.
+
+      Request body:
+        - level: The log level to set (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        - module: Optional module name. If not provided, sets the default level.
+
+      Examples:
+        {"level": "DEBUG"} - Set default level to DEBUG
+        {"level": "DEBUG", "module": "agent"} - Set agent module to DEBUG
+      """
+      data = await request.json()
+      level = data.get("level")
+      module = data.get("module")
+
+      if not level:
+        raise HTTPException(status_code=400, detail="'level' is required")
+
+      level_upper = level.upper()
+      if level_upper not in [l.upper() for l in LEVELS.keys()]:
+        raise HTTPException(
+          status_code=400,
+          detail=f"Invalid level '{level}'. Must be one of: {list(LEVELS.keys())}",
+        )
+
+      if module:
+        set_log_level(module, level_upper)
+        self.logger.info(f"Log level for '{module}' set to {level_upper}")
+      else:
+        set_log_levels(level_upper)
+        self.logger.info(f"Default log level set to {level_upper}")
+
+      return {
+        "status": "ok",
+        "module": module or "default",
+        "level": level_upper,
+        "levels": get_log_levels(),
+      }
 
     @self.app.websocket("/agents/{name}/voice")
     async def voice_endpoint(

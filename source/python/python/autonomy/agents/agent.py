@@ -65,6 +65,7 @@ from ..nodes.message import (
   GetIdentifierRequest,
   GetIdentifierResponse,
   MessageConverter,
+  FunctionToolCall,
   Phase,
   StreamedConversationSnippet,
   ToolCall,
@@ -1584,34 +1585,54 @@ class Agent:
                 if hasattr(choice, "delta") and hasattr(choice.delta, "tool_calls") and choice.delta.tool_calls:
                   for tc in choice.delta.tool_calls:
                     # Get the index to accumulate tool calls properly
-                    tc_index = tc.index if hasattr(tc, "index") else 0
+                    # Handle both dict and object formats
+                    if isinstance(tc, dict):
+                      tc_index = tc.get("index", 0)
+                      tc_id = tc.get("id")
+                      func = tc.get("function", {})
+                      func_name = func.get("name") if isinstance(func, dict) else None
+                      func_args = func.get("arguments", "") if isinstance(func, dict) else ""
+                    else:
+                      tc_index = tc.index if hasattr(tc, "index") else 0
+                      tc_id = tc.id if hasattr(tc, "id") and tc.id else None
+                      func = tc.function if hasattr(tc, "function") else None
+                      func_name = func.name if func and hasattr(func, "name") and func.name else None
+                      func_args = func.arguments if func and hasattr(func, "arguments") else ""
 
                     if tc_index in accumulated_tool_calls:
                       # Accumulate arguments from this chunk
-                      if hasattr(tc, "function") and hasattr(tc.function, "arguments") and tc.function.arguments:
-                        accumulated_tool_calls[tc_index].function.arguments += tc.function.arguments
+                      if func_args:
+                        accumulated_tool_calls[tc_index].function.arguments += func_args
+                      # Update the name if it arrives in a later chunk and was previously "unknown"
+                      if func_name and accumulated_tool_calls[tc_index].function.name == "unknown":
+                        accumulated_tool_calls[tc_index].function.name = func_name
+                        logger.debug(f"[MODEL←STREAM] Updated tool name from 'unknown' to '{func_name}'")
                       logger.debug(
-                        f"[MODEL←STREAM] Accumulated tool call chunk: index={tc_index}, total_args_length={len(accumulated_tool_calls[tc_index].function.arguments)}"
+                        f"[MODEL←STREAM] Accumulated tool call chunk: index={tc_index}, name={accumulated_tool_calls[tc_index].function.name}, total_args_length={len(accumulated_tool_calls[tc_index].function.arguments)}"
                       )
                     else:
                       # First chunk for this tool call
                       # Generate unique ID with collision detection (some models don't provide IDs)
-                      call_id = tc.id if hasattr(tc, "id") and tc.id else None
+                      call_id = tc_id
                       if not call_id:
                         call_id = await self._generate_unique_tool_call_id()
 
-                      tool_name = (
-                        tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
-                      )
+                      tool_name = func_name or "unknown"
                       logger.debug(
                         f"[MODEL←STREAM] New tool call chunk: index={tc_index}, id={call_id}, name={tool_name}"
                       )
                       if logger.isEnabledFor(10):  # DEBUG level
                         logger.debug(f"[MODEL←STREAM] Tool call details: {tc}")
 
+                      # Create FunctionToolCall dataclass
+                      function_tool_call = FunctionToolCall(
+                        name=tool_name,
+                        arguments=func_args or "",
+                      )
+
                       tool_call = ToolCall(
                         id=call_id,
-                        function=tc.function if hasattr(tc, "function") else None,
+                        function=function_tool_call,
                         type="function",
                       )
                       accumulated_tool_calls[tc_index] = tool_call
@@ -1725,19 +1746,43 @@ class Agent:
             tool_calls = []
             for tc in message.tool_calls:
               # Generate unique ID with collision detection (some models don't provide IDs)
-              call_id = tc.id if hasattr(tc, "id") and tc.id else None
+              # Handle both dict and object formats for tool calls
+              if isinstance(tc, dict):
+                call_id = tc.get("id")
+                func = tc.get("function", {})
+                tool_name = (
+                  func.get("name") if isinstance(func, dict) else (func.name if hasattr(func, "name") else None)
+                )
+                tool_args = (
+                  func.get("arguments", "")
+                  if isinstance(func, dict)
+                  else (func.arguments if hasattr(func, "arguments") else "")
+                )
+              else:
+                call_id = tc.id if hasattr(tc, "id") and tc.id else None
+                func = tc.function if hasattr(tc, "function") else None
+                tool_name = func.name if func and hasattr(func, "name") and func.name else None
+                tool_args = func.arguments if func and hasattr(func, "arguments") else ""
+
               if not call_id:
                 call_id = await self._generate_unique_tool_call_id()
 
-              tool_name = tc.function.name if hasattr(tc, "function") and hasattr(tc.function, "name") else "unknown"
-              tool_args = tc.function.arguments if hasattr(tc, "function") and hasattr(tc.function, "arguments") else ""
+              if not tool_name:
+                logger.error(f"[MODEL←NON-STREAM] Tool call has no name, skipping. Raw tool call: {tc}")
+                continue
               logger.debug(f"[MODEL←NON-STREAM] Tool call: id={call_id}, name={tool_name}")
               if logger.isEnabledFor(10):  # DEBUG level
                 logger.debug(f"[MODEL←NON-STREAM] Tool arguments: {tool_args}")
 
+              # Convert to our FunctionToolCall dataclass
+              function_tool_call = FunctionToolCall(
+                name=tool_name,
+                arguments=tool_args or "",
+              )
+
               tool_call = ToolCall(
                 id=call_id,
-                function=tc.function if hasattr(tc, "function") else None,
+                function=function_tool_call,
                 type="function",
               )
               tool_calls.append(tool_call)

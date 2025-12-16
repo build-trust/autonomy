@@ -5,6 +5,8 @@ from .logs import (
   warning,
   set_log_level,
   set_log_levels,
+  get_log_levels,
+  apply_log_levels,
   get_logger,
   InfoContext,
   DebugContext,
@@ -23,6 +25,8 @@ __all__ = [
   "get_logger",
   "set_log_level",
   "set_log_levels",
+  "get_log_levels",
+  "apply_log_levels",
   "InfoContext",
   "DebugContext",
 ]

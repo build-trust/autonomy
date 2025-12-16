@@ -35,15 +35,37 @@ def get_logging_config() -> dict[str, int | bool | dict | str | None]:
 
 def set_log_level(module_name: str, level: str):
   """
-  Set the log level for a specific module.
+  Set the log level for a specific module and apply it immediately.
   """
   global LOG_LEVELS
   if not LOG_LEVELS:
     LOG_LEVELS = create_log_levels(None)
   LOG_LEVELS[module_name] = level.upper()
+  apply_log_levels()
+
+
+def get_log_levels() -> dict[str, str]:
+  """
+  Get the current log levels for all modules.
+  """
+  global LOG_LEVELS
+  if not LOG_LEVELS:
+    LOG_LEVELS = create_log_levels(os.environ.get("AUTONOMY_LOG_LEVEL"))
+  return LOG_LEVELS.copy()
+
+
+def apply_log_levels():
+  """
+  Apply the current LOG_LEVELS configuration to the logging system.
+  """
+  logging.config.dictConfig(get_logging_config())
 
 
 def set_log_levels(log_levels: str):
+  """
+  Set log levels from a comma-separated string and apply immediately.
+  Format: "INFO" or "module1=DEBUG,module2=WARNING"
+  """
   global LOG_LEVELS
   if not LOG_LEVELS:
     LOG_LEVELS = create_log_levels(None)
@@ -52,6 +74,8 @@ def set_log_levels(log_levels: str):
   # By default, silence the Ockam rust modules
   if os.environ.get("OCKAM_LOG_LEVEL") is None or LOG_LEVELS.get("ockam_rust_modules") is not None:
     os.environ["OCKAM_LOG_LEVEL"] = LOG_LEVELS.get("ockam_rust_modules")
+
+  apply_log_levels()
 
 
 def create_logging_config(levels: dict, log_format: str) -> dict[str, int | bool | dict | str | None]:
