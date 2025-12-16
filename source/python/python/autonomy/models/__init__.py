@@ -5,14 +5,11 @@ from .clients.litellm_client import (
   ALL_PROVIDER_ALLOWED_FULL_NAMES,
   normalize_messages,
 )
-from .clients.bedrock_client import BedrockClient, BEDROCK_MODELS
 
 __all__ = [
   "Model",
   "LiteLLMClient",
-  "BedrockClient",
   "PROVIDER_ALIASES",
   "ALL_PROVIDER_ALLOWED_FULL_NAMES",
-  "BEDROCK_MODELS",
   "normalize_messages",
 ]

@@ -4,6 +4,7 @@ import hashlib
 import dill
 import threading
 import io
+import warnings
 from typing import List, Optional
 from copy import deepcopy
 
@@ -19,36 +20,56 @@ from ...transcripts import (
 )
 
 
+# =============================================================================
+# MODEL ALIASES
+# =============================================================================
+# These aliases are used for legacy LiteLLM proxy and direct Bedrock access.
+# The recommended approach is to use the Autonomy External APIs Gateway
+# (AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1) which provides unified model routing.
+#
+# Supported models via the gateway (use these aliases):
+#   Claude 4.5: claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5
+#   Claude 4:   claude-sonnet-4, claude-opus-4
+#   Nova:       nova-micro, nova-lite, nova-pro, nova-premier
+#   Llama:      (disabled - causes agent infinite loop)
+#   DeepSeek:   deepseek-r1
+#   Mistral:    mistral-large
+#   OpenAI:     gpt-4o, gpt-4o-mini
+#   Embeddings: embed-english, embed-multilingual, titan-embed
+
 PROVIDER_ALIASES = {
   "litellm_proxy": {
-    "claude-3-5-haiku-v1": "litellm_proxy/anthropic.claude-3-5-haiku-20241022-v1:0",
-    "claude-3-5-sonnet-v1": "litellm_proxy/anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "claude-3-5-sonnet-v2": "litellm_proxy/anthropic.claude-3-5-sonnet-20241022-v2:0",
-    "claude-3-7-sonnet-v1": "litellm_proxy/anthropic.claude-3-7-sonnet-20250219-v1:0",
-    "claude-opus-4-v1": "litellm_proxy/anthropic.claude-opus-4-20250514-v1:0",
-    "claude-sonnet-4-v1": "litellm_proxy/anthropic.claude-sonnet-4-20250514-v1:0",
-    "deepseek-r1": "litellm_proxy/us.deepseek.r1-v1:0",
-    "embed-english-v3": "litellm_proxy/cohere.embed-english-v3",
-    "embed-multilingual-v3": "litellm_proxy/cohere.embed-multilingual-v3",
-    "llama3.2": "litellm_proxy/meta.llama3-2-90b-instruct-v1:0",
-    "llama3.3": "litellm_proxy/meta.llama3-3-70b-instruct-v1:0",
-    "llama4-maverick": "litellm_proxy/meta.llama4-maverick-17b-instruct-v1:0",
-    "llama4-scout": "litellm_proxy/meta.llama4-scout-17b-instruct-v1:0",
-    "nomic-embed-text": "litellm_proxy/nomic-embed-text",
-    "nova-lite-v1": "litellm_proxy/amazon.nova-lite-v1:0",
-    "nova-micro-v1": "litellm_proxy/amazon.nova-micro-v1:0",
-    "nova-pro-v1": "litellm_proxy/amazon.nova-pro-v1:0",
-    "nova-premier-v1": "litellm_proxy/amazon.nova-premier-v1:0",
-    "titan-embed-image-v1": "litellm_proxy/amazon.titan-embed-image-v1",
-    "titan-embed-text-v1": "litellm_proxy/amazon.titan-embed-text-v1",
-    "titan-embed-text-v2": "litellm_proxy/amazon.titan-embed-text-v2:0",
-    "titan-text-express-v1": "litellm_proxy/amazon.titan-text-express-v1",
-    "titan-text-lite-v1": "litellm_proxy/amazon.titan-text-lite-v1",
-    "llama3.1-8b-instruct": "litellm_proxy/lambda_ai.llama3.1-8b-instruct",
-    # Text-to-Speech models
+    # Claude 4.5
+    "claude-sonnet-4-5": "litellm_proxy/us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "claude-haiku-4-5": "litellm_proxy/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "claude-opus-4-5": "litellm_proxy/us.anthropic.claude-opus-4-5-20251101-v1:0",
+    # Claude 4
+    "claude-sonnet-4": "litellm_proxy/us.anthropic.claude-sonnet-4-20250514-v1:0",
+    "claude-opus-4": "litellm_proxy/us.anthropic.claude-opus-4-20250514-v1:0",
+    # Claude 4 (backward-compatible aliases)
+    "claude-sonnet-4-v1": "litellm_proxy/us.anthropic.claude-sonnet-4-20250514-v1:0",
+    "claude-opus-4-v1": "litellm_proxy/us.anthropic.claude-opus-4-20250514-v1:0",
+    # Amazon Nova
+    "nova-micro": "litellm_proxy/us.amazon.nova-micro-v1:0",
+    "nova-lite": "litellm_proxy/us.amazon.nova-lite-v1:0",
+    "nova-pro": "litellm_proxy/us.amazon.nova-pro-v1:0",
+    "nova-premier": "litellm_proxy/us.amazon.nova-premier-v1:0",
+    # Amazon Nova (backward-compatible aliases)
+    "nova-micro-v1": "litellm_proxy/us.amazon.nova-micro-v1:0",
+    "nova-lite-v1": "litellm_proxy/us.amazon.nova-lite-v1:0",
+    "nova-pro-v1": "litellm_proxy/us.amazon.nova-pro-v1:0",
+    "nova-premier-v1": "litellm_proxy/us.amazon.nova-premier-v1:0",
+    # Meta Llama (disabled - causes agent infinite loop)
+    # "llama4-maverick": "litellm_proxy/us.meta.llama4-maverick-17b-instruct-v1:0",
+    # "llama4-scout": "litellm_proxy/us.meta.llama4-scout-17b-instruct-v1:0",
+    # "llama3-3-70b": "litellm_proxy/us.meta.llama3-3-70b-instruct-v1:0",
+    # Embeddings
+    "embed-english": "litellm_proxy/cohere.embed-english-v3",
+    "embed-multilingual": "litellm_proxy/cohere.embed-multilingual-v3",
+    "titan-embed": "litellm_proxy/amazon.titan-embed-text-v2:0",
+    # OpenAI (Text-to-Speech / Speech-to-Text)
     "tts-1": "litellm_proxy/tts-1",
     "tts-1-hd": "litellm_proxy/tts-1-hd",
-    # Speech-to-Text models
     "whisper-1": "litellm_proxy/whisper-1",
   },
   "ollama": {
@@ -67,23 +88,38 @@ PROVIDER_ALIASES = {
     "gemma3:27b": "ollama_chat/gemma3:27b",
   },
   "bedrock": {
-    "claude-3-5-haiku-v1": "bedrock/anthropic.claude-3-5-haiku-20241022-v1:0",
-    "claude-3-5-sonnet-v1": "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "claude-3-5-sonnet-v2": "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0",
-    "claude-3-7-sonnet-v1": "bedrock/anthropic.claude-3-7-sonnet-20250219-v1:0",
-    "deepseek-r1": "bedrock/us.deepseek.r1-v1:0",
-    "embed-english-v3": "bedrock/cohere.embed-english-v3",
-    "embed-multilingual-v3": "bedrock/cohere.embed-multilingual-v3",
-    "llama3.2": "bedrock/meta.llama3-2-90b-instruct-v1:0",
-    "llama3.3": "bedrock/meta.llama3-3-70b-instruct-v1:0",
-    "nova-lite-v1": "bedrock/amazon.nova-lite-v1:0",
-    "nova-micro-v1": "bedrock/amazon.nova-micro-v1:0",
-    "nova-pro-v1": "bedrock/amazon.nova-pro-v1:0",
-    "titan-embed-image-v1": "bedrock/amazon.titan-embed-image-v1",
-    "titan-embed-text-v1": "bedrock/amazon.titan-embed-text-v1",
-    "titan-embed-text-v2": "bedrock/amazon.titan-embed-text-v2:0",
-    "titan-text-express-v1": "bedrock/amazon.titan-text-express-v1",
-    "titan-text-lite-v1": "bedrock/amazon.titan-text-lite-v1",
+    # Claude 4.5
+    "claude-sonnet-4-5": "bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "claude-haiku-4-5": "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "claude-opus-4-5": "bedrock/us.anthropic.claude-opus-4-5-20251101-v1:0",
+    # Claude 4
+    "claude-sonnet-4": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
+    "claude-opus-4": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
+    # Claude 4 (backward-compatible aliases)
+    "claude-sonnet-4-v1": "bedrock/us.anthropic.claude-sonnet-4-20250514-v1:0",
+    "claude-opus-4-v1": "bedrock/us.anthropic.claude-opus-4-20250514-v1:0",
+    # Amazon Nova
+    "nova-micro": "bedrock/us.amazon.nova-micro-v1:0",
+    "nova-lite": "bedrock/us.amazon.nova-lite-v1:0",
+    "nova-pro": "bedrock/us.amazon.nova-pro-v1:0",
+    "nova-premier": "bedrock/us.amazon.nova-premier-v1:0",
+    # Amazon Nova (backward-compatible aliases)
+    "nova-micro-v1": "bedrock/us.amazon.nova-micro-v1:0",
+    "nova-lite-v1": "bedrock/us.amazon.nova-lite-v1:0",
+    "nova-pro-v1": "bedrock/us.amazon.nova-pro-v1:0",
+    "nova-premier-v1": "bedrock/us.amazon.nova-premier-v1:0",
+    # Meta Llama (disabled - causes agent infinite loop)
+    # "llama4-maverick": "bedrock/us.meta.llama4-maverick-17b-instruct-v1:0",
+    # "llama4-scout": "bedrock/us.meta.llama4-scout-17b-instruct-v1:0",
+    # "llama3-3-70b": "bedrock/us.meta.llama3-3-70b-instruct-v1:0",
+    # DeepSeek
+    "deepseek-r1": "bedrock/deepseek.r1-v1:0",
+    # Mistral
+    "mistral-large": "bedrock/mistral.mistral-large-2-v1:0",
+    # Embeddings
+    "embed-english": "bedrock/cohere.embed-english-v3",
+    "embed-multilingual": "bedrock/cohere.embed-multilingual-v3",
+    "titan-embed": "bedrock/amazon.titan-embed-text-v2:0",
   },
 }
 
@@ -91,19 +127,25 @@ ALL_PROVIDER_ALLOWED_FULL_NAMES = set()
 for provider_aliases in PROVIDER_ALIASES.values():
   ALL_PROVIDER_ALLOWED_FULL_NAMES.update(provider_aliases.values())
 
+# Mapping from base Bedrock model IDs to cross-region inference profiles
+# Note: Most models in the gateway already use cross-region profiles directly
 BEDROCK_INFERENCE_PROFILE_MAP = {
-  "amazon.nova-lite-v1:0": "us.amazon.nova-lite-v1:0",
+  # Claude 4.5
+  "anthropic.claude-sonnet-4-5-20250929-v1:0": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "anthropic.claude-haiku-4-5-20251001-v1:0": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "anthropic.claude-opus-4-5-20251101-v1:0": "us.anthropic.claude-opus-4-5-20251101-v1:0",
+  # Claude 4
+  "anthropic.claude-sonnet-4-20250514-v1:0": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+  "anthropic.claude-opus-4-20250514-v1:0": "us.anthropic.claude-opus-4-20250514-v1:0",
+  # Amazon Nova
   "amazon.nova-micro-v1:0": "us.amazon.nova-micro-v1:0",
+  "amazon.nova-lite-v1:0": "us.amazon.nova-lite-v1:0",
   "amazon.nova-pro-v1:0": "us.amazon.nova-pro-v1:0",
   "amazon.nova-premier-v1:0": "us.amazon.nova-premier-v1:0",
-  "anthropic.claude-3-7-sonnet-20250219-v1:0": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-  "anthropic.claude-opus-4-20250514-v1:0": "us.anthropic.claude-opus-4-20250514-v1:0",
-  "anthropic.claude-sonnet-4-20250514-v1:0": "us.anthropic.claude-sonnet-4-20250514-v1:0",
-  "meta.llama3-2-90b-instruct-v1:0": "us.meta.llama3-2-90b-instruct-v1:0",
-  "meta.llama3-3-70b-instruct-v1:0": "us.meta.llama3-3-70b-instruct-v1:0",
-  "meta.llama4-maverick-17b-instruct-v1:0": "us.meta.llama4-maverick-17b-instruct-v1:0",
-  "meta.llama4-scout-17b-instruct-v1:0": "us.meta.llama4-scout-17b-instruct-v1:0",
-  "us.deepseek.r1-v1:0": "us.deepseek.r1-v1:0",
+  # Meta Llama (disabled - causes agent infinite loop)
+  # "meta.llama4-maverick-17b-instruct-v1:0": "us.meta.llama4-maverick-17b-instruct-v1:0",
+  # "meta.llama4-scout-17b-instruct-v1:0": "us.meta.llama4-scout-17b-instruct-v1:0",
+  # "meta.llama3-3-70b-instruct-v1:0": "us.meta.llama3-3-70b-instruct-v1:0",
 }
 
 # Global variables for AWS configuration
@@ -219,6 +261,21 @@ except ImportError:
 
 
 def construct_bedrock_arn(model_identifier: str, original_name: str) -> Optional[str]:
+  """
+  Construct a Bedrock inference profile ARN for the given model.
+
+  .. deprecated::
+      Direct Bedrock access is deprecated. Use the gateway instead by setting
+      AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1. The gateway handles inference profile management
+      automatically with proper caching and AWS usage tracking.
+  """
+  warnings.warn(
+    "construct_bedrock_arn() is deprecated. Use the gateway instead by setting "
+    "AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1. The gateway handles Bedrock inference profiles with "
+    "proper caching and AWS usage tracking.",
+    DeprecationWarning,
+    stacklevel=2,
+  )
   global region, account_id, cluster_id, init_lock
   with init_lock:
     if account_id is None:
@@ -309,10 +366,27 @@ class LiteLLMClient(InfoContext, DebugContext):
       "ollama_chat",
     ]:
       provider = explicit_provider
+      # Warn if using deprecated bedrock provider directly
+      if provider == "bedrock":
+        warnings.warn(
+          "Direct Bedrock provider access via AUTONOMY_MODEL_PROVIDER=bedrock is deprecated. "
+          "Use the gateway instead by setting AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1. The gateway handles "
+          "Bedrock routing with proper inference profile caching and AWS usage tracking.",
+          DeprecationWarning,
+          stacklevel=2,
+        )
     elif os.environ.get("LITELLM_PROXY_API_BASE"):
       provider = "litellm_proxy"
     elif self._has_bedrock_access():
       provider = "bedrock"
+      # Warn about automatic Bedrock detection - suggest using gateway
+      warnings.warn(
+        "Automatic Bedrock provider detection is deprecated. Use the gateway instead "
+        "by setting AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1. The gateway handles AWS authentication and "
+        "Bedrock routing centrally with proper caching.",
+        DeprecationWarning,
+        stacklevel=2,
+      )
     else:
       provider = "ollama"
 
@@ -396,7 +470,14 @@ class LiteLLMClient(InfoContext, DebugContext):
     return True
 
   def _has_bedrock_access(self):
-    """Check if AWS Bedrock access is available."""
+    """
+    Check if AWS Bedrock access is available.
+
+    .. deprecated::
+        Direct Bedrock access detection is deprecated. Use the gateway instead
+        by setting AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1. The gateway handles AWS authentication
+        and Bedrock access centrally.
+    """
     # Check for explicit web identity token file
     if os.environ.get("AWS_WEB_IDENTITY_TOKEN_FILE"):
       return True

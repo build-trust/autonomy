@@ -98,6 +98,25 @@ wheels = [
 ]
 
 [[package]]
+name = "anthropic"
+version = "0.75.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "docstring-parser" },
+    { name = "httpx" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/1f/08e95f4b7e2d35205ae5dcbb4ae97e7d477fc521c275c02609e2931ece2d/anthropic-0.75.0.tar.gz", hash = "sha256:e8607422f4ab616db2ea5baacc215dd5f028da99ce2f022e33c7c535b29f3dfb", size = 439565, upload-time = "2025-11-24T20:41:45.28Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/1c/1cd02b7ae64302a6e06724bf80a96401d5313708651d277b1458504a1730/anthropic-0.75.0-py3-none-any.whl", hash = "sha256:ea8317271b6c15d80225a9f3c670152746e88805a7a61e14d4a374577164965b", size = 388164, upload-time = "2025-11-24T20:41:43.587Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -145,6 +164,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
+    { name = "anthropic" },
     { name = "asyncio" },
     { name = "attrs" },
     { name = "boto3" },
@@ -155,6 +175,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "litellm" },
+    { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg2-binary" },
     { name = "pylint" },
@@ -162,6 +183,7 @@ dependencies = [
     { name = "scipy" },
     { name = "setuptools" },
     { name = "starlette" },
+    { name = "tiktoken" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
@@ -181,6 +203,7 @@ dev = [
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "aiohttp", specifier = ">=3.12.4" },
+    { name = "anthropic", specifier = ">=0.40.0" },
     { name = "asyncio", specifier = ">=3.4.3" },
     { name = "attrs", specifier = ">=25.3.0" },
     { name = "boto3", specifier = ">=1.38.45" },
@@ -191,6 +214,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.103.1" },
     { name = "filetype", specifier = ">=1.2.0" },
     { name = "litellm", specifier = "==1.79.3" },
+    { name = "openai", specifier = ">=1.60.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pylint" },
@@ -198,6 +222,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.15.2" },
     { name = "setuptools", specifier = ">=80.9.0" },
     { name = "starlette", specifier = ">=0.27.0" },
+    { name = "tiktoken", specifier = ">=0.8.0" },
     { name = "uvicorn", specifier = ">=0.24.0" },
     { name = "websockets", specifier = ">=13.0" },
 ]

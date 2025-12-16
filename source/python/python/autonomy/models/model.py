@@ -1,9 +1,12 @@
 from typing import List, Optional
 import os
+import httpx
 from ..logs import get_logger, InfoContext, DebugContext
 from ..nodes.message import ConversationMessage
 from .clients.litellm_client import LiteLLMClient, PROVIDER_ALIASES, ALL_PROVIDER_ALLOWED_FULL_NAMES
-from .clients.bedrock_client import BedrockClient, BEDROCK_MODELS
+from .clients.gateway_client import GatewayClient
+from .clients.anthropic_gateway_client import AnthropicGatewayClient
+from .clients.gateway_config import use_anthropic_sdk, get_gateway_url, get_gateway_api_key
 
 logger = get_logger("model")
 
@@ -19,20 +22,141 @@ for provider_name, models in PROVIDER_ALIASES.items():
 for full_name in ALL_PROVIDER_ALLOWED_FULL_NAMES:
   MODEL_CLIENTS[full_name] = "litellm"
 
-# Add direct Bedrock models
-for model_alias in BEDROCK_MODELS.keys():
-  MODEL_CLIENTS[f"bedrock-direct/{model_alias}"] = "bedrock_direct"
-  # Don't set default here - check at runtime in _pick_client
+# Models that should use Anthropic SDK when using gateway
+# These are the supported Claude models via Bedrock (with Anthropic direct as failover)
+ANTHROPIC_MODELS = {
+  # Claude 4.5 (latest)
+  "claude-sonnet-4-5",
+  "claude-haiku-4-5",
+  "claude-opus-4-5",
+  # Claude 4 (stable)
+  "claude-sonnet-4",
+  "claude-opus-4",
+  # Backward-compatible aliases (published names)
+  "claude-sonnet-4-v1",
+  "claude-opus-4-v1",
+}
+
+
+def is_anthropic_model(model_name: str) -> bool:
+  """Check if a model should use the Anthropic SDK."""
+  name_lower = model_name.lower()
+
+  # Check explicit matches
+  if model_name in ANTHROPIC_MODELS:
+    return True
+
+  # Check if it starts with claude
+  if name_lower.startswith("claude"):
+    return True
+
+  # Check if it contains anthropic
+  if "anthropic" in name_lower:
+    return True
+
+  return False
+
+
+def _fetch_gateway_models() -> List[str]:
+  """
+  Fetch available models from the gateway and deduplicate by showing
+  aliases instead of multiple full model IDs.
+
+  When two models share the same alias (e.g., Bedrock and Anthropic direct
+  both have Claude models), show only the alias once.
+
+  :return: List of model IDs/aliases from the gateway (deduplicated)
+  """
+  try:
+    gateway_url = get_gateway_url()
+    api_key = get_gateway_api_key()
+
+    response = httpx.get(
+      f"{gateway_url}/v1/models",
+      headers={"Authorization": f"Bearer {api_key}"},
+      timeout=10.0,
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    raw_models = [model["id"] for model in data.get("data", [])]
+
+    # Deduplicate models by grouping those that share common base names
+    # Pattern: models like "claude-sonnet-4-5-20250929" and "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    # should be represented by the alias "claude-sonnet-4-5"
+
+    # Known alias patterns that map full model IDs to short aliases
+    alias_patterns = {
+      # Claude 4.5
+      "claude-sonnet-4-5": ["claude-sonnet-4-5-20250929", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"],
+      "claude-haiku-4-5": ["claude-haiku-4-5-20251001", "us.anthropic.claude-haiku-4-5-20251001-v1:0"],
+      "claude-opus-4-5": ["claude-opus-4-5-20251101", "us.anthropic.claude-opus-4-5-20251101-v1:0"],
+      # Claude 4
+      "claude-sonnet-4": ["claude-sonnet-4-20250514", "us.anthropic.claude-sonnet-4-20250514-v1:0"],
+      "claude-opus-4": ["claude-opus-4-20250514", "us.anthropic.claude-opus-4-20250514-v1:0"],
+      # Nova models
+      "nova-micro": ["us.amazon.nova-micro-v1:0"],
+      "nova-lite": ["us.amazon.nova-lite-v1:0"],
+      "nova-pro": ["us.amazon.nova-pro-v1:0"],
+      "nova-premier": ["us.amazon.nova-premier-v1:0"],
+      # Embeddings
+      "titan-embed": ["amazon.titan-embed-text-v2:0"],
+      "embed-english": ["cohere.embed-english-v3"],
+      "embed-multilingual": ["cohere.embed-multilingual-v3"],
+    }
+
+    # Build reverse mapping: full model ID -> alias
+    full_id_to_alias = {}
+    for alias, full_ids in alias_patterns.items():
+      for full_id in full_ids:
+        full_id_to_alias[full_id] = alias
+
+    # Process models: replace full IDs with aliases, deduplicate
+    result_set = set()
+    for model in raw_models:
+      if model in full_id_to_alias:
+        # Replace with alias
+        result_set.add(full_id_to_alias[model])
+      else:
+        # Keep as-is (no alias mapping)
+        result_set.add(model)
+
+    return sorted(result_set)
+  except Exception as e:
+    logger.warning(f"Failed to fetch models from gateway: {e}")
+    return []
 
 
 class Model(InfoContext, DebugContext):
   """
   Model class that provides a unified interface to different LLM providers.
 
-  This class supports multiple providers including:
-  - LiteLLM Proxy
-  - AWS Bedrock
-  - Ollama
+  **Recommended: Use Gateway Mode**
+
+  Set ``AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1`` to use the Autonomy External APIs Gateway.
+  The gateway provides:
+
+  - Centralized provider routing (OpenAI, Anthropic, AWS Bedrock)
+  - Automatic model aliasing and load balancing
+  - AWS usage tracking via inference profiles (tagged by cluster/zone)
+  - No AWS credentials needed in client containers
+
+  Gateway environment variables:
+
+  - ``AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1`` - Enable gateway mode (recommended)
+  - ``AUTONOMY_EXTERNAL_APIS_GATEWAY_URL`` - Gateway URL (default: http://localhost:8000)
+  - ``AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY`` - API key (default: unlimited_client_key)
+  - ``CLUSTER`` - Cluster ID for AWS usage tracking
+  - ``ZONE`` - Zone ID for AWS usage tracking
+
+  **Legacy Modes (Deprecated)**
+
+  Direct Bedrock access is deprecated. The following still work but emit
+  deprecation warnings:
+
+  - ``LITELLM_PROXY_API_BASE`` - Use LiteLLM proxy
+  - ``AUTONOMY_MODEL_PROVIDER=bedrock`` - Direct Bedrock access (deprecated)
+  - Automatic Bedrock detection via AWS credentials (deprecated)
 
   The model automatically detects the provider based on environment variables
   and routes requests to the appropriate client implementation.
@@ -56,40 +180,36 @@ class Model(InfoContext, DebugContext):
 
   def _pick_client(self, model_name: str, max_input_tokens: Optional[int] = None, **kwargs):
     """Pick the appropriate client for the given model."""
-    # Check for global direct Bedrock setting first
-    if os.environ.get("AUTONOMY_USE_DIRECT_BEDROCK") == "1":
-      if model_name in BEDROCK_MODELS or any(
-        provider in model_name for provider in ["anthropic", "meta", "amazon", "cohere"]
-      ):
-        clean_name = model_name.replace("bedrock-direct/", "")
-        return BedrockClient(clean_name, max_input_tokens, **kwargs)
+    # Check for gateway mode first (new preferred method)
+    if os.environ.get("AUTONOMY_USE_EXTERNAL_APIS_GATEWAY") == "1":
+      return self._pick_gateway_client(model_name, max_input_tokens, **kwargs)
 
     # Check explicit model mappings
     if model_name in MODEL_CLIENTS:
       client_name = MODEL_CLIENTS[model_name]
       if client_name == "litellm":
         return LiteLLMClient(model_name, max_input_tokens, **kwargs)
-      elif client_name == "bedrock_direct":
-        # Strip bedrock-direct/ prefix if present
-        clean_name = model_name.replace("bedrock-direct/", "")
-        return BedrockClient(clean_name, max_input_tokens, **kwargs)
-
-    # If model not found in our supported list, try different clients
-    # Check if it's a direct Bedrock model
-    if model_name in BEDROCK_MODELS:
-      return BedrockClient(model_name, max_input_tokens, **kwargs)
 
     # Try LiteLLM as fallback
     try:
       return LiteLLMClient(model_name, max_input_tokens, **kwargs)
     except ValueError as e:
-      # Last resort: try direct Bedrock if it might be a model ID
-      if any(provider in model_name for provider in ["anthropic", "meta", "amazon", "cohere"]):
-        try:
-          return BedrockClient(model_name, max_input_tokens, **kwargs)
-        except Exception:
-          pass
       raise ValueError(f"Model '{model_name}' is not supported. {str(e)}")
+
+  def _pick_gateway_client(self, model_name: str, max_input_tokens: Optional[int] = None, **kwargs):
+    """
+    Pick the appropriate gateway client based on model type.
+
+    For Claude models, use AnthropicGatewayClient to leverage native Anthropic SDK.
+    For all other models, use GatewayClient with OpenAI SDK.
+    """
+    # Check if we should use Anthropic SDK for this model
+    if use_anthropic_sdk() and is_anthropic_model(model_name):
+      self.logger.debug(f"Using AnthropicGatewayClient for model '{model_name}'")
+      return AnthropicGatewayClient(model_name, max_input_tokens, **kwargs)
+    else:
+      self.logger.debug(f"Using GatewayClient for model '{model_name}'")
+      return GatewayClient(model_name, max_input_tokens, **kwargs)
 
   def count_tokens(
     self, messages: List[dict] | List[ConversationMessage], is_thinking: bool = False, tools=None
@@ -186,8 +306,20 @@ class Model(InfoContext, DebugContext):
     """
     List all available model names/aliases.
 
+    When gateway mode is enabled (AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1),
+    fetches the list of models from the gateway and deduplicates them by
+    showing aliases instead of multiple full model IDs.
+
     :return: List of supported model names
     """
+    # Check for gateway mode
+    if os.environ.get("AUTONOMY_USE_EXTERNAL_APIS_GATEWAY") == "1":
+      gateway_models = _fetch_gateway_models()
+      if gateway_models:
+        return gateway_models
+      # Fall back to static list if gateway fetch fails
+      logger.warning("Falling back to static model list")
+
     return list(MODEL_CLIENTS.keys())
 
   @staticmethod
@@ -201,8 +333,8 @@ class Model(InfoContext, DebugContext):
     for provider_name, models in PROVIDER_ALIASES.items():
       result[provider_name] = list(models.keys())
 
-    # Add direct Bedrock models
-    result["bedrock_direct"] = list(BEDROCK_MODELS.keys())
+    # Add gateway as a provider option
+    result["gateway"] = list(ANTHROPIC_MODELS) + ["gpt-4o", "gpt-4o-mini", "text-embedding-3-small"]
     return result
 
   @property

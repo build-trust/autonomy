@@ -5,14 +5,29 @@ from .litellm_client import (
   ALL_PROVIDER_ALLOWED_FULL_NAMES,
   normalize_messages,
 )
-from .bedrock_client import BedrockClient, BEDROCK_MODELS
+from .gateway_client import GatewayClient
+from .anthropic_gateway_client import AnthropicGatewayClient
+from .gateway_config import (
+  DEFAULT_GATEWAY_URL,
+  DEFAULT_GATEWAY_API_KEY,
+  get_gateway_url,
+  get_gateway_api_key,
+  use_anthropic_sdk,
+  clear_token_cache,
+)
 
 __all__ = [
   "DefaultModelClient",
   "LiteLLMClient",
-  "BedrockClient",
+  "GatewayClient",
+  "AnthropicGatewayClient",
   "PROVIDER_ALIASES",
   "ALL_PROVIDER_ALLOWED_FULL_NAMES",
-  "BEDROCK_MODELS",
   "normalize_messages",
+  "DEFAULT_GATEWAY_URL",
+  "DEFAULT_GATEWAY_API_KEY",
+  "get_gateway_url",
+  "get_gateway_api_key",
+  "use_anthropic_sdk",
+  "clear_token_cache",
 ]
