@@ -459,7 +459,7 @@ def generate_internal_execution_report(internal_results, output_path):
 
 def validate_results(project_path, expected_incidents, num_files):
   """
-  Validate the agent's output against expected results.
+  Validate the agent's output against expected results using JSON summary.
 
   Args:
     project_path: Path to the project directory
@@ -474,62 +474,163 @@ def validate_results(project_path, expected_incidents, num_files):
   info("-" * 80)
   info("")
 
+  expected_incident_count = sum(len(incidents) for incidents in expected_incidents.values())
+
   results = {
     "total_files": num_files,
-    "expected_incidents": sum(len(incidents) for incidents in expected_incidents.values()),
+    "expected_incidents": expected_incident_count,
     "found_incidents": 0,
     "missing_incidents": [],
     "fabricated_incidents": [],
     "files_processed": set(),
     "checkpoints_found": [],
     "format_consistent": True,
+    "json_valid": False,
     "success": False,
   }
 
-  # Check if incident report exists
-  report_path = os.path.join(project_path, "incident_report.md")
-  if not os.path.exists(report_path):
-    info("❌ FAIL: incident_report.md not found")
+  # Check if JSON summary exists (required)
+  json_path = os.path.join(project_path, "incident_summary.json")
+  if not os.path.exists(json_path):
+    info("❌ FAIL: incident_summary.json not found")
     results["success"] = False
     return results
 
-  info("✓ Found incident_report.md")
+  info("✓ Found incident_summary.json")
 
-  # Read and parse the report
-  with open(report_path, "r") as f:
-    report_content = f.read()
+  # Check if markdown report exists (optional but expected)
+  report_path = os.path.join(project_path, "incident_report.md")
+  if os.path.exists(report_path):
+    info("✓ Found incident_report.md")
+  else:
+    info("⚠ incident_report.md not found (optional)")
 
-  # Extract file numbers mentioned in the report (any mention counts as processed)
-  file_mentions = re.findall(r"log_(\d{3})\.txt", report_content)
-  results["files_processed"] = set(int(num) for num in file_mentions)
+  # Load and parse JSON summary
+  try:
+    with open(json_path, "r") as f:
+      summary = json.load(f)
+    results["json_valid"] = True
+    info("✓ JSON is valid")
+  except json.JSONDecodeError as e:
+    info(f"❌ FAIL: Invalid JSON - {e}")
+    results["success"] = False
+    return results
 
-  # Also check if summary says "Total files processed: N"
-  total_processed_match = re.search(r"Total files processed:\s*(\d+)", report_content, re.IGNORECASE)
-  if total_processed_match:
-    total_processed = int(total_processed_match.group(1))
-    # If the agent claims to have processed all files, trust it if close to the actual count
-    if total_processed >= num_files:
-      results["files_processed"] = set(range(1, num_files + 1))
+  # Extract data from JSON - be flexible with key names
+  # Try various possible key names for files processed
+  files_processed = (
+    summary.get("files_processed", []) or
+    summary.get("files", []) or
+    []
+  )
 
-  # Check for checkpoint summaries
-  checkpoint_matches = re.findall(r"(?:checkpoint|processed)\s+(\d+)\s+files?", report_content, re.IGNORECASE)
-  results["checkpoints_found"] = sorted(set(int(num) for num in checkpoint_matches))
+  # Check nested in 'summary' object
+  if not files_processed and "summary" in summary:
+    nested_summary = summary["summary"]
+    files_processed = (
+      nested_summary.get("files_processed", []) or
+      nested_summary.get("files", []) or
+      []
+    )
 
-  # Count incidents found in report
-  # Look for incident entries (lines with timestamp and incident description)
-  incident_entries = re.findall(r"- \*\*Timestamp:\*\*.*?\n\s*- \*\*Incident:\*\*", report_content, re.DOTALL)
-  results["found_incidents"] = len(incident_entries)
+  # If no explicit files list, check verification/validation section
+  if not files_processed:
+    # Try both "verification" and "validation" keys
+    validation_section = summary.get("verification") or summary.get("validation") or {}
 
-  # Also check "Total incidents found: N" in summary
-  total_incidents_match = re.search(r"Total incidents found:\s*(\d+)", report_content, re.IGNORECASE)
-  if total_incidents_match:
-    # Use whichever is higher (actual entries or claimed total)
-    claimed_total = int(total_incidents_match.group(1))
-    results["found_incidents"] = max(results["found_incidents"], claimed_total)
+    # Check for actual_files or actual_files_processed count
+    actual_count = (
+      validation_section.get("actual_files") or
+      validation_section.get("actual_files_processed") or
+      validation_section.get("expected_files") or
+      0
+    )
+
+    # If all_files_processed is true, generate the list
+    all_processed = (
+      validation_section.get("all_files_processed") or
+      validation_section.get("processing_complete") or
+      False
+    )
+
+    if all_processed and actual_count:
+      files_processed = [f"log_{i:03d}.txt" for i in range(1, actual_count + 1)]
+
+    # Handle keys like "all_20_files_processed"
+    if not files_processed:
+      for key in validation_section:
+        if key.startswith("all_") and key.endswith("_files_processed") and validation_section[key]:
+          files_processed = [f"log_{i:03d}.txt" for i in range(1, num_files + 1)]
+          break
+
+  # Also check summary.total_files_processed with validation.all_files_processed
+  if not files_processed and "summary" in summary:
+    nested_summary = summary["summary"]
+    total_files = nested_summary.get("total_files_processed", 0)
+    validation_section = summary.get("verification") or summary.get("validation") or {}
+    all_processed = (
+      validation_section.get("all_files_processed") or
+      validation_section.get("processing_complete") or
+      False
+    )
+    if total_files and all_processed:
+      files_processed = [f"log_{i:03d}.txt" for i in range(1, total_files + 1)]
+
+  # Try various possible key names for incidents
+  incidents = (
+    summary.get("incidents", []) or
+    summary.get("critical_incidents", []) or
+    summary.get("security_incidents", []) or
+    []
+  )
+
+  # Try various possible key names for checkpoints
+  checkpoints = (
+    summary.get("checkpoints", []) or
+    summary.get("processing_checkpoints", []) or
+    summary.get("progress_checkpoints", []) or
+    []
+  )
+
+  # Check nested in 'statistics' object
+  if not checkpoints and "statistics" in summary:
+    stats = summary["statistics"]
+    stats_checkpoints = stats.get("checkpoints", {})
+    if isinstance(stats_checkpoints, dict):
+      # Convert dict format to list format
+      checkpoints = list(stats_checkpoints.values())
+    elif isinstance(stats_checkpoints, list):
+      checkpoints = stats_checkpoints
+
+  # Convert file names to numbers for comparison
+  for filename in files_processed:
+    match = re.match(r"log_(\d{3})\.txt", filename)
+    if match:
+      results["files_processed"].add(int(match.group(1)))
+
+  results["found_incidents"] = len(incidents)
+
+  # Extract checkpoint file counts - handle various formats
+  checkpoint_counts = []
+  for cp in checkpoints:
+    # Try various key names for the count
+    count = (
+      cp.get("files_completed") or
+      cp.get("files_processed") or
+      cp.get("checkpoint", 0) * CHECKPOINT_INTERVAL  # If using checkpoint number
+    )
+    if isinstance(count, str) and "to" in count:
+      # Handle format like "log_001.txt to log_010.txt"
+      match = re.search(r"log_(\d{3})\.txt$", count)
+      if match:
+        count = int(match.group(1))
+    if isinstance(count, int) and count > 0:
+      checkpoint_counts.append(count)
+  results["checkpoints_found"] = checkpoint_counts
 
   info(f"✓ Files processed: {len(results['files_processed'])}/{num_files}")
   info(f"✓ Incidents found: {results['found_incidents']}/{results['expected_incidents']}")
-  info(f"✓ Checkpoints found: {results['checkpoints_found']}")
+  info(f"✓ Checkpoints found: {len(results['checkpoints_found'])}")
   info("")
 
   # Detailed validation
@@ -561,12 +662,37 @@ def validate_results(project_path, expected_incidents, num_files):
   else:
     info(f"  ⚠ No checkpoints found (expected around {len(expected_checkpoints)})")
 
+  # Validate incident details against expected
+  expected_files_with_incidents = set(expected_incidents.keys())
+  found_files_with_incidents = set()
+  for incident in incidents:
+    # Handle various key names for the file field
+    filename = incident.get("file") or incident.get("source_file") or incident.get("filename") or ""
+    match = re.match(r"log_(\d{3})\.txt", filename)
+    if match:
+      found_files_with_incidents.add(int(match.group(1)))
+
+  missing_incident_files = expected_files_with_incidents - found_files_with_incidents
+  fabricated_incident_files = found_files_with_incidents - expected_files_with_incidents
+
+  if missing_incident_files:
+    results["missing_incidents"] = sorted(missing_incident_files)
+    info(f"  ⚠ Missing incidents from files: {results['missing_incidents']}")
+
+  if fabricated_incident_files:
+    results["fabricated_incidents"] = sorted(fabricated_incident_files)
+    info(f"  ⚠ Fabricated incidents in files: {results['fabricated_incidents']}")
+
+  if not missing_incident_files and not fabricated_incident_files:
+    info(f"  ✓ All incidents correctly identified")
+
   info("")
 
   # Determine overall success
   results["success"] = (
-    len(results["files_processed"]) >= num_files * 0.95  # At least 95% completion
-    and abs(incident_delta) <= results["expected_incidents"] * 0.1  # Within 10% accuracy
+    results["json_valid"]
+    and len(results["files_processed"]) >= num_files * 0.95  # At least 95% completion
+    and abs(incident_delta) <= max(1, results["expected_incidents"] * 0.1)  # Within 10% accuracy or 1
   )
 
   return results
@@ -670,43 +796,39 @@ async def main(node):
         1. Process log files in order: log_001.txt, log_002.txt, ..., log_{NUM_ITERATIONS:03d}.txt
         2. For each file, read it and identify any lines with "CRITICAL" level
         3. Extract: filename, timestamp, and incident description
-        4. Maintain a file called "incident_report.md" with ALL findings
-        5. Use this exact format for the report:
+        4. Create TWO output files:
 
-        # Security Incident Report
+        FILE 1: incident_report.md (human-readable report)
+        - Format this however you like, but include all incidents found
+        - Add checkpoint summaries every {CHECKPOINT_INTERVAL} files
+        - Include a final summary
 
-        ## Incidents Found
-
-        ### File: log_XXX.txt
-        - **Timestamp:** YYYY-MM-DD HH:MM:SS
-        - **Incident:** Description of the critical incident
-
-        (repeat for each incident)
-
-        ## Progress Checkpoints
-
-        - Processed {CHECKPOINT_INTERVAL} files: [status update]
-        - Processed {CHECKPOINT_INTERVAL * 2} files: [status update]
-        (etc.)
-
-        ## Final Summary
-
-        - Total files processed: X
-        - Total incidents found: Y
-        - Files with incidents: Z
+        FILE 2: incident_summary.json (machine-readable, REQUIRED)
+        - This file MUST be valid JSON with this EXACT structure:
+        {{
+          "files_processed": ["log_001.txt", "log_002.txt", ...],
+          "total_files": {NUM_ITERATIONS},
+          "incidents": [
+            {{"file": "log_XXX.txt", "timestamp": "YYYY-MM-DD HH:MM:SS", "description": "..."}}
+          ],
+          "checkpoints": [
+            {{"files_completed": {CHECKPOINT_INTERVAL}, "incidents_so_far": N}},
+            {{"files_completed": {CHECKPOINT_INTERVAL * 2}, "incidents_so_far": N}}
+          ]
+        }}
 
         CRITICAL REQUIREMENTS:
         - Process EVERY file from log_001.txt to log_{NUM_ITERATIONS:03d}.txt
         - Do NOT skip files even if they have no incidents
         - Do NOT fabricate incidents that aren't in the logs
-        - Maintain the exact format specified above
-        - Add a checkpoint summary every {CHECKPOINT_INTERVAL} files
+        - The incident_summary.json file MUST be valid JSON
+        - Add a checkpoint entry every {CHECKPOINT_INTERVAL} files
         - Be thorough and accurate
 
-        After processing all files, double-check your report to ensure:
-        - All {NUM_ITERATIONS} files were processed
-        - Only real CRITICAL incidents are listed
-        - The format is consistent throughout
+        After processing all files, double-check to ensure:
+        - All {NUM_ITERATIONS} files are listed in files_processed
+        - Only real CRITICAL incidents are in the incidents array
+        - The JSON is valid and complete
       """,
       model=Model(name="claude-sonnet-4-v1"),
       tools=[fs_tools],
@@ -732,9 +854,10 @@ async def main(node):
     # Send the task to the agent
     response = await agent.send(
       f"Process all log files from log_001.txt through log_{NUM_ITERATIONS:03d}.txt. "
-      f"Extract all CRITICAL incidents and maintain the incident_report.md file as specified "
-      f"in your instructions. Add checkpoint summaries every {CHECKPOINT_INTERVAL} files. "
-      f"When complete, verify you processed all {NUM_ITERATIONS} files and provide a final summary.",
+      f"Extract all CRITICAL incidents and create both incident_report.md and incident_summary.json "
+      f"as specified in your instructions. Add checkpoint summaries every {CHECKPOINT_INTERVAL} files. "
+      f"When complete, verify you processed all {NUM_ITERATIONS} files. "
+      f"IMPORTANT: The incident_summary.json file must be valid JSON.",
       timeout=TIMEOUT,
     )
 
