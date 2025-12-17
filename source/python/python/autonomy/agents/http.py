@@ -139,7 +139,7 @@ class HttpServer(InfoContext):
       message: Request,
       stream: bool = False,
       content_size: int = 50,
-      timeout: int = 60,
+      timeout: int = 180,
       node=Depends(self.get_node),
     ):
       with self.info(f"Sending a message to agent '{name}'", f"Sent a message to agent '{name}'"):
@@ -152,7 +152,7 @@ class HttpServer(InfoContext):
       message: Request,
       stream: bool = False,
       content_size: int = 50,
-      timeout: int = 60,
+      timeout: int = 180,
       node=Depends(self.get_node),
     ):
       with self.info(f"Sending a message to flow '{name}'", f"Sent a message to flow '{name}'"):
@@ -181,7 +181,7 @@ class HttpServer(InfoContext):
       return tool
 
     async def send_message_to_reference(
-      reference: Reference, message: Request, stream: bool = False, content_size: int = 50, timeout: int = 60
+      reference: Reference, message: Request, stream: bool = False, content_size: int = 50, timeout: int = 180
     ):
       try:
         message_json = await message.json()

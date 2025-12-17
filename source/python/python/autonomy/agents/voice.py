@@ -304,7 +304,7 @@ Keep responses brief (1-3 sentences max)."""
         primary_message,
         scope=scope,
         conversation=conversation,
-        timeout=30,  # 30 second timeout for voice interactions
+        timeout=180,  # timeout, in seconds, for voice interactions with knowledge search
       )
 
       # Extract the assistant's response from the returned messages
