@@ -111,7 +111,8 @@ class AdaptiveRateLimiter:
     self._current_rate = self.config.initial_rpm / 60.0
 
     # Token bucket state
-    self._tokens = self._current_rate  # Start with 1 second of tokens
+    # Start with at least 1 token so first request can proceed immediately
+    self._tokens = max(1.0, self._current_rate)
     self._last_refill = time.monotonic()
 
     # Concurrency control
@@ -215,8 +216,8 @@ class AdaptiveRateLimiter:
     # Add tokens based on current rate
     tokens_to_add = elapsed * self._current_rate
 
-    # Cap at bucket size (1 second of tokens)
-    max_tokens = self._current_rate
+    # Cap at bucket size (1 second of tokens, but at least 1 token)
+    max_tokens = max(1.0, self._current_rate)
     self._tokens = min(self._tokens + tokens_to_add, max_tokens)
 
   def release(self) -> None:
