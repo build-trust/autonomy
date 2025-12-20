@@ -1,6 +1,6 @@
 ---
 title: "Coding Agents: How to select and configure models"
-description: "Select from Claude, Llama, DeepSeek, and AWS Nova models for different use cases."
+description: "Select from Claude, Nova, and OpenAI models for different use cases."
 noindex: true
 ---
 
@@ -10,7 +10,7 @@ noindex: true
 
 > **Key Terms**: See the [definitions section of the main guide](https://autonomy.computer/docs/_for-coding-agents.md#definitions).
 
-*Keywords: claude, llama, model selection, claude-sonnet, deepseek*
+*Keywords: claude, model selection, claude-sonnet, nova, openai*
 
 This guide covers available models and helps you select the right model for an agent.
 
@@ -18,29 +18,7 @@ This guide covers available models and helps you select the right model for an a
 
 Autonomy Computer supports a wide range of models from different providers. When creating agents, you can specify which model to use with the `Model()` constructor.
 
-### Claude Models
-
-* `claude-3-7-sonnet-v1` - Advanced reasoning capabilities
-* `claude-opus-4-v1` - Most capable Claude model for complex tasks
-* `claude-sonnet-4-v1` - **Recommended** - Latest generation Claude model with optimal balance
-
-### Llama Models
-
-* `llama3.2` - Meta's Llama 3.2 model
-* `llama3.3` - Meta's Llama 3.3 model
-* `llama4-maverick` - Llama 4 Maverick variant
-* `llama4-scout` - Llama 4 Scout variant
-
-### AWS Nova Models
-
-* `nova-lite-v1` - AWS Nova Lite model
-* `nova-micro-v1` - AWS Nova Micro model
-* `nova-pro-v1` - AWS Nova Pro model
-* `nova-premier-v1` - AWS Nova Premier model
-
-### Other Models
-
-* `deepseek-r1` - DeepSeek's reasoning model
+For the complete list of supported models with pricing, see the [Models documentation](/agents/models).
 
 ## Example of how to use a model
 
@@ -48,12 +26,12 @@ Autonomy Computer supports a wide range of models from different providers. When
 from autonomy import Agent, Model, Node
 
 async def main(node):
-    # Using Claude Sonnet 4 (recommended for most applications)
+    # Using Claude Sonnet 4.5 (recommended for most applications)
     await Agent.start(
         node=node,
         name="assistant",
         instructions="You are a helpful assistant",
-        model=Model("claude-sonnet-4-v1")
+        model=Model("claude-sonnet-4-5")
     )
 
     # Using a different model for a different use case
@@ -61,7 +39,7 @@ async def main(node):
         node=node,
         name="reasoning-agent",
         instructions="You are a reasoning specialist",
-        model=Model("claude-opus-4-v1")
+        model=Model("claude-opus-4-5")
     )
 
 Node.start(main)
@@ -69,11 +47,12 @@ Node.start(main)
 
 ### Recommendations for selecting a model
 
-* **For most applications**: `claude-sonnet-4-v1` (recommended default)
-* **For fast, simple tasks**: `llama4-maverick`
-* **For complex reasoning**: `claude-opus-4-v1` or `deepseek-r1`
-* **For cost-effective solutions**: `llama4-maverick` or `nova-micro-v1`
-* **For maximum capability**: `claude-opus-4-v1` or `nova-premier-v1`
+* **For most applications**: `claude-sonnet-4-5` - Best balance of capability and cost
+* **For complex reasoning**: `claude-opus-4-5` or `o1` - Maximum intelligence for difficult tasks
+* **For fast, simple tasks**: `claude-haiku-4-5` or `gpt-4o-mini` - Quick responses at lower cost
+* **For cost-effective solutions**: `nova-micro` or `nova-lite` - Extremely affordable
+* **For high-volume production**: `gpt-4.1-nano` or `gpt-5-nano` - Best for scale
+* **For embeddings**: `embed-english` or `embed-multilingual` - Recommended for semantic search
 
 All models support the same interface, so you can easily switch between them by changing the model name in your `Model()` constructor.
 

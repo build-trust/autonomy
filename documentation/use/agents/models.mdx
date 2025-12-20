@@ -35,91 +35,76 @@ You can easily switch models by changing the model name in your `Model()` constr
 Autonomy supports a curated set of models from leading providers. All models are accessed
 through the Model Gateway, which handles routing, load balancing, and failover automatically.
 
-### Anthropic Claude
+---
 
-Claude models are accessed via AWS Bedrock with automatic failover to Anthropic's direct API.
+## Chat Models
 
-| Model | Alias | Also Known As | Description |
-|-------|-------|---------------|-------------|
-| Claude Sonnet 4.5 | `claude-sonnet-4-5` | | Latest generation, best for complex reasoning |
-| Claude Haiku 4.5 | `claude-haiku-4-5` | | Fast and cost-effective |
-| Claude Opus 4.5 | `claude-opus-4-5` | | Most capable, for the hardest tasks |
-| Claude Sonnet 4 | `claude-sonnet-4` | `claude-sonnet-4-v1` | Stable release, balanced performance |
-| Claude Opus 4 | `claude-opus-4` | `claude-opus-4-v1` | Stable release, highest capability |
+Models for conversational AI and text generation, sorted by price from highest to lowest.
 
-### Amazon Nova
+| Model | Provider | Input (per 1M tokens) | Output (per 1M tokens) |
+|-------|----------|----------------------|------------------------|
+| `claude-opus-4`, `claude-opus-4-v1` | Anthropic | \$15.00 | \$75.00 |
+| `o1` | OpenAI | \$15.00 | \$60.00 |
+| `claude-opus-4-5`, `claude-opus-4-5-v1` | Anthropic | \$5.00 | \$25.00 |
+| `claude-sonnet-4-5` | Anthropic | \$3.00 | \$15.00 |
+| `claude-sonnet-4`, `claude-sonnet-4-v1` | Anthropic | \$3.00 | \$15.00 |
+| `nova-premier`, `nova-premier-v1` | Amazon | \$2.50 | \$12.50 |
+| `gpt-4o` | OpenAI | \$2.50 | \$10.00 |
+| `gpt-4.1` | OpenAI | \$2.00 | \$8.00 |
+| `o3` | OpenAI | \$2.00 | \$8.00 |
+| `gpt-5.1` | OpenAI | \$1.25 | \$10.00 |
+| `gpt-5` | OpenAI | \$1.25 | \$10.00 |
+| `o3-mini` | OpenAI | \$1.10 | \$4.40 |
+| `o4-mini` | OpenAI | \$1.10 | \$4.40 |
+| `claude-haiku-4-5` | Anthropic | \$1.00 | \$5.00 |
+| `nova-pro`, `nova-pro-v1` | Amazon | \$0.80 | \$3.20 |
+| `gpt-4.1-mini` | OpenAI | \$0.40 | \$1.60 |
+| `gpt-5-mini` | OpenAI | \$0.25 | \$2.00 |
+| `gpt-4o-mini` | OpenAI | \$0.15 | \$0.60 |
+| `gpt-4.1-nano` | OpenAI | \$0.10 | \$0.40 |
+| `nova-lite`, `nova-lite-v1` | Amazon | \$0.06 | \$0.24 |
+| `gpt-5-nano` | OpenAI | \$0.05 | \$0.40 |
+| `nova-micro`, `nova-micro-v1` | Amazon | \$0.035 | \$0.14 |
 
-Amazon's Nova models offer excellent price-performance for various workloads.
+---
 
-| Model | Alias | Also Known As | Description |
-|-------|-------|---------------|-------------|
-| Nova Micro | `nova-micro` | `nova-micro-v1` | Ultra-lightweight, most cost-effective |
-| Nova Lite | `nova-lite` | `nova-lite-v1` | Lightweight and fast |
-| Nova Pro | `nova-pro` | `nova-pro-v1` | Professional-grade performance |
-| Nova Premier | `nova-premier` | `nova-premier-v1` | Highest capability Nova model |
+## Embedding Models
 
-### Meta Llama
+For text embeddings and semantic search.
 
-Open-weight models from Meta with strong performance.
+| Model | Provider | Input (per 1M tokens) |
+|-------|----------|----------------------|
+| `titan-embed` | Amazon | \$0.20 |
+| `text-embedding-3-large` | OpenAI | \$0.13 |
+| `embed-english`, `embed-english-v3` | Cohere | \$0.10 |
+| `embed-multilingual`, `embed-multilingual-v3` | Cohere | \$0.10 |
+| `text-embedding-3-small` | OpenAI | \$0.02 |
 
-| Model | Alias | Description |
-|-------|-------|-------------|
-| Llama 4 Maverick | `llama4-maverick` | High-performance Llama 4 |
-| Llama 4 Scout | `llama4-scout` | Efficient Llama 4 variant |
-| Llama 3.3 70B | `llama3-3-70b` | Stable Llama 3.3 release |
+---
 
-### OpenAI
+## Realtime Models
 
-| Model | Alias | Description |
-|-------|-------|-------------|
-| GPT-4o | `gpt-4o` | OpenAI's flagship model |
-| GPT-4o Mini | `gpt-4o-mini` | Fast and cost-effective |
+For real-time voice conversations.
 
-### Embedding Models
+| Model | Provider | Text Input (per 1M) | Text Output (per 1M) | Audio Input (per 1M) | Audio Output (per 1M) |
+|-------|----------|---------------------|----------------------|----------------------|-----------------------|
+| `gpt-4o-realtime-preview` | OpenAI | \$5.00 | \$20.00 | \$40.00 | \$80.00 |
+| `gpt-realtime` | OpenAI | \$4.00 | \$16.00 | \$32.00 | \$64.00 |
+| `gpt-realtime-mini` | OpenAI | \$0.60 | \$2.40 | \$10.00 | \$20.00 |
 
-For text embeddings and semantic search:
+---
 
-| Model | Alias | Provider | Description |
-|-------|-------|----------|-------------|
-| Cohere Embed English | `embed-english` | Bedrock | English text embeddings |
-| Cohere Embed Multilingual | `embed-multilingual` | Bedrock | Multilingual embeddings |
-| Titan Embed | `titan-embed` | Bedrock | Amazon Titan embeddings |
-| Text Embedding 3 Small | `text-embedding-3-small` | OpenAI | OpenAI small embeddings (1536 dims) |
-| Text Embedding 3 Large | `text-embedding-3-large` | OpenAI | OpenAI large embeddings (3072 dims) |
+## Audio Models
 
-### Audio Models
+For text-to-speech and speech-to-text.
 
-For text-to-speech and speech-to-text:
+| Model | Provider | Type | Price |
+|-------|----------|------|-------|
+| `tts-1-hd` | OpenAI | Text-to-Speech | \$30.00 / 1M characters |
+| `tts-1` | OpenAI | Text-to-Speech | \$15.00 / 1M characters |
+| `whisper-1` | OpenAI | Speech-to-Text | \$0.006 / minute |
 
-| Model | Alias | Type | Description |
-|-------|-------|------|-------------|
-| TTS-1 | `tts-1` | Text-to-Speech | Standard quality, low latency |
-| TTS-1 HD | `tts-1-hd` | Text-to-Speech | High definition audio |
-| Whisper | `whisper-1` | Speech-to-Text | Transcription and translation |
-
-### Realtime Models
-
-For real-time voice conversations:
-
-| Model | Alias | Description |
-|-------|-------|-------------|
-| GPT-4o Realtime Preview | `gpt-4o-realtime-preview` | Real-time voice with GPT-4o |
-| GPT Realtime | `gpt-realtime` | Standard realtime model |
-| GPT Realtime Mini | `gpt-realtime-mini` | Lightweight realtime model |
-
-For detailed pricing information for each model, see the [Pricing](/pricing) page.
-
-## Model Selection Guide
-
-Choose your model based on your use case:
-
-| Use Case | Recommended Model | Why |
-|----------|-------------------|-----|
-| Complex reasoning | `claude-sonnet-4-5` | Best reasoning capabilities |
-| Fast responses | `claude-haiku-4-5` | Optimized for speed |
-| Cost-sensitive | `nova-micro` | Most cost-effective |
-| General purpose | `claude-sonnet-4` | Good balance of capability and cost |
-| Maximum capability | `claude-opus-4-5` | For the hardest tasks |
+---
 
 ## Parameters
 
