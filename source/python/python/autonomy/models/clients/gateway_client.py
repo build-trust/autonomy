@@ -12,6 +12,11 @@ This is the recommended client for:
 
 For Claude models, use AnthropicGatewayClient instead (automatic when
 AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1 is set).
+
+Request Queuing:
+When AUTONOMY_USE_REQUEST_QUEUE=1 is set, requests are routed through a
+per-model queue with adaptive rate limiting (AIMD algorithm). This helps
+prevent rate limit errors when making many concurrent requests.
 """
 
 from typing import List, Optional
@@ -23,7 +28,16 @@ from openai import AsyncOpenAI
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
 from ...transcripts import log_raw_request, log_raw_response
-from .gateway_config import get_gateway_url, get_gateway_api_key, get_client_metadata_headers
+from .gateway_config import (
+  get_gateway_url,
+  get_gateway_api_key,
+  get_client_metadata_headers,
+  use_request_queue,
+  get_queue_initial_rpm,
+  get_queue_max_concurrent,
+)
+from .rate_limiter import RateLimiterConfig
+from .request_queue import QueueConfig, QueueManager
 
 
 def normalize_messages(
@@ -113,12 +127,22 @@ class GatewayClient(InfoContext, DebugContext):
 
     :param name: Model name or alias
     :param max_input_tokens: Maximum input tokens for the model
-    :param kwargs: Additional parameters
+    :param kwargs: Additional parameters including:
+      - use_queue: Override queue setting (default from AUTONOMY_USE_REQUEST_QUEUE)
+      - queue_initial_rpm: Initial RPM for rate limiter (default from AUTONOMY_QUEUE_INITIAL_RPM)
+      - queue_max_concurrent: Max concurrent requests (default from AUTONOMY_QUEUE_MAX_CONCURRENT)
     """
     self.logger = get_logger("model")
     self.original_name = name
     self.name = name
     self.max_input_tokens = max_input_tokens
+
+    # Extract queue-specific kwargs
+    self._use_queue = kwargs.pop("use_queue", use_request_queue())
+    self._queue_initial_rpm = kwargs.pop("queue_initial_rpm", get_queue_initial_rpm())
+    self._queue_max_concurrent = kwargs.pop("queue_max_concurrent", get_queue_max_concurrent())
+    self._queue_manager: Optional[QueueManager] = None
+
     self.kwargs = kwargs
 
     # Get gateway configuration
@@ -143,6 +167,12 @@ class GatewayClient(InfoContext, DebugContext):
     except Exception:
       self._encoding = None
       self.logger.warning("Failed to load tiktoken encoding, token counting may be inaccurate")
+
+    if self._use_queue:
+      self.logger.info(
+        f"Request queue enabled for {name}: "
+        f"initial_rpm={self._queue_initial_rpm}, max_concurrent={self._queue_max_concurrent}"
+      )
 
   def count_tokens(
     self, messages: List[dict] | List[ConversationMessage], is_thinking: bool = False, tools=None
@@ -435,12 +465,33 @@ class GatewayClient(InfoContext, DebugContext):
       conversation=conversation,
     )
 
-    # Make request
-    response = await self.client.chat.completions.create(
-      model=self.name,
-      messages=messages,
-      **kwargs,
-    )
+    # Define the actual request function
+    # Use with_raw_response to access headers for rate limit hints
+    async def make_request():
+      raw_response = await self.client.chat.completions.with_raw_response.create(
+        model=self.name,
+        messages=messages,
+        **kwargs,
+      )
+      # Extract headers for rate limiting hints
+      headers = raw_response.headers
+      hint_rpm = self._extract_header_float(headers, "x-ratelimit-hint-rpm")
+      circuit_state = headers.get("x-gateway-circuit-state")
+
+      # Parse the actual response
+      response = raw_response.parse()
+
+      # Attach headers info to response for queue to use
+      response._gateway_hint_rpm = hint_rpm
+      response._gateway_circuit_state = circuit_state
+
+      return response
+
+    # Route through queue if enabled
+    if self._use_queue:
+      response = await self._execute_with_queue(make_request)
+    else:
+      response = await make_request()
 
     # Log response
     log_raw_response(
@@ -452,6 +503,49 @@ class GatewayClient(InfoContext, DebugContext):
     )
 
     return response
+
+  def _extract_header_float(self, headers, header_name: str) -> Optional[float]:
+    """
+    Extract a float value from a header.
+
+    :param headers: Response headers
+    :param header_name: Name of the header (case-insensitive)
+    :return: Float value or None
+    """
+    value = headers.get(header_name)
+    if value:
+      try:
+        return float(value)
+      except (ValueError, TypeError):
+        pass
+    return None
+
+  async def _execute_with_queue(self, request_fn):
+    """
+    Execute a request through the queue with rate limiting.
+
+    :param request_fn: Async function that makes the actual request
+    :return: Response from request_fn
+    """
+    # Lazy initialize queue manager
+    if self._queue_manager is None:
+      self._queue_manager = await QueueManager.get_instance()
+
+      # Configure rate limiter for this model
+      rate_config = RateLimiterConfig(
+        initial_rpm=self._queue_initial_rpm,
+        max_concurrent=self._queue_max_concurrent,
+      )
+      queue_config = QueueConfig(rate_limiter_config=rate_config)
+      self._queue_manager.configure_model(self.name, queue_config)
+
+    # Get queue for this model
+    queue = await self._queue_manager.get_queue(self.name)
+
+    # Submit request through queue
+    # The queue's _execute_request will extract hints from the response
+    # (attached as _gateway_hint_rpm and _gateway_circuit_state by make_request)
+    return await queue.submit(request_fn)
 
   async def embeddings(self, text: List[str], **kwargs) -> List[List[float]]:
     """
