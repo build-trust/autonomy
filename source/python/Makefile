@@ -12,10 +12,10 @@ help:
 	@echo "  coverage-report          - Open HTML coverage report in browser"
 	@echo "  format (fmt)             - Format code using cargo fmt and ruff format"
 	@echo "  clean                    - Delete all build artifacts"
-	@echo "  images                   - Build and push all AMD64 images"
-	@echo "  build-images-amd64       - Build AMD64 Docker images"
-	@echo "  push-images-amd64-hash   - Push AMD64 images with commit hash tags"
-	@echo "  push-images-amd64-latest - Push AMD64 images with latest tags"
+	@echo "  build-images             - Build multiarch Docker images (amd64 + arm64)"
+	@echo "  push-images-hash         - Push images with commit hash tags"
+	@echo "  push-images-latest       - Push images with latest tags"
+	@echo "  images                   - Build and push all multiarch images"
 	@echo "  help                     - Show this help message"
 
 build:
@@ -64,46 +64,95 @@ coverage-report: coverage-html
 		echo "Please open htmlcov/index.html in your browser"; \
 	fi
 
-build-images-amd64:
+build-images:
+	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
+
+	# Build amd64 wheel
 	docker run --rm -v "$(shell pwd)":/io \
 		--platform linux/amd64 \
 		ghcr.io/pyo3/maturin build \
 			--release \
 			--target x86_64-unknown-linux-gnu \
 			--manifest-path /io/Cargo.toml
-	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
 
-	docker pull cgr.dev/chainguard/python:latest-dev
-	docker pull cgr.dev/chainguard/python:latest
+	# Build arm64 wheel
+	docker run --rm -v "$(shell pwd)":/io \
+		--platform linux/arm64 \
+		ghcr.io/pyo3/maturin build \
+			--release \
+			--target aarch64-unknown-linux-gnu \
+			--manifest-path /io/Cargo.toml
 
+	# Pull base images for both architectures
+	docker pull --platform linux/amd64 cgr.dev/chainguard/python:latest-dev
+	docker pull --platform linux/amd64 cgr.dev/chainguard/python:latest
+	docker pull --platform linux/arm64 cgr.dev/chainguard/python:latest-dev
+	docker pull --platform linux/arm64 cgr.dev/chainguard/python:latest
+
+	# Build amd64 images
 	DOCKER_BUILDKIT=0 docker build --no-cache --platform linux/amd64 \
-		-t ghcr.io/build-trust/autonomy-python-dev:latest \
-		-t ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH) --target dev --file Dockerfile .
-
+		-t ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-amd64 --target dev --file Dockerfile .
 	DOCKER_BUILDKIT=0 docker build --no-cache --platform linux/amd64 \
-		-t ghcr.io/build-trust/autonomy-python:latest \
-		-t ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH) --file Dockerfile .
+		-t ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-amd64 --file Dockerfile .
 
-push-images-amd64-hash:
-	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
-	docker push ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)
-	docker push ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)
+	# Build arm64 images
+	DOCKER_BUILDKIT=0 docker build --no-cache --platform linux/arm64 \
+		-t ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-arm64 --target dev --file Dockerfile .
+	DOCKER_BUILDKIT=0 docker build --no-cache --platform linux/arm64 \
+		-t ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-arm64 --file Dockerfile .
 
-push-images-amd64-latest:
-	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
-
-	docker tag ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH) \
+	# Tag as latest for local use (uses native architecture)
+	docker tag ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-arm64 \
 		ghcr.io/build-trust/autonomy-python-dev:latest
-	docker push ghcr.io/build-trust/autonomy-python-dev:latest
-
-	docker tag ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH) \
+	docker tag ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-arm64 \
 		ghcr.io/build-trust/autonomy-python:latest
-	docker push ghcr.io/build-trust/autonomy-python:latest
+
+	@echo ""
+	@echo "Build complete. Local images tagged as :latest (arm64)"
+	@echo "To use amd64 locally, use the :$(SHORT_COMMIT_HASH)-amd64 tag"
+
+push-images-hash:
+	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
+
+	# Push arch-specific images first
+	docker push ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-amd64
+	docker push ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-arm64
+	docker push ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-amd64
+	docker push ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-arm64
+
+	# Create and push multiarch manifests for commit hash
+	-docker manifest rm ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH) 2>/dev/null || true
+	docker manifest create ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH) \
+		ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-amd64 \
+		ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-arm64
+	docker manifest push ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)
+
+	-docker manifest rm ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH) 2>/dev/null || true
+	docker manifest create ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH) \
+		ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-amd64 \
+		ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-arm64
+	docker manifest push ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)
+
+push-images-latest:
+	$(eval SHORT_COMMIT_HASH := $(shell git rev-parse --short=9 HEAD))
+
+	# Create and push multiarch manifests for latest
+	-docker manifest rm ghcr.io/build-trust/autonomy-python-dev:latest 2>/dev/null || true
+	docker manifest create ghcr.io/build-trust/autonomy-python-dev:latest \
+		ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-amd64 \
+		ghcr.io/build-trust/autonomy-python-dev:$(SHORT_COMMIT_HASH)-arm64
+	docker manifest push ghcr.io/build-trust/autonomy-python-dev:latest
+
+	-docker manifest rm ghcr.io/build-trust/autonomy-python:latest 2>/dev/null || true
+	docker manifest create ghcr.io/build-trust/autonomy-python:latest \
+		ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-amd64 \
+		ghcr.io/build-trust/autonomy-python:$(SHORT_COMMIT_HASH)-arm64
+	docker manifest push ghcr.io/build-trust/autonomy-python:latest
 
 images:
-	$(MAKE) build-images-amd64
-	$(MAKE) push-images-amd64-hash
-	$(MAKE) push-images-amd64-latest
+	$(MAKE) build-images
+	$(MAKE) push-images-hash
+	$(MAKE) push-images-latest
 
 clean:
 	rm -rf target
@@ -111,4 +160,4 @@ clean:
 
 .PHONY: default help fmt format build test test-agents test-models test-tools clean
 .PHONY: coverage coverage-html coverage-report
-.PHONY: build-images-amd64 push-images-amd64-latest push-images-amd64-hash images
+.PHONY: build-images push-images-hash push-images-latest images

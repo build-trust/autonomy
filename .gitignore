@@ -11,3 +11,4 @@ target
 htmlcov
 .coverage
 node_modules
+secrets.yaml
