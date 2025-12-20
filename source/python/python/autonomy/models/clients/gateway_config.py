@@ -162,13 +162,13 @@ def use_anthropic_sdk() -> bool:
   """
   Check if Anthropic SDK should be used for Claude models.
 
-  When True (default), Claude models use AnthropicGatewayClient for native
-  Anthropic API experience. When False, all models use GatewayClient with
-  OpenAI-compatible API.
+  When True, Claude models use AnthropicGatewayClient for native
+  Anthropic API experience. When False (default), all models use GatewayClient
+  with OpenAI-compatible API.
 
   :return: True if Anthropic SDK should be used
   """
-  return os.environ.get("AUTONOMY_EXTERNAL_APIS_GATEWAY_USE_ANTHROPIC_SDK", "1") == "1"
+  return os.environ.get("AUTONOMY_EXTERNAL_APIS_GATEWAY_USE_ANTHROPIC_SDK", "0") == "1"
 
 
 def get_client_metadata_headers() -> dict:

@@ -79,9 +79,9 @@ class TestGatewayConfig:
       assert get_gateway_api_key() == custom_key
 
   def test_use_anthropic_sdk_default(self):
-    """Test default value for use_anthropic_sdk (should be True)."""
+    """Test default value for use_anthropic_sdk (should be False)."""
     with patch.dict(os.environ, {}, clear=True):
-      assert use_anthropic_sdk() == True
+      assert use_anthropic_sdk() == False
 
   def test_use_anthropic_sdk_enabled(self):
     """Test use_anthropic_sdk when explicitly enabled."""
