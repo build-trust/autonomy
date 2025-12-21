@@ -149,6 +149,27 @@ class Model(InfoContext, DebugContext):
   - ``CLUSTER`` - Cluster ID for AWS usage tracking
   - ``ZONE`` - Zone ID for AWS usage tracking
 
+  **Timeout Configuration**
+
+  Configure HTTP client timeouts for different scenarios:
+
+  - ``request_timeout`` - Default timeout for LLM calls (default: 120s)
+  - ``connect_timeout`` - Connection establishment timeout (default: 10s)
+  - ``stream_timeout`` - Timeout for streaming responses (default: 300s)
+
+  **Throttling Configuration**
+
+  Enable client-side rate limiting and request queuing:
+
+  - ``throttle`` - Enable throttling (default: False)
+  - ``throttle_requests_per_minute`` - Initial RPM for rate limiter (default: 60)
+  - ``throttle_max_requests_in_progress`` - Max concurrent requests (default: 10)
+  - ``throttle_max_requests_waiting_in_queue`` - Max queue depth (default: 1000)
+  - ``throttle_max_seconds_to_wait_in_queue`` - Queue timeout (default: 300s)
+  - ``throttle_max_retry_attempts`` - Max retries on rate limit (default: 3)
+  - ``throttle_initial_seconds_between_retry_attempts`` - Initial backoff (default: 5s)
+  - ``throttle_max_seconds_between_retry_attempts`` - Max backoff (default: 60s)
+
   **Legacy Modes (Deprecated)**
 
   Direct Bedrock access is deprecated. The following still work but emit
@@ -162,17 +183,76 @@ class Model(InfoContext, DebugContext):
   and routes requests to the appropriate client implementation.
   """
 
-  def __init__(self, name: str, max_input_tokens: Optional[int] = None, **kwargs):
+  def __init__(
+    self,
+    name: str,
+    max_input_tokens: Optional[int] = None,
+    # Layer 1: HTTP Client Timeouts
+    request_timeout: float = 120.0,
+    connect_timeout: float = 10.0,
+    stream_timeout: float = 300.0,
+    # Layer 2-4: Throttling (rate limiting, queue, retries)
+    throttle: bool = False,
+    throttle_requests_per_minute: float = 60.0,
+    throttle_max_requests_in_progress: int = 10,
+    throttle_max_requests_waiting_in_queue: int = 1000,
+    throttle_max_seconds_to_wait_in_queue: float = 300.0,
+    throttle_max_retry_attempts: int = 3,
+    throttle_initial_seconds_between_retry_attempts: float = 5.0,
+    throttle_max_seconds_between_retry_attempts: float = 60.0,
+    **kwargs,
+  ):
     """
     Initialize a Model instance.
 
-    :param name: Model name or alias (e.g., 'claude-3-5-sonnet-v2', 'llama3.3')
+    :param name: Model name or alias (e.g., 'claude-sonnet-4', 'gpt-4o')
     :param max_input_tokens: Maximum input tokens for the model
+
+    :param request_timeout: Default timeout for LLM calls in seconds (default: 120.0).
+        Reasoning models like o1 can take 60-120s, so this is set conservatively.
+    :param connect_timeout: Connection establishment timeout in seconds (default: 10.0).
+        If connection can't be established in 10s, fail fast.
+    :param stream_timeout: Timeout for streaming responses in seconds (default: 300.0).
+        Long streaming responses may need 5+ minutes.
+
+    :param throttle: Enable client-side throttling with rate limiting, queuing, and retries
+        (default: False). When False, requests are sent directly without queueing.
+    :param throttle_requests_per_minute: Initial requests per minute for rate limiter
+        (default: 60.0). The AIMD algorithm will adjust this based on 429 responses.
+    :param throttle_max_requests_in_progress: Maximum concurrent requests (default: 10).
+        Balances parallelism vs overwhelming the backend.
+    :param throttle_max_requests_waiting_in_queue: Maximum queue depth (default: 1000).
+        Provides generous backlog without memory runaway.
+    :param throttle_max_seconds_to_wait_in_queue: Queue timeout in seconds (default: 300.0).
+        5 minutes handles typical backlog clearing.
+    :param throttle_max_retry_attempts: Maximum retry attempts on rate limit (default: 3).
+        Covers transient failures without hammering the backend.
+    :param throttle_initial_seconds_between_retry_attempts: Initial retry backoff in seconds
+        (default: 5.0). Matches gateway's default retry-after.
+    :param throttle_max_seconds_between_retry_attempts: Maximum retry backoff in seconds
+        (default: 60.0). Caps exponential backoff (5→10→20→40→60).
+
     :param kwargs: Additional parameters to pass to the underlying client
     """
     self.name = name
     self.logger = get_logger("model")
     self.max_input_tokens = max_input_tokens
+
+    # Store timeout configuration
+    self.request_timeout = request_timeout
+    self.connect_timeout = connect_timeout
+    self.stream_timeout = stream_timeout
+
+    # Store throttle configuration
+    self.throttle = throttle
+    self.throttle_requests_per_minute = throttle_requests_per_minute
+    self.throttle_max_requests_in_progress = throttle_max_requests_in_progress
+    self.throttle_max_requests_waiting_in_queue = throttle_max_requests_waiting_in_queue
+    self.throttle_max_seconds_to_wait_in_queue = throttle_max_seconds_to_wait_in_queue
+    self.throttle_max_retry_attempts = throttle_max_retry_attempts
+    self.throttle_initial_seconds_between_retry_attempts = throttle_initial_seconds_between_retry_attempts
+    self.throttle_max_seconds_between_retry_attempts = throttle_max_seconds_between_retry_attempts
+
     self.kwargs = kwargs
 
     # Pick the appropriate client
@@ -203,13 +283,32 @@ class Model(InfoContext, DebugContext):
     For Claude models, use AnthropicGatewayClient to leverage native Anthropic SDK.
     For all other models, use GatewayClient with OpenAI SDK.
     """
+    # Build common configuration dict for gateway clients
+    gateway_config = {
+      # Timeouts
+      "request_timeout": self.request_timeout,
+      "connect_timeout": self.connect_timeout,
+      "stream_timeout": self.stream_timeout,
+      # Throttling
+      "throttle": self.throttle,
+      "throttle_requests_per_minute": self.throttle_requests_per_minute,
+      "throttle_max_requests_in_progress": self.throttle_max_requests_in_progress,
+      "throttle_max_requests_waiting_in_queue": self.throttle_max_requests_waiting_in_queue,
+      "throttle_max_seconds_to_wait_in_queue": self.throttle_max_seconds_to_wait_in_queue,
+      "throttle_max_retry_attempts": self.throttle_max_retry_attempts,
+      "throttle_initial_seconds_between_retry_attempts": self.throttle_initial_seconds_between_retry_attempts,
+      "throttle_max_seconds_between_retry_attempts": self.throttle_max_seconds_between_retry_attempts,
+    }
+    # Merge with any additional kwargs
+    gateway_config.update(kwargs)
+
     # Check if we should use Anthropic SDK for this model
     if use_anthropic_sdk() and is_anthropic_model(model_name):
       self.logger.debug(f"Using AnthropicGatewayClient for model '{model_name}'")
-      return AnthropicGatewayClient(model_name, max_input_tokens, **kwargs)
+      return AnthropicGatewayClient(model_name, max_input_tokens, **gateway_config)
     else:
       self.logger.debug(f"Using GatewayClient for model '{model_name}'")
-      return GatewayClient(model_name, max_input_tokens, **kwargs)
+      return GatewayClient(model_name, max_input_tokens, **gateway_config)
 
   def count_tokens(
     self, messages: List[dict] | List[ConversationMessage], is_thinking: bool = False, tools=None

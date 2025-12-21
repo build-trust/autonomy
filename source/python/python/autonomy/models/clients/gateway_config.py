@@ -10,13 +10,14 @@ Environment Variables:
 - AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY: API key for authentication (direct value)
 - AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY_FILE: Path to file containing API key (for K8s secrets)
 - AUTONOMY_EXTERNAL_APIS_GATEWAY_USE_ANTHROPIC_SDK: Use Anthropic SDK for Claude models (default: 1)
-- AUTONOMY_USE_REQUEST_QUEUE: Enable request queuing with rate limiting (default: 0)
-- AUTONOMY_QUEUE_INITIAL_RPM: Initial requests per minute for rate limiter (default: 60)
-- AUTONOMY_QUEUE_MAX_CONCURRENT: Maximum concurrent requests per model (default: 10)
 
 Client Metadata Headers (for AWS usage tracking - Phase 8a):
 - CLUSTER: Cluster identifier (injected by provisioner)
 - ZONE: Zone identifier (injected by provisioner)
+
+Note: Throttling configuration (rate limiting, queuing, retries) is now configured via the
+Model() constructor parameters instead of environment variables. See Model() documentation
+for throttle_* parameters.
 
 Token Resolution Order:
 1. AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY env var (direct value, highest priority)
@@ -212,38 +213,13 @@ def clear_token_cache() -> None:
   _token_file_cache["file_path"] = None
 
 
-def use_request_queue() -> bool:
-  """
-  Check if request queuing should be enabled.
-
-  When True, requests are routed through a per-model queue with
-  adaptive rate limiting. This helps prevent rate limit errors
-  when making many concurrent requests.
-
-  :return: True if request queuing should be used
-  """
-  return os.environ.get("AUTONOMY_USE_REQUEST_QUEUE", "0") == "1"
-
-
-def get_queue_initial_rpm() -> float:
-  """
-  Get the initial requests per minute for the rate limiter.
-
-  :return: Initial RPM (default 60)
-  """
-  try:
-    return float(os.environ.get("AUTONOMY_QUEUE_INITIAL_RPM", "60"))
-  except ValueError:
-    return 60.0
-
-
-def get_queue_max_concurrent() -> int:
-  """
-  Get the maximum concurrent requests per model.
-
-  :return: Max concurrent requests (default 10)
-  """
-  try:
-    return int(os.environ.get("AUTONOMY_QUEUE_MAX_CONCURRENT", "10"))
-  except ValueError:
-    return 10
+# Legacy environment variable functions have been removed.
+# Throttling configuration is now done via Model() constructor parameters:
+# - throttle=True to enable
+# - throttle_requests_per_minute=60.0
+# - throttle_max_requests_in_progress=10
+# - throttle_max_requests_waiting_in_queue=1000
+# - throttle_max_seconds_to_wait_in_queue=300.0
+# - throttle_max_retry_attempts=3
+# - throttle_initial_seconds_between_retry_attempts=5.0
+# - throttle_max_seconds_between_retry_attempts=60.0

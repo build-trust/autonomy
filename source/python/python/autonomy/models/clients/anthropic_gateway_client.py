@@ -10,10 +10,16 @@ Use this client when you want:
 - Direct access to Claude-specific features
 - Streaming with Anthropic event types
 
-Request Queuing:
-When AUTONOMY_USE_REQUEST_QUEUE=1 is set, requests are routed through a
+Throttling:
+When throttle=True is passed (via Model constructor), requests are routed through a
 per-model queue with adaptive rate limiting (AIMD algorithm). This helps
 prevent rate limit errors when making many concurrent requests.
+
+Timeout Configuration:
+Configurable timeouts for different scenarios:
+- request_timeout: Default timeout for LLM calls (default: 120s)
+- connect_timeout: Connection establishment timeout (default: 10s)
+- stream_timeout: Timeout for streaming responses (default: 300s)
 """
 
 import json
@@ -26,16 +32,15 @@ from anthropic import AsyncAnthropic
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
 from ...transcripts import log_raw_request, log_raw_response
+import httpx
+
 from .gateway_config import (
   get_gateway_url,
   get_gateway_api_key,
   get_client_metadata_headers,
-  use_request_queue,
-  get_queue_initial_rpm,
-  get_queue_max_concurrent,
 )
 from .rate_limiter import RateLimiterConfig
-from .request_queue import QueueConfig, QueueManager
+from .request_queue import QueueConfig, QueueManager, RetryConfig
 
 
 def normalize_messages_for_anthropic(
@@ -157,22 +162,45 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     """
     Initialize the Anthropic gateway client.
 
-    :param name: Model name (e.g., 'claude-3-5-sonnet-20241022')
+    :param name: Model name (e.g., 'claude-sonnet-4')
     :param max_input_tokens: Maximum input tokens for the model
     :param kwargs: Additional parameters including:
-      - use_queue: Override queue setting (default from AUTONOMY_USE_REQUEST_QUEUE)
-      - queue_initial_rpm: Initial RPM for rate limiter (default from AUTONOMY_QUEUE_INITIAL_RPM)
-      - queue_max_concurrent: Max concurrent requests (default from AUTONOMY_QUEUE_MAX_CONCURRENT)
+      - request_timeout: Default timeout for LLM calls (default: 120.0s)
+      - connect_timeout: Connection establishment timeout (default: 10.0s)
+      - stream_timeout: Timeout for streaming responses (default: 300.0s)
+      - throttle: Enable throttling with rate limiting and queuing (default: False)
+      - throttle_requests_per_minute: Initial RPM for rate limiter (default: 60.0)
+      - throttle_max_requests_in_progress: Max concurrent requests (default: 10)
+      - throttle_max_requests_waiting_in_queue: Max queue depth (default: 1000)
+      - throttle_max_seconds_to_wait_in_queue: Queue timeout (default: 300.0s)
+      - throttle_max_retry_attempts: Max retries on rate limit (default: 3)
+      - throttle_initial_seconds_between_retry_attempts: Initial backoff (default: 5.0s)
+      - throttle_max_seconds_between_retry_attempts: Max backoff (default: 60.0s)
     """
     self.logger = get_logger("model")
     self.original_name = name
     self.name = name
     self.max_input_tokens = max_input_tokens
 
-    # Extract queue-specific kwargs
-    self._use_queue = kwargs.pop("use_queue", use_request_queue())
-    self._queue_initial_rpm = kwargs.pop("queue_initial_rpm", get_queue_initial_rpm())
-    self._queue_max_concurrent = kwargs.pop("queue_max_concurrent", get_queue_max_concurrent())
+    # Extract timeout configuration
+    self._request_timeout = kwargs.pop("request_timeout", 120.0)
+    self._connect_timeout = kwargs.pop("connect_timeout", 10.0)
+    self._stream_timeout = kwargs.pop("stream_timeout", 300.0)
+
+    # Extract throttle configuration
+    self._throttle = kwargs.pop("throttle", False)
+    self._throttle_requests_per_minute = kwargs.pop("throttle_requests_per_minute", 60.0)
+    self._throttle_max_requests_in_progress = kwargs.pop("throttle_max_requests_in_progress", 10)
+    self._throttle_max_requests_waiting_in_queue = kwargs.pop("throttle_max_requests_waiting_in_queue", 1000)
+    self._throttle_max_seconds_to_wait_in_queue = kwargs.pop("throttle_max_seconds_to_wait_in_queue", 300.0)
+    self._throttle_max_retry_attempts = kwargs.pop("throttle_max_retry_attempts", 3)
+    self._throttle_initial_seconds_between_retry_attempts = kwargs.pop(
+      "throttle_initial_seconds_between_retry_attempts", 5.0
+    )
+    self._throttle_max_seconds_between_retry_attempts = kwargs.pop(
+      "throttle_max_seconds_between_retry_attempts", 60.0
+    )
+
     self._queue_manager: Optional[QueueManager] = None
 
     self.kwargs = kwargs
@@ -184,12 +212,20 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     # Get client metadata headers for AWS usage tracking (Phase 8a)
     self.client_metadata = get_client_metadata_headers()
 
+    # Configure httpx timeout with separate connect/read timeouts
+    timeout = httpx.Timeout(
+      connect=self._connect_timeout,
+      read=self._request_timeout,
+      write=30.0,
+      pool=10.0,
+    )
+
     # Initialize Anthropic client pointing to gateway
     # Note: Anthropic SDK adds /v1/messages to base_url, so we don't add /v1 here
     self.client = AsyncAnthropic(
       api_key=api_key,
       base_url=gateway_url,
-      timeout=120.0,
+      timeout=timeout,
       default_headers=self.client_metadata if self.client_metadata else None,
     )
 
@@ -203,10 +239,12 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     # Default max_tokens for Anthropic (required parameter)
     self._default_max_tokens = kwargs.get("max_tokens", 4096)
 
-    if self._use_queue:
+    if self._throttle:
       self.logger.info(
-        f"Request queue enabled for {name}: "
-        f"initial_rpm={self._queue_initial_rpm}, max_concurrent={self._queue_max_concurrent}"
+        f"Throttling enabled for {name}: "
+        f"rpm={self._throttle_requests_per_minute}, "
+        f"max_in_progress={self._throttle_max_requests_in_progress}, "
+        f"max_queue={self._throttle_max_requests_waiting_in_queue}"
       )
 
   def count_tokens(
@@ -583,8 +621,8 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
 
       return response
 
-    # Route through queue if enabled
-    if self._use_queue:
+    # Route through queue if throttling is enabled
+    if self._throttle:
       response = await self._execute_with_queue(make_request)
     else:
       response = await make_request()
@@ -603,7 +641,7 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
 
   async def _execute_with_queue(self, request_fn):
     """
-    Execute a request through the queue with rate limiting.
+    Execute a request through the queue with rate limiting and retries.
 
     :param request_fn: Async function that makes the actual request
     :return: Response from request_fn
@@ -614,10 +652,24 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
 
       # Configure rate limiter for this model
       rate_config = RateLimiterConfig(
-        initial_rpm=self._queue_initial_rpm,
-        max_concurrent=self._queue_max_concurrent,
+        initial_rpm=self._throttle_requests_per_minute,
+        max_concurrent=self._throttle_max_requests_in_progress,
       )
-      queue_config = QueueConfig(rate_limiter_config=rate_config)
+
+      # Configure retry behavior
+      retry_config = RetryConfig(
+        max_retry_attempts=self._throttle_max_retry_attempts,
+        initial_seconds_between_retry_attempts=self._throttle_initial_seconds_between_retry_attempts,
+        max_seconds_between_retry_attempts=self._throttle_max_seconds_between_retry_attempts,
+      )
+
+      # Configure queue
+      queue_config = QueueConfig(
+        max_queue_depth=self._throttle_max_requests_waiting_in_queue,
+        queue_timeout=self._throttle_max_seconds_to_wait_in_queue,
+        rate_limiter_config=rate_config,
+        retry_config=retry_config,
+      )
       self._queue_manager.configure_model(self.name, queue_config)
 
     # Get queue for this model

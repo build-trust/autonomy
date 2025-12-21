@@ -9,10 +9,12 @@ Key features:
 - Priority support for urgent requests
 - Backpressure handling when queue is full
 - Integration with AdaptiveRateLimiter
+- Retry logic with exponential backoff
 - Graceful shutdown support
 """
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Awaitable, Callable, Generic, Optional, TypeVar
@@ -43,6 +45,7 @@ class QueuedRequest(Generic[T]):
   request_fn: Callable[[], Awaitable[T]] = field(compare=False)
   future: asyncio.Future[T] = field(compare=False)
   created_at: float = field(compare=False)
+  retry_count: int = field(default=0, compare=False)
 
 
 @dataclass
@@ -56,6 +59,20 @@ class QueueStats:
   rate_limited_requests: int
   average_wait_time_ms: float
   is_running: bool
+
+
+@dataclass
+class RetryConfig:
+  """Configuration for retry behavior."""
+
+  # Maximum number of retry attempts
+  max_retry_attempts: int = 3
+
+  # Initial backoff between retries (seconds)
+  initial_seconds_between_retry_attempts: float = 5.0
+
+  # Maximum backoff between retries (seconds)
+  max_seconds_between_retry_attempts: float = 60.0
 
 
 @dataclass
@@ -73,6 +90,9 @@ class QueueConfig:
 
   # Rate limiter configuration
   rate_limiter_config: Optional[RateLimiterConfig] = None
+
+  # Retry configuration
+  retry_config: Optional[RetryConfig] = None
 
 
 class ModelRequestQueue:
@@ -114,6 +134,7 @@ class ModelRequestQueue:
     """
     self.model = model
     self.config = config or QueueConfig()
+    self.retry_config = self.config.retry_config or RetryConfig()
     self.logger = get_logger("request_queue")
 
     # Create or use provided rate limiter
@@ -140,12 +161,14 @@ class ModelRequestQueue:
     self._completed_requests = 0
     self._failed_requests = 0
     self._rate_limited_requests = 0
+    self._retried_requests = 0
     self._total_wait_time_ms = 0.0
 
     self.logger.debug(
       f"Initialized request queue for {model}: "
       f"max_depth={self.config.max_queue_depth}, "
-      f"workers={self.config.num_workers}"
+      f"workers={self.config.num_workers}, "
+      f"max_retries={self.retry_config.max_retry_attempts}"
     )
 
   async def start(self) -> None:
@@ -210,8 +233,6 @@ class ModelRequestQueue:
       # If queue not running, execute directly (fallback behavior)
       return await request_fn()
 
-    import time
-
     created_at = time.monotonic()
     timeout = timeout or self.config.queue_timeout
 
@@ -262,8 +283,6 @@ class ModelRequestQueue:
 
     :param worker_id: Worker identifier for logging
     """
-    import time
-
     self.logger.debug(f"Worker {worker_id} started for {self.model}")
 
     while self._running or not self._queue.empty():
@@ -300,7 +319,12 @@ class ModelRequestQueue:
 
   async def _execute_request(self, queued: QueuedRequest) -> None:
     """
-    Execute a queued request through the rate limiter.
+    Execute a queued request through the rate limiter with retry logic.
+
+    Retry behavior:
+    - 429 (rate limit): retry with exponential backoff
+    - 5xx (server error): retry with exponential backoff
+    - 4xx (client error, except 429): no retry
 
     :param queued: The queued request to execute
     """
@@ -330,21 +354,55 @@ class ModelRequestQueue:
 
         # Check for different error types and handle accordingly
         circuit_state = self._extract_circuit_state_from_error(e)
+        is_rate_limit = self._is_rate_limit_error(e)
+        is_server_error = self._is_server_error(e)
 
         if circuit_state == "exhausted":
           # All providers exhausted - very aggressive backoff
           self._rate_limiter.record_circuit_exhausted()
           self._rate_limited_requests += 1
-        elif self._is_rate_limit_error(e):
+        elif is_rate_limit:
           # Extract retry_after and hint_rpm from error response
           retry_after, hint_rpm = self._extract_rate_limit_info(e)
           self._rate_limiter.record_rate_limit(retry_after=retry_after)
           self._rate_limited_requests += 1
 
-        # Propagate error to future
-        if not queued.future.done():
-          queued.future.set_exception(e)
-        self._failed_requests += 1
+        # Determine if we should retry
+        should_retry = (is_rate_limit or is_server_error) and not circuit_state == "exhausted"
+
+        if should_retry and queued.retry_count < self.retry_config.max_retry_attempts:
+          # Calculate exponential backoff
+          backoff = min(
+            self.retry_config.initial_seconds_between_retry_attempts * (2 ** queued.retry_count),
+            self.retry_config.max_seconds_between_retry_attempts,
+          )
+
+          self.logger.info(
+            f"Retrying request for {self.model} (attempt {queued.retry_count + 1}/{self.retry_config.max_retry_attempts}) "
+            f"after {backoff:.1f}s backoff"
+          )
+
+          # Increment retry count
+          queued.retry_count += 1
+          self._retried_requests += 1
+
+          # Wait for backoff period
+          await asyncio.sleep(backoff)
+
+          # Re-queue the request (it will be processed by next available worker)
+          try:
+            self._queue.put_nowait(queued)
+            self._pending_requests += 1
+          except asyncio.QueueFull:
+            # Queue is full, fail the request
+            if not queued.future.done():
+              queued.future.set_exception(e)
+            self._failed_requests += 1
+        else:
+          # No more retries or non-retryable error - propagate error to future
+          if not queued.future.done():
+            queued.future.set_exception(e)
+          self._failed_requests += 1
 
     except asyncio.TimeoutError:
       if not queued.future.done():
@@ -353,7 +411,7 @@ class ModelRequestQueue:
 
   def _is_rate_limit_error(self, error: Exception) -> bool:
     """
-    Check if an error is a rate limit error.
+    Check if an error is a rate limit error (429).
 
     :param error: The exception to check
     :return: True if this is a rate limit error
@@ -370,6 +428,48 @@ class ModelRequestQueue:
       from openai import RateLimitError
 
       if isinstance(error, RateLimitError):
+        return True
+    except ImportError:
+      pass
+
+    try:
+      from anthropic import RateLimitError as AnthropicRateLimitError
+
+      if isinstance(error, AnthropicRateLimitError):
+        return True
+    except ImportError:
+      pass
+
+    return False
+
+  def _is_server_error(self, error: Exception) -> bool:
+    """
+    Check if an error is a server error (5xx).
+
+    :param error: The exception to check
+    :return: True if this is a server error
+    """
+    error_str = str(error).lower()
+
+    # Check for 5xx status codes in error message
+    for code in ["500", "502", "503", "504"]:
+      if code in error_str:
+        return True
+
+    # Check for specific exception types
+    try:
+      from openai import InternalServerError, APIConnectionError
+
+      if isinstance(error, (InternalServerError, APIConnectionError)):
+        return True
+    except ImportError:
+      pass
+
+    try:
+      from anthropic import InternalServerError as AnthropicInternalServerError
+      from anthropic import APIConnectionError as AnthropicAPIConnectionError
+
+      if isinstance(error, (AnthropicInternalServerError, AnthropicAPIConnectionError)):
         return True
     except ImportError:
       pass
