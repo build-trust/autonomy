@@ -3,6 +3,12 @@ from .repl import Repl
 from .http import HttpServer, NodeDep, WebSocketNodeDep
 from .voice import VoiceAgent, VoiceSession, VoiceConfig
 from .context import ContextSection, AdditionalContextSection, SummarizedHistorySection
+from .errors import (
+  AgentTimeoutError,
+  AgentStartTimeoutError,
+  AgentStopTimeoutError,
+  SendMessageTimeoutError,
+)
 
 from ..nodes.message import AgentReference
 
@@ -21,4 +27,8 @@ __all__ = [
   "ContextSection",
   "AdditionalContextSection",
   "SummarizedHistorySection",
+  "AgentTimeoutError",
+  "AgentStartTimeoutError",
+  "AgentStopTimeoutError",
+  "SendMessageTimeoutError",
 ]

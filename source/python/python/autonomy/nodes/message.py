@@ -1,3 +1,4 @@
+import asyncio
 import cattr
 import json
 import bisect
@@ -400,14 +401,34 @@ class Reference:
     async for response in self.send_request_stream(request, timeout=timeout):
       yield response
 
-  async def send_message(self, message: MessageContent | str, scope="", conversation=""):
+  async def send_message(self, message: MessageContent | str, scope="", conversation="", timeout: Optional[float] = None):
+    """
+    Send a message without waiting for a response.
+
+    This is a fire-and-forget style method that returns a ReceiveReference
+    for later receiving the response.
+
+    Args:
+      message: The message content to send
+      scope: Optional scope identifier for message routing
+      conversation: Optional conversation identifier
+      timeout: Optional timeout in seconds for the send operation.
+        If the send does not complete within this time, raises SendMessageTimeoutError.
+        None means no timeout.
+
+    Returns:
+      ReceiveReference for receiving the response later
+
+    Raises:
+      SendMessageTimeoutError: If timeout is specified and the send times out
+    """
     if isinstance(message, str):
       message = TextContent(message)
 
     request = ConversationSnippet(scope, conversation, [UserMessage(message)])
-    return await self.send_request(request)
+    return await self.send_request(request, timeout=timeout)
 
-  async def send_request(self, message, converter=None) -> ReceiveReference:
+  async def send_request(self, message, converter=None, timeout: Optional[float] = None) -> ReceiveReference:
     if converter is None:
       converter = MessageConverter.create(self.node)
 
@@ -418,7 +439,18 @@ class Reference:
     address = secrets.token_hex(12)
     mailbox = await self.node.create_mailbox(address)
 
-    await mailbox.send(self.name, message_json, self.name_of_remote_node)
+    if timeout is not None:
+      from ..agents.errors import SendMessageTimeoutError
+
+      try:
+        await asyncio.wait_for(
+          mailbox.send(self.name, message_json, self.name_of_remote_node),
+          timeout=timeout
+        )
+      except asyncio.TimeoutError:
+        raise SendMessageTimeoutError(timeout=timeout, agent_name=self.name)
+    else:
+      await mailbox.send(self.name, message_json, self.name_of_remote_node)
 
     return ReceiveReference(mailbox, converter)
 

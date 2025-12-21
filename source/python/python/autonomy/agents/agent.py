@@ -1951,17 +1951,42 @@ class Agent:
       return fallback_id
 
   @staticmethod
-  async def stop(node: Node, name: str):
+  async def stop(
+    node: Node,
+    name: str,
+    timeout: Optional[float] = None,
+    raise_on_timeout: bool = False,
+  ):
     """
     Stop a named agent.
 
     Args:
       node: Node instance where the agent is running
       name: Name of the agent to stop
+      timeout: Optional timeout in seconds for agent shutdown. If the agent does not
+        stop within this time, behavior depends on raise_on_timeout. None means no timeout.
+      raise_on_timeout: If True, raises AgentStopTimeoutError when timeout occurs.
+        If False (default), logs a warning and continues. This allows cleanup to
+        proceed even if an agent is stuck.
     """
     # Unregister the voice configuration when stopping the agent
     _unregister_agent_voice_config(name)
-    await node.stop_worker(name)
+
+    if timeout is not None:
+      from .errors import AgentStopTimeoutError
+
+      try:
+        await asyncio.wait_for(node.stop_worker(name), timeout=timeout)
+      except asyncio.TimeoutError:
+        if raise_on_timeout:
+          raise AgentStopTimeoutError(timeout=timeout, agent_name=name)
+        else:
+          logger.warning(
+            f"Agent.stop() timed out after {timeout}s for agent '{name}'. "
+            "Continuing with cleanup. The agent may still be running."
+          )
+    else:
+      await node.stop_worker(name)
 
   @staticmethod
   async def start(
@@ -1985,6 +2010,7 @@ class Agent:
     subagents: Optional[Dict[str, SubagentConfig]] = None,
     subagent_runner_filter: Optional[str] = None,
     exposed_as: Optional[str] = None,
+    timeout: Optional[float] = None,
   ):
     """
     Start a single agent on a node.
@@ -2002,6 +2028,8 @@ class Agent:
         - ToolFactory instances (create scope-specific tools automatically)
       max_iterations: Maximum state machine iterations
       max_execution_time: Maximum execution time in seconds
+      timeout: Optional timeout in seconds for agent startup. If the agent does not
+        start within this time, raises AgentStartTimeoutError. None means no timeout.
       context_template: Optional custom context template for organizing model input
       context_summary: Enable automatic context summarization for long conversations.
         - True: Enable with defaults (floor=10, ceiling=20 messages)
@@ -2092,7 +2120,7 @@ class Agent:
         subagent_configs=subagents,
       )
 
-    return await Agent.start_agent_impl(
+    start_coro = Agent.start_agent_impl(
       node,
       name,
       instructions,
@@ -2112,6 +2140,16 @@ class Agent:
       subagent_runner_filter,
       exposed_as,
     )
+
+    if timeout is not None:
+      from .errors import AgentStartTimeoutError
+
+      try:
+        return await asyncio.wait_for(start_coro, timeout=timeout)
+      except asyncio.TimeoutError:
+        raise AgentStartTimeoutError(timeout=timeout, agent_name=name)
+    else:
+      return await start_coro
 
   @staticmethod
   async def start_many(
