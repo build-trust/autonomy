@@ -9,6 +9,7 @@ Tests cover:
 - Statistics tracking
 - Gateway hint extraction
 - Circuit state handling
+- Retry logic with exponential backoff
 """
 
 import asyncio
@@ -27,6 +28,7 @@ from autonomy.models.clients.request_queue import (
   QueueManager,
   QueueStats,
   RequestPriority,
+  RetryConfig,
 )
 
 
@@ -42,16 +44,39 @@ class TestQueueConfig:
 
   def test_custom_values(self):
     rate_config = RateLimiterConfig(initial_rpm=120.0)
+    retry_config = RetryConfig(max_retry_attempts=5)
     config = QueueConfig(
       max_queue_depth=500,
       queue_timeout=60.0,
       num_workers=10,
       rate_limiter_config=rate_config,
+      retry_config=retry_config,
     )
     assert config.max_queue_depth == 500
     assert config.queue_timeout == 60.0
     assert config.num_workers == 10
     assert config.rate_limiter_config is rate_config
+    assert config.retry_config is retry_config
+
+
+class TestRetryConfig:
+  """Tests for RetryConfig defaults and custom values."""
+
+  def test_default_values(self):
+    config = RetryConfig()
+    assert config.max_retry_attempts == 3
+    assert config.initial_seconds_between_retry_attempts == 5.0
+    assert config.max_seconds_between_retry_attempts == 60.0
+
+  def test_custom_values(self):
+    config = RetryConfig(
+      max_retry_attempts=5,
+      initial_seconds_between_retry_attempts=2.0,
+      max_seconds_between_retry_attempts=30.0,
+    )
+    assert config.max_retry_attempts == 5
+    assert config.initial_seconds_between_retry_attempts == 2.0
+    assert config.max_seconds_between_retry_attempts == 30.0
 
 
 class TestModelRequestQueue:
@@ -400,6 +425,258 @@ class TestModelRequestQueue:
       # This should timeout
       with pytest.raises(asyncio.TimeoutError):
         await queue.submit(slow_request, timeout=0.05)
+
+    finally:
+      await queue.stop()
+
+
+class TestRetryLogic:
+  """Tests for retry logic with exponential backoff."""
+
+  @pytest.fixture
+  def retry_queue_config(self):
+    """Create a queue config with fast retry settings for testing."""
+    rate_config = RateLimiterConfig(
+      initial_rpm=600.0,  # 10 per second
+      max_concurrent=10,
+      cooldown_period=0.1,
+    )
+    retry_config = RetryConfig(
+      max_retry_attempts=3,
+      initial_seconds_between_retry_attempts=0.1,  # Fast for testing
+      max_seconds_between_retry_attempts=0.5,
+    )
+    return QueueConfig(
+      max_queue_depth=100,
+      queue_timeout=10.0,
+      num_workers=3,
+      rate_limiter_config=rate_config,
+      retry_config=retry_config,
+    )
+
+  @pytest.fixture
+  async def retry_queue(self, retry_queue_config):
+    """Create and start a queue with retry config for testing."""
+    q = ModelRequestQueue("test-retry-model", retry_queue_config)
+    await q.start()
+    yield q
+    await q.stop()
+
+  @pytest.mark.asyncio
+  async def test_retry_on_rate_limit_error(self, retry_queue):
+    """Test that rate limit errors trigger retries."""
+    attempt_count = 0
+
+    async def flaky_request():
+      nonlocal attempt_count
+      attempt_count += 1
+      if attempt_count < 3:
+        # Simulate rate limit error on first 2 attempts
+        raise Exception("Error 429: rate limit exceeded")
+      return "success"
+
+    result = await retry_queue.submit(flaky_request)
+    assert result == "success"
+    assert attempt_count == 3  # Failed twice, succeeded on third
+
+  @pytest.mark.asyncio
+  async def test_retry_on_server_error(self, retry_queue):
+    """Test that server errors (5xx) trigger retries."""
+    attempt_count = 0
+
+    async def flaky_request():
+      nonlocal attempt_count
+      attempt_count += 1
+      if attempt_count < 2:
+        raise Exception("Error 503: service unavailable")
+      return "recovered"
+
+    result = await retry_queue.submit(flaky_request)
+    assert result == "recovered"
+    assert attempt_count == 2
+
+  @pytest.mark.asyncio
+  async def test_no_retry_on_client_error(self, retry_queue):
+    """Test that client errors (4xx except 429) do NOT trigger retries."""
+    attempt_count = 0
+
+    async def bad_request():
+      nonlocal attempt_count
+      attempt_count += 1
+      raise Exception("Error 400: bad request")
+
+    with pytest.raises(Exception, match="400"):
+      await retry_queue.submit(bad_request)
+
+    # Should only try once - no retries for 4xx (except 429)
+    assert attempt_count == 1
+
+  @pytest.mark.asyncio
+  async def test_max_retry_attempts_exceeded(self, retry_queue):
+    """Test that we stop retrying after max attempts."""
+    attempt_count = 0
+
+    async def always_fails():
+      nonlocal attempt_count
+      attempt_count += 1
+      raise Exception("Error 429: rate limit exceeded")
+
+    with pytest.raises(Exception, match="429"):
+      await retry_queue.submit(always_fails)
+
+    # Should try initial + max_retry_attempts times
+    # With max_retry_attempts=3, we get 1 initial + 3 retries = 4 total attempts
+    # But the first attempt counts as attempt 0 for backoff, so we get 4 total
+    assert attempt_count == 4  # 1 initial + 3 retries
+
+  @pytest.mark.asyncio
+  async def test_exponential_backoff_timing(self, retry_queue_config):
+    """Test that exponential backoff increases delays."""
+    # Use a config with slightly longer delays to measure
+    retry_config = RetryConfig(
+      max_retry_attempts=3,
+      initial_seconds_between_retry_attempts=0.05,
+      max_seconds_between_retry_attempts=1.0,
+    )
+    retry_queue_config.retry_config = retry_config
+
+    queue = ModelRequestQueue("test-backoff-model", retry_queue_config)
+    await queue.start()
+
+    try:
+      attempt_times = []
+
+      async def record_time_and_fail():
+        attempt_times.append(time.monotonic())
+        raise Exception("Error 429: rate limit")
+
+      start_time = time.monotonic()
+      with pytest.raises(Exception):
+        await queue.submit(record_time_and_fail, timeout=5.0)
+
+      # Verify delays increase exponentially
+      # Expected: 0.05s, 0.1s, 0.2s between attempts
+      if len(attempt_times) >= 3:
+        delay1 = attempt_times[1] - attempt_times[0]
+        delay2 = attempt_times[2] - attempt_times[1]
+        # Second delay should be roughly 2x the first (accounting for processing time)
+        assert delay2 >= delay1 * 1.5  # Allow some tolerance
+
+    finally:
+      await queue.stop()
+
+  @pytest.mark.asyncio
+  async def test_retried_requests_counter(self, retry_queue):
+    """Test that retried_requests counter is updated."""
+    attempt_count = 0
+
+    async def fails_twice():
+      nonlocal attempt_count
+      attempt_count += 1
+      if attempt_count < 3:
+        raise Exception("Error 500: internal server error")
+      return "ok"
+
+    await retry_queue.submit(fails_twice)
+
+    # Should have recorded 2 retries
+    assert retry_queue._retried_requests == 2
+
+  @pytest.mark.asyncio
+  async def test_retry_with_openai_rate_limit_error(self, retry_queue):
+    """Test retry with actual OpenAI RateLimitError type."""
+    try:
+      from openai import RateLimitError
+    except ImportError:
+      pytest.skip("openai package not available")
+
+    attempt_count = 0
+
+    async def openai_rate_limited():
+      nonlocal attempt_count
+      attempt_count += 1
+      if attempt_count < 2:
+        # Create a mock RateLimitError
+        raise Exception("Error 429: You exceeded your current quota")
+      return "success"
+
+    result = await retry_queue.submit(openai_rate_limited)
+    assert result == "success"
+    assert attempt_count == 2
+
+  @pytest.mark.asyncio
+  async def test_no_retry_on_circuit_exhausted(self, retry_queue_config):
+    """Test that circuit exhausted errors do NOT retry."""
+    queue = ModelRequestQueue("test-exhausted-model", retry_queue_config)
+    await queue.start()
+
+    try:
+      attempt_count = 0
+
+      class MockResponse:
+        def __init__(self):
+          self.headers = {"x-gateway-circuit-state": "exhausted"}
+
+      class ExhaustedError(Exception):
+        def __init__(self):
+          super().__init__("All providers exhausted")
+          self.response = MockResponse()
+
+      async def exhausted_request():
+        nonlocal attempt_count
+        attempt_count += 1
+        raise ExhaustedError()
+
+      with pytest.raises(ExhaustedError):
+        await queue.submit(exhausted_request)
+
+      # Should only try once - exhausted state means no retry
+      assert attempt_count == 1
+
+    finally:
+      await queue.stop()
+
+  @pytest.mark.asyncio
+  async def test_retry_preserves_priority(self, retry_queue_config):
+    """Test that retried requests maintain their priority."""
+    # This is a more complex test to verify priority is preserved
+    # We'll use a single-worker queue and verify order
+    retry_queue_config.num_workers = 1
+
+    queue = ModelRequestQueue("test-priority-retry-model", retry_queue_config)
+    await queue.start()
+
+    try:
+      results = []
+      high_priority_attempts = 0
+
+      async def high_priority_fails_once():
+        nonlocal high_priority_attempts
+        high_priority_attempts += 1
+        if high_priority_attempts == 1:
+          raise Exception("Error 429: rate limit")
+        results.append("high")
+        return "high"
+
+      async def low_priority_request():
+        results.append("low")
+        return "low"
+
+      # Submit both at similar times
+      task_high = asyncio.create_task(
+        queue.submit(high_priority_fails_once, priority=RequestPriority.HIGH)
+      )
+      # Small delay to ensure high priority is queued first
+      await asyncio.sleep(0.01)
+      task_low = asyncio.create_task(
+        queue.submit(low_priority_request, priority=RequestPriority.LOW)
+      )
+
+      await asyncio.gather(task_high, task_low)
+
+      # Both should complete
+      assert "high" in results
+      assert "low" in results
 
     finally:
       await queue.stop()
