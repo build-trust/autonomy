@@ -114,7 +114,9 @@ class TestBasicPauseResume:
     assert len(response) > 0
     # Check we got a final response (either EXECUTING or DONE phase)
     last_msg = response[-1]
-    assert last_msg.phase in [Phase.EXECUTING, Phase.DONE], f"Expected EXECUTING or DONE after {cycles} cycles, got {last_msg.phase}"
+    assert last_msg.phase in [Phase.EXECUTING, Phase.DONE], (
+      f"Expected EXECUTING or DONE after {cycles} cycles, got {last_msg.phase}"
+    )
 
 
 class TestStreamingPauseResume:
@@ -196,11 +198,15 @@ class TestStreamingPauseResume:
       async for chunk in agent.send_stream("That's all"):
         more_chunks.append(chunk)
       resume_chunks.extend(more_chunks)
-      last_phase = resume_chunks[-1].snippet.messages[-1].phase if resume_chunks[-1].snippet.messages else Phase.EXECUTING
+      last_phase = (
+        resume_chunks[-1].snippet.messages[-1].phase if resume_chunks[-1].snippet.messages else Phase.EXECUTING
+      )
       cycles += 1
 
     # Should eventually complete
-    final_phase = resume_chunks[-1].snippet.messages[-1].phase if resume_chunks[-1].snippet.messages else Phase.EXECUTING
+    final_phase = (
+      resume_chunks[-1].snippet.messages[-1].phase if resume_chunks[-1].snippet.messages else Phase.EXECUTING
+    )
     assert final_phase in [Phase.EXECUTING, Phase.DONE]
 
 

@@ -518,20 +518,12 @@ def validate_results(project_path, expected_incidents, num_files):
 
   # Extract data from JSON - be flexible with key names
   # Try various possible key names for files processed
-  files_processed = (
-    summary.get("files_processed", []) or
-    summary.get("files", []) or
-    []
-  )
+  files_processed = summary.get("files_processed", []) or summary.get("files", []) or []
 
   # Check nested in 'summary' object
   if not files_processed and "summary" in summary:
     nested_summary = summary["summary"]
-    files_processed = (
-      nested_summary.get("files_processed", []) or
-      nested_summary.get("files", []) or
-      []
-    )
+    files_processed = nested_summary.get("files_processed", []) or nested_summary.get("files", []) or []
 
   # If no explicit files list, check verification/validation section
   if not files_processed:
@@ -540,17 +532,15 @@ def validate_results(project_path, expected_incidents, num_files):
 
     # Check for actual_files or actual_files_processed count
     actual_count = (
-      validation_section.get("actual_files") or
-      validation_section.get("actual_files_processed") or
-      validation_section.get("expected_files") or
-      0
+      validation_section.get("actual_files")
+      or validation_section.get("actual_files_processed")
+      or validation_section.get("expected_files")
+      or 0
     )
 
     # If all_files_processed is true, generate the list
     all_processed = (
-      validation_section.get("all_files_processed") or
-      validation_section.get("processing_complete") or
-      False
+      validation_section.get("all_files_processed") or validation_section.get("processing_complete") or False
     )
 
     if all_processed and actual_count:
@@ -569,27 +559,22 @@ def validate_results(project_path, expected_incidents, num_files):
     total_files = nested_summary.get("total_files_processed", 0)
     validation_section = summary.get("verification") or summary.get("validation") or {}
     all_processed = (
-      validation_section.get("all_files_processed") or
-      validation_section.get("processing_complete") or
-      False
+      validation_section.get("all_files_processed") or validation_section.get("processing_complete") or False
     )
     if total_files and all_processed:
       files_processed = [f"log_{i:03d}.txt" for i in range(1, total_files + 1)]
 
   # Try various possible key names for incidents
   incidents = (
-    summary.get("incidents", []) or
-    summary.get("critical_incidents", []) or
-    summary.get("security_incidents", []) or
-    []
+    summary.get("incidents", []) or summary.get("critical_incidents", []) or summary.get("security_incidents", []) or []
   )
 
   # Try various possible key names for checkpoints
   checkpoints = (
-    summary.get("checkpoints", []) or
-    summary.get("processing_checkpoints", []) or
-    summary.get("progress_checkpoints", []) or
-    []
+    summary.get("checkpoints", [])
+    or summary.get("processing_checkpoints", [])
+    or summary.get("progress_checkpoints", [])
+    or []
   )
 
   # Check nested in 'statistics' object
@@ -615,9 +600,9 @@ def validate_results(project_path, expected_incidents, num_files):
   for cp in checkpoints:
     # Try various key names for the count
     count = (
-      cp.get("files_completed") or
-      cp.get("files_processed") or
-      cp.get("checkpoint", 0) * CHECKPOINT_INTERVAL  # If using checkpoint number
+      cp.get("files_completed")
+      or cp.get("files_processed")
+      or cp.get("checkpoint", 0) * CHECKPOINT_INTERVAL  # If using checkpoint number
     )
     if isinstance(count, str) and "to" in count:
       # Handle format like "log_001.txt to log_010.txt"
