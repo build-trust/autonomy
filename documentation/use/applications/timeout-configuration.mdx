@@ -1,0 +1,638 @@
+---
+title: "Timeout Configuration"
+icon: "clock"
+description: "How to configure timeouts across all layers of your Autonomy application."
+---
+
+Autonomy applications have multiple timeout layers that work together to ensure
+reliable execution. Understanding how these layers interact is essential for
+building robust agents, especially for long-running tasks like research or
+batch processing.
+
+---
+
+## Understanding Timeout Layers
+
+When a request flows through an Autonomy application, it passes through several
+timeout boundaries:
+
+```
+HTTP API → Agent Execution → Model Calls → [Throttle Queue] → Gateway → LLM Provider
+```
+
+Each layer has its own timeout configuration. The **outermost timeout** (HTTP API)
+acts as the ultimate limit—if inner operations exceed it, the entire request fails.
+
+### The Multi-Iteration Challenge
+
+Agents don't make single requests—they iterate through a loop of thinking, acting,
+and gathering responses. A typical agent conversation involves multiple model calls:
+
+```
+User Message
+    ↓
+┌─────────────────────────────────────────────┐
+│            Agent State Machine              │
+│  ┌───────────────────────────────────────┐  │
+│  │ Iteration 1: Model call (~5-30s)      │  │
+│  ├───────────────────────────────────────┤  │
+│  │ Iteration 2: Tool + Model call (~30s) │  │
+│  ├───────────────────────────────────────┤  │
+│  │ Iteration 3: Model call (~5-30s)      │  │
+│  ├───────────────────────────────────────┤  │
+│  │ ... more iterations ...               │  │
+│  └───────────────────────────────────────┘  │
+└─────────────────────────────────────────────┘
+    ↓
+Response to User
+```
+
+**Time compounds across iterations.** A 10-iteration agent with 30-second iterations
+needs 300 seconds total—but the default HTTP timeout is only 180 seconds.
+
+---
+
+## Quick Reference
+
+| Use Case | HTTP Timeout | `max_execution_time` | Throttle | Notes |
+|----------|--------------|---------------------|----------|-------|
+| Simple Chat | 60s | 60s | No | Quick Q&A, 1-3 iterations |
+| Tool-Augmented Chat | 120s | 120s | No | Tool calls, 3-5 iterations |
+| Research Agent | 660s+ | 600s | Yes | Deep work, many iterations |
+| Batch Processing | 180s | 120s | Yes | Per-item timeout |
+| Voice Interface | 30s | 30s | No | Low latency critical |
+| Subagent Workflows | 660s | 600s | Yes | Parent + child time |
+
+---
+
+## Layer 1: HTTP API Timeout
+
+The HTTP layer is the outermost timeout boundary. Configure it when making
+requests to the built-in agent endpoints:
+
+```bash curl
+# Default: 180 seconds
+curl --request POST \
+  --header "Content-Type: application/json" \
+  --data '{"message": "Research this topic"}' \
+  "https://${CLUSTER}-${ZONE}.cluster.autonomy.computer/agents/researcher?timeout=600"
+```
+
+For custom FastAPI endpoints, handle timeouts explicitly:
+
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.post("/research")
+async def research(request: dict, node: NodeDep):
+    agent = await Agent.start(
+        node=node,
+        name="researcher",
+        instructions="You are a thorough researcher",
+        model=Model("claude-sonnet-4-v1"),
+        max_execution_time=600.0,  # 10 minutes
+    )
+    
+    # For long tasks, use streaming to keep the connection alive
+    response = await agent.send(
+        request.get("query", ""),
+        timeout=660.0  # HTTP timeout > max_execution_time
+    )
+    
+    return {"result": response[-1].content.text}
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+<Warning>
+The HTTP timeout must be **greater than** `max_execution_time` plus overhead
+for startup and teardown (typically 60 seconds buffer).
+</Warning>
+
+---
+
+## Layer 2: Agent Execution Limits
+
+Control how long an agent can run and how many iterations it can perform:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="researcher",
+        instructions="You are a research assistant",
+        model=Model("claude-sonnet-4-v1"),
+        max_execution_time=600.0,  # Total execution limit (seconds)
+        max_iterations=100,         # Maximum reasoning loops
+    )
+
+
+Node.start(main)
+```
+
+### Configuration Options
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_execution_time` | 600s (10 min) | Total time allowed for agent execution |
+| `max_iterations` | 1000 | Maximum number of think-act loops |
+
+### Estimating Execution Time
+
+Use this formula to estimate the time budget:
+
+```
+max_execution_time >= expected_iterations × average_iteration_time + buffer
+```
+
+| Task Type | Expected Iterations | Avg Time/Iteration | Recommended `max_execution_time` |
+|-----------|--------------------|--------------------|----------------------------------|
+| Simple Q&A | 1-2 | 5s | 30s |
+| Tool usage | 3-5 | 20s | 120s |
+| Research | 10-20 | 30s | 600s |
+| Complex analysis | 20-50 | 30s | 1800s |
+
+---
+
+## Layer 3: Agent Lifecycle Timeouts
+
+Separate from execution, agent lifecycle operations have their own timeouts:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    # Start with timeout (registration should be fast)
+    agent = await Agent.start(
+        node=node,
+        name="assistant",
+        instructions="You are helpful",
+        model=Model("claude-sonnet-4-v1"),
+        timeout=30.0,  # Startup timeout
+    )
+    
+    # Send message with timeout
+    response = await agent.send(
+        "Hello",
+        timeout=120.0  # Covers entire multi-iteration execution
+    )
+    
+    # Stop with timeout
+    await Agent.stop(node, agent.name, timeout=10.0)
+
+
+Node.start(main)
+```
+
+### Lifecycle Timeout Guidelines
+
+| Operation | Recommended Timeout | Rationale |
+|-----------|--------------------|-----------| 
+| `Agent.start()` | 30s | Registration should be quick |
+| `agent.send()` | `max_execution_time` + 60s | Full execution plus buffer |
+| `Agent.stop()` | 10s | Cleanup should be fast |
+
+---
+
+## Layer 4: Model Configuration
+
+Each model call has its own timeout settings:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    model = Model(
+        "claude-sonnet-4-v1",
+        request_timeout=120.0,   # Per-call timeout (default: 120s)
+        connect_timeout=10.0,    # Connection establishment (default: 10s)
+        stream_timeout=300.0,    # Streaming responses (default: 300s)
+    )
+    
+    await Agent.start(
+        node=node,
+        name="assistant",
+        instructions="You are helpful",
+        model=model,
+    )
+
+
+Node.start(main)
+```
+
+### Model Timeout Guidelines
+
+| Parameter | Default | When to Adjust |
+|-----------|---------|----------------|
+| `request_timeout` | 120s | Increase for reasoning models (o1, o3) that think longer |
+| `connect_timeout` | 10s | Increase if network latency is high |
+| `stream_timeout` | 300s | Increase for very long streaming responses |
+
+<Note>
+These are **per-call** timeouts. A 10-iteration agent makes 10+ model calls,
+so total time can be `iterations × request_timeout`.
+</Note>
+
+---
+
+## Layer 5: Throttle Configuration
+
+When `throttle=True`, requests queue when rate limits are approached. This
+prevents 429 errors but adds latency:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    model = Model(
+        "claude-sonnet-4-v1",
+        throttle=True,
+        throttle_requests_per_minute=60.0,       # Starting rate
+        throttle_max_requests_in_progress=10,    # Concurrent limit
+        throttle_max_requests_waiting_in_queue=100,
+        throttle_max_seconds_to_wait_in_queue=60.0,  # Queue timeout
+        throttle_max_retry_attempts=3,
+        throttle_initial_seconds_between_retry_attempts=1.0,
+    )
+    
+    await Agent.start(
+        node=node,
+        name="batch_processor",
+        instructions="Process items efficiently",
+        model=model,
+    )
+
+
+Node.start(main)
+```
+
+### Throttle Timing Impact
+
+With throttling enabled, each iteration can wait in the queue:
+
+```
+Iteration 1: queue wait (up to 60s) + model call (up to 120s)
+Iteration 2: queue wait (up to 60s) + model call (up to 120s)
+Iteration 3: queue wait (up to 60s) + model call (up to 120s)
+...
+```
+
+**Worst case for 3 iterations:**
+- Queue waits: 3 × 60s = 180s
+- Model calls: 3 × 120s = 360s
+- **Total: 540s**
+
+<Warning>
+When using throttling, ensure your HTTP timeout accounts for queue wait time
+multiplied by expected iterations.
+</Warning>
+
+### Throttle Configuration by Use Case
+
+| Use Case | `throttle_max_seconds_to_wait_in_queue` | Rationale |
+|----------|----------------------------------------|-----------|
+| Interactive | 30s | Fast feedback on overload |
+| Research | 60s | Balance iterations and timeout |
+| Batch | 120s+ | Allow queue absorption |
+
+---
+
+## Layer 6: Subagent Timeouts
+
+Subagents have their own execution time that counts against the parent's budget:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="coordinator",
+        instructions="Coordinate research across specialists",
+        model=Model("claude-sonnet-4-v1"),
+        max_execution_time=600.0,  # Parent has 10 minutes
+        subagents={
+            "researcher": {
+                "instructions": "Research topics thoroughly",
+                "model": Model("claude-sonnet-4-v1"),
+                "max_execution_time": 120.0,  # 2 minutes per subagent
+            },
+            "analyst": {
+                "instructions": "Analyze findings",
+                "model": Model("claude-sonnet-4-v1"),
+                "max_execution_time": 180.0,  # 3 minutes for analysis
+            }
+        }
+    )
+
+
+Node.start(main)
+```
+
+### Subagent Timeout Guidelines
+
+1. **Subagent time counts against parent time:**
+   ```
+   parent_time_remaining = max_execution_time - time_spent - subagent_time
+   ```
+
+2. **For parallel subagents, the slowest determines wait time:**
+   ```
+   parallel_wait = max(subagent1_time, subagent2_time, ...)
+   ```
+
+3. **Rule of thumb:**
+   ```
+   subagent_timeout <= parent_max_execution_time / expected_num_delegations
+   ```
+
+---
+
+## Configuration Examples
+
+### Interactive Chat Application
+
+Fast responses for conversational AI:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="assistant",
+        instructions="You are a helpful assistant",
+        model=Model("claude-sonnet-4-v1"),
+        max_execution_time=60.0,
+        max_iterations=10,
+    )
+
+
+Node.start(main)
+```
+
+**HTTP timeout:** 90 seconds
+
+### Research Agent
+
+Deep work with many iterations:
+
+```python images/main/main.py
+from autonomy import Agent, FilesystemTools, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="researcher",
+        instructions="""
+        You are a thorough researcher. Take your time to:
+        1. Break down the problem
+        2. Research each aspect
+        3. Take notes in your filesystem
+        4. Synthesize findings
+        """,
+        model=Model(
+            "claude-sonnet-4-v1",
+            throttle=True,
+            throttle_max_seconds_to_wait_in_queue=60.0,
+        ),
+        max_execution_time=1800.0,  # 30 minutes
+        max_iterations=100,
+        tools=[FilesystemTools(visibility="conversation")],
+    )
+
+
+Node.start(main)
+```
+
+**HTTP timeout:** 1860 seconds (31 minutes), or use streaming
+
+### Batch Processing
+
+High throughput with rate limiting:
+
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+from asyncio import gather, create_task
+
+app = FastAPI()
+
+async def process_item(node, item: str, timeout: float = 60.0):
+    agent = None
+    try:
+        agent = await Agent.start(
+            node=node,
+            name=f"processor_{id(item)}",
+            instructions="Process the item concisely",
+            model=Model(
+                "nova-micro-v1",  # Fast, cheap model for batch
+                throttle=True,
+                throttle_requests_per_minute=100.0,
+                throttle_max_seconds_to_wait_in_queue=30.0,
+            ),
+            max_execution_time=30.0,  # Short per-item timeout
+            max_iterations=5,
+        )
+        
+        response = await agent.send(item, timeout=timeout)
+        return {"item": item, "result": response[-1].content.text}
+    except Exception as e:
+        return {"item": item, "error": str(e)}
+    finally:
+        if agent:
+            create_task(Agent.stop(node, agent.name))
+
+@app.post("/batch")
+async def batch_process(request: dict, node: NodeDep):
+    items = request.get("items", [])
+    results = await gather(*(process_item(node, item) for item in items))
+    return {"results": results}
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+### Voice Interface
+
+Ultra-low latency for real-time:
+
+```python images/main/main.py
+from autonomy import Agent, Model, Node
+
+
+async def main(node):
+    await Agent.start(
+        node=node,
+        name="voice_assistant",
+        instructions="Respond briefly and conversationally",
+        model=Model(
+            "nova-micro-v1",  # Fast model
+            request_timeout=30.0,  # Quick timeout
+        ),
+        max_execution_time=30.0,
+        max_iterations=3,
+    )
+
+
+Node.start(main)
+```
+
+**HTTP timeout:** 45 seconds
+
+---
+
+## Timeout Hierarchy
+
+For consistent behavior, configure timeouts from outermost to innermost:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ HTTP API timeout: max_execution_time + 60s buffer           │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ agent.send() timeout: max_execution_time + 30s        │  │
+│  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │ Agent max_execution_time                        │  │  │
+│  │  │  ┌───────────────────────────────────────────┐  │  │  │
+│  │  │  │ Per-iteration: model_timeout + queue_wait │  │  │  │
+│  │  │  │  ┌─────────────────────────────────────┐  │  │  │  │
+│  │  │  │  │ Subagent max_execution_time         │  │  │  │  │
+│  │  │  │  └─────────────────────────────────────┘  │  │  │  │
+│  │  │  └───────────────────────────────────────────┘  │  │  │
+│  │  └─────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key rule:** Each outer layer's timeout must be greater than the sum of all
+possible inner timeouts.
+
+---
+
+## Streaming for Long Tasks
+
+For tasks that may exceed HTTP timeout limits, use streaming to keep the
+connection alive:
+
+```python images/main/main.py
+from autonomy import Agent, HttpServer, Model, Node, NodeDep
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import json
+
+app = FastAPI()
+
+@app.post("/research")
+async def research(request: dict, node: NodeDep):
+    async def generate():
+        agent = await Agent.start(
+            node=node,
+            name="researcher",
+            instructions="Research thoroughly",
+            model=Model("claude-sonnet-4-v1"),
+            max_execution_time=1800.0,  # 30 minutes
+        )
+        
+        async for chunk in agent.stream(request.get("query", "")):
+            if chunk.content and chunk.content.text:
+                yield json.dumps({"text": chunk.content.text}) + "\n"
+    
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+Node.start(http_server=HttpServer(app=app))
+```
+
+Streaming keeps the connection alive with periodic chunks, avoiding HTTP
+timeout issues for long-running research tasks.
+
+---
+
+## Troubleshooting
+
+### "Request timed out" at HTTP layer
+
+**Symptom:** Agent task fails with HTTP timeout, even though agent should have more time.
+
+**Cause:** HTTP timeout (default 180s) < `max_execution_time` (default 600s)
+
+**Solution:** Increase HTTP timeout or use streaming:
+```bash curl
+curl "https://.../agents/researcher?timeout=660"
+```
+
+### Agent stops mid-task
+
+**Symptom:** Agent stops before completing complex reasoning.
+
+**Cause:** `max_execution_time` too short for the number of iterations needed.
+
+**Solution:** Increase `max_execution_time` and `max_iterations`:
+```python
+max_execution_time=600.0,
+max_iterations=50,
+```
+
+### Subagent timeouts
+
+**Symptom:** Subagent tasks fail with timeout errors.
+
+**Cause:** Default subagent timeout (60s) too short for multi-step work.
+
+**Solution:** Increase subagent `max_execution_time`:
+```python
+subagents={
+    "researcher": {
+        "max_execution_time": 300.0,  # 5 minutes
+    }
+}
+```
+
+### Throttle queue timeouts under load
+
+**Symptom:** Many requests fail with queue timeout when system is busy.
+
+**Cause:** `throttle_max_seconds_to_wait_in_queue` too short for the load.
+
+**Solution:** Increase queue timeout or reduce concurrency:
+```python
+Model(
+    "claude-sonnet-4-v1",
+    throttle=True,
+    throttle_max_seconds_to_wait_in_queue=120.0,
+)
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start Conservative" icon="gauge-low">
+    Begin with shorter timeouts and increase based on observed behavior. Long
+    timeouts can mask performance issues.
+  </Card>
+  
+  <Card title="Use Streaming" icon="water">
+    For tasks over 3 minutes, use streaming to avoid HTTP timeout issues and
+    provide progress to users.
+  </Card>
+  
+  <Card title="Match Layers" icon="layer-group">
+    Ensure outer timeouts are always greater than inner timeouts plus overhead.
+  </Card>
+  
+  <Card title="Monitor Iterations" icon="chart-line">
+    Track how many iterations your agents typically use to right-size timeouts.
+  </Card>
+</CardGroup>
