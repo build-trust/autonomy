@@ -41,6 +41,7 @@ from .flows import Flow, FlowOperation, START, END
 from .clusters import Cluster, Zone
 from .memory import Memory
 from .tools import McpTool, Tool, FilesystemTools, ToolFactory
+from .gather import gather
 from .knowledge import (
   Knowledge,
   KnowledgeProvider,
@@ -149,6 +150,8 @@ __all__ = [
   "Tool",
   "FilesystemTools",
   "ToolFactory",
+  # from .gather
+  "gather",
   # from .knowledge
   "Knowledge",
   "KnowledgeProvider",
