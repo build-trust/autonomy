@@ -92,6 +92,7 @@ class VoiceConfig(TypedDict, total=False):
               "realtime_model": "gpt-4o-realtime-preview",
               "voice": "nova",
               "allowed_actions": ["greetings", "collect_phone_number"],
+              "delegation_instructions": "Match depth to question. Brief for simple, comprehensive for complex.",
           },
       )
 
@@ -106,6 +107,10 @@ class VoiceConfig(TypedDict, total=False):
       vad_threshold: VAD sensitivity (0.0-1.0)
       vad_prefix_padding_ms: Audio to include before speech detection
       vad_silence_duration_ms: Silence duration to detect end of speech
+      delegation_instructions: Instructions for how the primary agent should format
+          responses when delegated to. Controls response length, formatting style, etc.
+          Default: "Be concise and natural-sounding for voice. Avoid lists and complex
+          formatting. Keep responses brief (1-3 sentences max)."
   """
 
   realtime_model: str
@@ -118,6 +123,7 @@ class VoiceConfig(TypedDict, total=False):
   vad_threshold: float
   vad_prefix_padding_ms: int
   vad_silence_duration_ms: int
+  delegation_instructions: Optional[str]
 
 
 # Default values for VoiceConfig
@@ -144,6 +150,10 @@ VOICE_CONFIG_DEFAULTS: VoiceConfig = {
   "vad_threshold": 0.5,
   "vad_prefix_padding_ms": 300,
   "vad_silence_duration_ms": 500,
+  "delegation_instructions": (
+    "Be concise and natural-sounding for voice. Avoid lists and complex formatting.\n"
+    "Keep responses brief (1-3 sentences max)."
+  ),
 }
 
 
@@ -189,6 +199,7 @@ class DelegateToPrimaryTool(InvokableTool):
     conversation_history: List[Dict],
     scope: Optional[str] = None,
     conversation: Optional[str] = None,
+    config: Optional[VoiceConfig] = None,
   ):
     """
     Initialize DelegateToPrimaryTool.
@@ -198,6 +209,7 @@ class DelegateToPrimaryTool(InvokableTool):
         conversation_history: Shared list tracking conversation for context
         scope: Optional scope for memory isolation (e.g., user ID)
         conversation: Optional conversation ID for memory isolation
+        config: Optional VoiceConfig for delegation instructions
     """
     super().__init__()
     self.name = "delegate_to_primary"
@@ -205,6 +217,7 @@ class DelegateToPrimaryTool(InvokableTool):
     self.conversation_history = conversation_history
     self.scope = scope
     self.conversation = conversation
+    self.config = config or {}
     self.description = (
       "Use this tool to get a response from the primary agent. "
       "The primary agent is more intelligent and has access to tools. "
@@ -280,6 +293,9 @@ class DelegateToPrimaryTool(InvokableTool):
         history_lines.append(f"{role}: {content}")
       history_text = "\n".join(history_lines)
 
+    # Get delegation instructions from config
+    delegation_instructions = get_voice_config_value(self.config, "delegation_instructions")
+
     # Create the primary agent query message
     primary_message = f"""[Voice Agent Delegation Request]
 
@@ -289,8 +305,7 @@ Conversation History:
 Latest Context from User: {context}
 
 Please provide a response that will be spoken aloud by the voice agent.
-Be concise and natural-sounding for voice. Avoid lists and complex formatting.
-Keep responses brief (1-3 sentences max)."""
+{delegation_instructions}"""
 
     # Use provided scope/conversation for memory isolation
     # Falls back to defaults if not provided
@@ -537,12 +552,13 @@ class VoiceSession:
     self.scope = scope
     self.conversation = conversation
 
-    # Create delegation tool with access to conversation history and scope/conversation
+    # Create delegation tool with access to conversation history, scope/conversation, and config
     self.delegate_tool = DelegateToPrimaryTool(
       agent.primary,
       self.conversation_history,
       scope=scope,
       conversation=conversation,
+      config=agent.config,
     )
 
     # Interruption handling state
