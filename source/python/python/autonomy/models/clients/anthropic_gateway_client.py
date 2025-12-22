@@ -41,6 +41,7 @@ from .gateway_config import (
 )
 from .rate_limiter import RateLimiterConfig
 from .request_queue import QueueConfig, QueueManager, RetryConfig
+from .shared_clients import get_shared_anthropic_client
 
 
 def normalize_messages_for_anthropic(
@@ -197,37 +198,18 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     self._throttle_initial_seconds_between_retry_attempts = kwargs.pop(
       "throttle_initial_seconds_between_retry_attempts", 5.0
     )
-    self._throttle_max_seconds_between_retry_attempts = kwargs.pop(
-      "throttle_max_seconds_between_retry_attempts", 60.0
-    )
+    self._throttle_max_seconds_between_retry_attempts = kwargs.pop("throttle_max_seconds_between_retry_attempts", 60.0)
 
     self._queue_manager: Optional[QueueManager] = None
 
     self.kwargs = kwargs
 
-    # Get gateway configuration
-    gateway_url = get_gateway_url()
-    api_key = get_gateway_api_key()
-
     # Get client metadata headers for AWS usage tracking (Phase 8a)
     self.client_metadata = get_client_metadata_headers()
 
-    # Configure httpx timeout with separate connect/read timeouts
-    timeout = httpx.Timeout(
-      connect=self._connect_timeout,
-      read=self._request_timeout,
-      write=30.0,
-      pool=10.0,
-    )
-
-    # Initialize Anthropic client pointing to gateway
-    # Note: Anthropic SDK adds /v1/messages to base_url, so we don't add /v1 here
-    self.client = AsyncAnthropic(
-      api_key=api_key,
-      base_url=gateway_url,
-      timeout=timeout,
-      default_headers=self.client_metadata if self.client_metadata else None,
-    )
+    # Client will be lazily initialized via _get_client()
+    # This uses a shared singleton to avoid memory leaks from multiple httpx clients
+    self._client: Optional[AsyncAnthropic] = None
 
     # Initialize tokenizer for token counting
     try:
@@ -246,6 +228,20 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
         f"max_in_progress={self._throttle_max_requests_in_progress}, "
         f"max_queue={self._throttle_max_requests_waiting_in_queue}"
       )
+
+  async def _get_client(self) -> AsyncAnthropic:
+    """
+    Get the shared Anthropic client.
+
+    Uses a singleton shared client to avoid creating multiple httpx connection
+    pools, which would cause memory leaks when many agents are created/destroyed.
+
+    Returns:
+        AsyncAnthropic: Shared client instance
+    """
+    if self._client is None:
+      self._client = await get_shared_anthropic_client()
+    return self._client
 
   def count_tokens(
     self, messages: List[dict] | List[ConversationMessage], is_thinking: bool = False, tools=None
@@ -445,8 +441,9 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     if system:
       request_kwargs["system"] = system
 
-    # Make streaming request
-    async with self.client.messages.stream(**request_kwargs) as stream:
+    # Get shared client and make streaming request
+    client = await self._get_client()
+    async with client.messages.stream(**request_kwargs) as stream:
       accumulated_content = ""
       accumulated_tool_calls = []
 
@@ -602,10 +599,13 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     if system:
       request_kwargs["system"] = system
 
+    # Get shared client
+    client = await self._get_client()
+
     # Define the actual request function
     # Use with_raw_response to access headers for rate limit hints
     async def make_request():
-      raw_response = await self.client.messages.with_raw_response.create(**request_kwargs)
+      raw_response = await client.messages.with_raw_response.create(**request_kwargs)
 
       # Extract headers for rate limiting hints
       headers = raw_response.headers

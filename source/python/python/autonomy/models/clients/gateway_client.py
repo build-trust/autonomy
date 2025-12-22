@@ -42,6 +42,7 @@ from .gateway_config import (
 )
 from .rate_limiter import RateLimiterConfig
 from .request_queue import QueueConfig, QueueManager, RetryConfig
+from .shared_clients import get_shared_openai_client
 
 
 def normalize_messages(
@@ -149,7 +150,7 @@ class GatewayClient(InfoContext, DebugContext):
     self.name = name
     self.max_input_tokens = max_input_tokens
 
-    # Extract timeout configuration
+    # Extract timeout configuration (kept for compatibility, but shared client uses defaults)
     self._request_timeout = kwargs.pop("request_timeout", 120.0)
     self._connect_timeout = kwargs.pop("connect_timeout", 10.0)
     self._stream_timeout = kwargs.pop("stream_timeout", 300.0)
@@ -164,36 +165,18 @@ class GatewayClient(InfoContext, DebugContext):
     self._throttle_initial_seconds_between_retry_attempts = kwargs.pop(
       "throttle_initial_seconds_between_retry_attempts", 5.0
     )
-    self._throttle_max_seconds_between_retry_attempts = kwargs.pop(
-      "throttle_max_seconds_between_retry_attempts", 60.0
-    )
+    self._throttle_max_seconds_between_retry_attempts = kwargs.pop("throttle_max_seconds_between_retry_attempts", 60.0)
 
     self._queue_manager: Optional[QueueManager] = None
 
     self.kwargs = kwargs
 
-    # Get gateway configuration
-    gateway_url = get_gateway_url()
-    api_key = get_gateway_api_key()
-
     # Get client metadata headers for AWS usage tracking (Phase 8a)
     self.client_metadata = get_client_metadata_headers()
 
-    # Configure httpx timeout with separate connect/read timeouts
-    timeout = httpx.Timeout(
-      connect=self._connect_timeout,
-      read=self._request_timeout,
-      write=30.0,
-      pool=10.0,
-    )
-
-    # Initialize OpenAI client pointing to gateway
-    self.client = AsyncOpenAI(
-      api_key=api_key,
-      base_url=f"{gateway_url}/v1",
-      timeout=timeout,
-      default_headers=self.client_metadata if self.client_metadata else None,
-    )
+    # Client will be lazily initialized via _get_client()
+    # This uses a shared singleton to avoid memory leaks from multiple httpx clients
+    self._client: Optional[AsyncOpenAI] = None
 
     # Initialize tokenizer for token counting
     # Use cl100k_base which is used by GPT-4 and Claude models
@@ -210,6 +193,20 @@ class GatewayClient(InfoContext, DebugContext):
         f"max_in_progress={self._throttle_max_requests_in_progress}, "
         f"max_queue={self._throttle_max_requests_waiting_in_queue}"
       )
+
+  async def _get_client(self) -> AsyncOpenAI:
+    """
+    Get the shared OpenAI client.
+
+    Uses a singleton shared client to avoid creating multiple httpx connection
+    pools, which would cause memory leaks when many agents are created/destroyed.
+
+    Returns:
+        AsyncOpenAI: Shared client instance
+    """
+    if self._client is None:
+      self._client = await get_shared_openai_client()
+    return self._client
 
   def count_tokens(
     self, messages: List[dict] | List[ConversationMessage], is_thinking: bool = False, tools=None
@@ -386,8 +383,9 @@ class GatewayClient(InfoContext, DebugContext):
       conversation=conversation,
     )
 
-    # Make streaming request
-    stream = await self.client.chat.completions.create(
+    # Get shared client and make streaming request
+    client = await self._get_client()
+    stream = await client.chat.completions.create(
       model=self.name,
       messages=messages,
       stream=True,
@@ -502,11 +500,14 @@ class GatewayClient(InfoContext, DebugContext):
       conversation=conversation,
     )
 
+    # Get shared client
+    client = await self._get_client()
+
     # Define the actual request function
     # Use with_raw_response to access headers for rate limit hints
     async def make_request():
       # Use stream_timeout for non-streaming requests that might still take long
-      raw_response = await self.client.chat.completions.with_raw_response.create(
+      raw_response = await client.chat.completions.with_raw_response.create(
         model=self.name,
         messages=messages,
         timeout=self._request_timeout,
@@ -610,7 +611,8 @@ class GatewayClient(InfoContext, DebugContext):
     """
     self.logger.info(f"Generating embeddings for {len(text)} texts")
 
-    response = await self.client.embeddings.create(
+    client = await self._get_client()
+    response = await client.embeddings.create(
       model=self.name,
       input=text,
       **kwargs,
@@ -633,7 +635,8 @@ class GatewayClient(InfoContext, DebugContext):
     # Use tts-1 model for text-to-speech
     tts_model = kwargs.pop("model", "tts-1")
 
-    response = await self.client.audio.speech.create(
+    client = await self._get_client()
+    response = await client.audio.speech.create(
       model=tts_model,
       voice=voice,
       input=text,
@@ -657,7 +660,8 @@ class GatewayClient(InfoContext, DebugContext):
     # Use whisper-1 model for speech-to-text
     stt_model = kwargs.pop("model", "whisper-1")
 
-    transcription = await self.client.audio.transcriptions.create(
+    client = await self._get_client()
+    transcription = await client.audio.transcriptions.create(
       model=stt_model,
       file=audio_file,
       language=language,
