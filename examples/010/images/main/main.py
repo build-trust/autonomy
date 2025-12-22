@@ -47,6 +47,17 @@ class CodeAnalyzer:
     async def analyze_file(self, filename, content):
         from autonomy import Agent, Model
 
+        # Configure model with throttling for high-scale batch processing
+        model = Model(
+            "nova-micro-v1",
+            throttle=True,
+            throttle_requests_per_minute=100,
+            throttle_max_requests_in_progress=20,
+            throttle_max_requests_waiting_in_queue=500,
+            throttle_max_seconds_to_wait_in_queue=120.0,
+            request_timeout=60.0,
+        )
+
         agent = await Agent.start(
             node=self.node,
             instructions="""
@@ -58,7 +69,10 @@ class CodeAnalyzer:
 
                 Don't say anything else. Only output one upper case word YES or NO.
             """,
-            model=Model("nova-micro-v1"),
+            model=model,
+            max_execution_time=60.0,
+            max_iterations=5,
+            timeout=30.0,
         )
 
         message = f"Filename: {filename}\nContent:\n\n{content}"
@@ -68,9 +82,17 @@ class CodeAnalyzer:
     async def collect_results(self, agent, filename, receiver):
         from autonomy import Agent
 
-        analysis = await receiver.receive_message(timeout=1000)
-        _ = await Agent.stop(self.node, agent.name)
-        return {"file": filename, "analysis": str(analysis[0].content)}
+        try:
+            analysis = await receiver.receive_message(timeout=120)
+            result = {"file": filename, "analysis": str(analysis[0].content)}
+        except Exception as e:
+            result = {"file": filename, "analysis": f"ERROR: {str(e)}"}
+        finally:
+            try:
+                await Agent.stop(self.node, agent.name, timeout=10.0)
+            except Exception:
+                pass  # Best effort cleanup
+        return result
 
     async def analyze_github_repo(self, org, repo, branch="main"):
         from autonomy import gather
@@ -82,11 +104,12 @@ class CodeAnalyzer:
         try:
             files = await asyncio.to_thread(self.files_from_github_repo, org, repo, branch)
 
+            # Limit concurrency to prevent resource exhaustion
             futures = [self.analyze_file(f, c) for f, c in files]
-            agents = await gather(*futures, batch_size=100)
+            agents = await gather(*futures, batch_size=20)
 
             futures = [self.collect_results(a, f, r) for (a, f, r) in agents]
-            analyses = await gather(*futures, batch_size=100)
+            analyses = await gather(*futures, batch_size=20)
 
             return {"repo": name, "number_of_files": len(files), "analysis": analyses}
         except Exception as e:
@@ -114,10 +137,18 @@ async def run_analyzer(node, repos):
     await node.start_worker(name, CodeAnalyzer())
 
     repos_json = json.dumps(repos)
-    reply_json = await node.send_and_receive(name, repos_json, timeout=1000)
-    reply = json.loads(reply_json)
+    try:
+        # Increased timeout for batch processing with throttling
+        reply_json = await node.send_and_receive(name, repos_json, timeout=600)
+        reply = json.loads(reply_json)
+    except Exception as e:
+        reply = [{"error": str(e)}]
+    finally:
+        try:
+            await node.stop_worker(name)
+        except Exception:
+            pass  # Best effort cleanup
 
-    await node.stop_worker(name)
     return reply
 
 
