@@ -48,14 +48,17 @@ class CodeAnalyzer:
         from autonomy import Agent, Model
 
         # Configure model with throttling for high-scale batch processing
+        # Very conservative settings to prevent OOM and queue exhaustion
         model = Model(
             "nova-micro-v1",
             throttle=True,
-            throttle_requests_per_minute=100,
-            throttle_max_requests_in_progress=20,
-            throttle_max_requests_waiting_in_queue=500,
-            throttle_max_seconds_to_wait_in_queue=120.0,
-            request_timeout=60.0,
+            throttle_requests_per_minute=30,           # Conservative start
+            throttle_max_requests_in_progress=5,       # Limit concurrent requests
+            throttle_max_requests_waiting_in_queue=1000,  # Large queue to absorb bursts
+            throttle_max_seconds_to_wait_in_queue=300.0,  # 5 min queue timeout
+            throttle_max_retry_attempts=5,
+            throttle_initial_seconds_between_retry_attempts=2.0,
+            request_timeout=120.0,
         )
 
         agent = await Agent.start(
@@ -104,12 +107,12 @@ class CodeAnalyzer:
         try:
             files = await asyncio.to_thread(self.files_from_github_repo, org, repo, branch)
 
-            # Limit concurrency to prevent resource exhaustion
+            # Limit concurrency to prevent OOM - only 5 agents at a time
             futures = [self.analyze_file(f, c) for f, c in files]
-            agents = await gather(*futures, batch_size=20)
+            agents = await gather(*futures, batch_size=5)
 
             futures = [self.collect_results(a, f, r) for (a, f, r) in agents]
-            analyses = await gather(*futures, batch_size=20)
+            analyses = await gather(*futures, batch_size=5)
 
             return {"repo": name, "number_of_files": len(files), "analysis": analyses}
         except Exception as e:
