@@ -2410,7 +2410,7 @@ class TestLiveGateway:
     3. Configure
        export AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1
        export AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080
-       export AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=unlimited_client_key
+       export AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=test_key
     """
 
     @staticmethod

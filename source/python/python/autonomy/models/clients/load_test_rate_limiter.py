@@ -990,7 +990,7 @@ def main():
   parser.add_argument(
     "--api-key",
     default=os.environ.get(
-      "AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY", "unlimited_client_key"
+      "AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY", "test_key"
     ),
     help="Gateway API key",
   )

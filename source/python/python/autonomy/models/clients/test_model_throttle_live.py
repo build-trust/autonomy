@@ -18,7 +18,7 @@ Usage:
     cd autonomy/source/python
     AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1 \
     AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080 \
-    AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=unlimited_client_key \
+    AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=test_key \
     uv run --active python -m autonomy.models.clients.test_model_throttle_live
 
     # Run specific tests:
@@ -46,7 +46,7 @@ def check_environment():
     gateway_url = os.environ.get("AUTONOMY_EXTERNAL_APIS_GATEWAY_URL", "http://localhost:8080")
     print(f"✓ Gateway URL: {gateway_url}")
 
-    api_key = os.environ.get("AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY", "unlimited_client_key")
+    api_key = os.environ.get("AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY", "test_key")
     print(f"✓ API Key: {api_key[:10]}...")
 
     return True

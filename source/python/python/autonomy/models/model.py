@@ -145,7 +145,7 @@ class Model(InfoContext, DebugContext):
 
   - ``AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1`` - Enable gateway mode (recommended)
   - ``AUTONOMY_EXTERNAL_APIS_GATEWAY_URL`` - Gateway URL (default: http://localhost:8000)
-  - ``AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY`` - API key (default: unlimited_client_key)
+  - ``AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY`` - API key (default: test_key, requires GATEWAY_TEST_MODE=true)
   - ``CLUSTER`` - Cluster ID for AWS usage tracking
   - ``ZONE`` - Zone ID for AWS usage tracking
 

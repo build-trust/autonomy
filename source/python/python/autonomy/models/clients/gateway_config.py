@@ -41,10 +41,10 @@ logger = logging.getLogger(__name__)
 # Default gateway URL - typically runs locally during development
 DEFAULT_GATEWAY_URL = "http://localhost:8000"
 
-# Hardcoded default API key that matches the gateway's config.toml
-# This allows all clients to work out-of-the-box until per-client keys are implemented
-# The key "unlimited_client_key" is configured in the gateway with no model restrictions
-DEFAULT_GATEWAY_API_KEY = "unlimited_client_key"
+# Default API key for testing - requires GATEWAY_TEST_MODE=true on the gateway
+# This key only works when the gateway has test mode enabled (for local dev/testing)
+# In production, use zone JWT tokens or configure a proper client key
+DEFAULT_GATEWAY_API_KEY = "test_key"
 
 # Cache for file-based tokens to avoid reading file on every request
 # Re-read interval is set to 5 minutes - well within the 1-hour refresh cycle

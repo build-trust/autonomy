@@ -2,17 +2,17 @@
 Integration tests for Human-in-the-Loop (HITL) functionality with real models.
 
 These tests require:
-- Gateway access configured
+- Gateway access configured with GATEWAY_TEST_MODE=true
 - Environment variables:
   - AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1
   - AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080
-  - AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=unlimited_client_key
+  - AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=test_key
 
 Run with:
   cd source/python
   AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1 \
   AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080 \
-  AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=unlimited_client_key \
+  AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=test_key \
     uv run --active pytest tests/agents/test_hitl_integration.py -v
 
 Skip these tests in normal runs:
