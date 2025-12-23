@@ -90,8 +90,7 @@ class AgentStartTimeoutError(AgentTimeoutError):
 
   def _get_suggestion(self) -> str:
     return (
-      "Consider increasing the timeout, checking gateway connectivity, "
-      "or verifying the node is running and accessible."
+      "Consider increasing the timeout, checking gateway connectivity, or verifying the node is running and accessible."
     )
 
 
