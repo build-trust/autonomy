@@ -165,9 +165,7 @@ class MockGateway:
     start = time.monotonic()
 
     # Simulate network latency
-    latency = self.latency_ms + random.uniform(
-      -self.latency_jitter_ms, self.latency_jitter_ms
-    )
+    latency = self.latency_ms + random.uniform(-self.latency_jitter_ms, self.latency_jitter_ms)
     await asyncio.sleep(max(0, latency / 1000.0))
 
     async with self._lock:
@@ -320,9 +318,9 @@ async def test_single_client_rate_limiting(
   - AIMD adaptation works correctly
   - Throughput matches expected rate
   """
-  print(f"\n{'='*60}")
+  print(f"\n{'=' * 60}")
   print(f"Single Client Rate Limiting Test")
-  print(f"{'='*60}")
+  print(f"{'=' * 60}")
   print(f"Model: {model}")
   print(f"Requests: {num_requests}")
   print(f"Initial RPM: {initial_rpm}")
@@ -350,7 +348,7 @@ async def test_single_client_rate_limiting(
     try:
       await asyncio.wait_for(limiter.acquire(), timeout=10.0)
     except asyncio.TimeoutError:
-      print(f"  Request {i+1}: Timeout waiting for rate limit token (RPM={limiter.current_rpm:.1f})")
+      print(f"  Request {i + 1}: Timeout waiting for rate limit token (RPM={limiter.current_rpm:.1f})")
       # Skip this request but continue
       continue
 
@@ -380,7 +378,7 @@ async def test_single_client_rate_limiting(
     if (i + 1) % 10 == 0 or (now - last_progress_time) > 2.0:
       last_progress_time = now
       print(
-        f"  Progress: {i+1}/{num_requests} | "
+        f"  Progress: {i + 1}/{num_requests} | "
         f"Current RPM: {limiter.current_rpm:.1f} | "
         f"Rate limits: {limiter.stats.rate_limited_requests} | "
         f"Elapsed: {elapsed:.1f}s"
@@ -406,14 +404,8 @@ async def test_single_client_rate_limiting(
     throughput_rps=throughput,
     avg_latency_ms=statistics.mean(latencies) if latencies else 0,
     p50_latency_ms=statistics.median(latencies) if latencies else 0,
-    p95_latency_ms=(
-      statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else 0
-    ),
-    p99_latency_ms=(
-      statistics.quantiles(latencies, n=100)[98]
-      if len(latencies) >= 100
-      else 0
-    ),
+    p95_latency_ms=(statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else 0),
+    p99_latency_ms=(statistics.quantiles(latencies, n=100)[98] if len(latencies) >= 100 else 0),
     final_rpm=stats.current_rpm,
     rate_limit_events=stats.rate_limited_requests,
     circuit_open_events=stats.circuit_open_events,
@@ -446,9 +438,9 @@ async def test_multi_client_convergence(
   - AIMD algorithm distributes capacity fairly
   - Convergence time is reasonable
   """
-  print(f"\n{'='*60}")
+  print(f"\n{'=' * 60}")
   print(f"Multi-Client AIMD Convergence Test")
-  print(f"{'='*60}")
+  print(f"{'=' * 60}")
   print(f"Model: {model}")
   print(f"Clients: {num_clients}")
   print(f"Requests per client: {requests_per_client}")
@@ -523,20 +515,14 @@ async def test_multi_client_convergence(
   client_rpms = [c.current_rpm for c in clients]
 
   print(f"\n  Client Results:")
-  for i, (limiter, successes, rpm) in enumerate(
-    zip(clients, client_successful, client_rpms)
-  ):
+  for i, (limiter, successes, rpm) in enumerate(zip(clients, client_successful, client_rpms)):
     print(f"    Client {i}: {successes} successful, final RPM: {rpm:.1f}")
 
   # Calculate convergence time (when variance drops below threshold)
   convergence_time = None
   if len(rpm_histories[0]) > 10:
     for t_idx in range(10, len(rpm_histories[0])):
-      rpms_at_time = [
-        rpm_histories[c][t_idx][1]
-        for c in range(num_clients)
-        if t_idx < len(rpm_histories[c])
-      ]
+      rpms_at_time = [rpm_histories[c][t_idx][1] for c in range(num_clients) if t_idx < len(rpm_histories[c])]
       if len(rpms_at_time) == num_clients:
         variance = statistics.variance(rpms_at_time)
         mean = statistics.mean(rpms_at_time)
@@ -555,14 +541,8 @@ async def test_multi_client_convergence(
     throughput_rps=throughput,
     avg_latency_ms=statistics.mean(latencies) if latencies else 0,
     p50_latency_ms=statistics.median(latencies) if latencies else 0,
-    p95_latency_ms=(
-      statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else 0
-    ),
-    p99_latency_ms=(
-      statistics.quantiles(latencies, n=100)[98]
-      if len(latencies) >= 100
-      else 0
-    ),
+    p95_latency_ms=(statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else 0),
+    p99_latency_ms=(statistics.quantiles(latencies, n=100)[98] if len(latencies) >= 100 else 0),
     final_rpm=statistics.mean(client_rpms),
     rate_limit_events=sum(c.stats.rate_limited_requests for c in clients),
     circuit_open_events=sum(c.stats.circuit_open_events for c in clients),
@@ -595,9 +575,9 @@ async def test_gateway_headers(
   - X-Gateway-Circuit-State header is present
   - Retry-After header on 429 responses
   """
-  print(f"\n{'='*60}")
+  print(f"\n{'=' * 60}")
   print(f"Gateway Headers Test")
-  print(f"{'='*60}")
+  print(f"{'=' * 60}")
   print(f"Gateway URL: {gateway_url}")
   print(f"Model: {model}")
   print()
@@ -613,7 +593,7 @@ async def test_gateway_headers(
       results.append(result)
 
       print(
-        f"  Request {i+1}: "
+        f"  Request {i + 1}: "
         f"status={result.status_code}, "
         f"hint_rpm={result.hint_rpm}, "
         f"circuit_state={result.circuit_state}, "
@@ -643,9 +623,7 @@ async def test_gateway_headers(
       rate_limited_requests=len([r for r in results if r.rate_limited]),
       error_requests=len(results) - len(successful),
       throughput_rps=0,
-      avg_latency_ms=(
-        statistics.mean([r.latency_ms for r in successful]) if successful else 0
-      ),
+      avg_latency_ms=(statistics.mean([r.latency_ms for r in successful]) if successful else 0),
       p50_latency_ms=0,
       p95_latency_ms=0,
       p99_latency_ms=0,
@@ -657,9 +635,7 @@ async def test_gateway_headers(
         "hint_rpm_present": len(with_hint) > 0,
         "circuit_state_present": len(with_circuit) > 0,
         "sample_hint_rpm": with_hint[0].hint_rpm if with_hint else None,
-        "sample_circuit_state": (
-          with_circuit[0].circuit_state if with_circuit else None
-        ),
+        "sample_circuit_state": (with_circuit[0].circuit_state if with_circuit else None),
       },
     )
 
@@ -682,9 +658,9 @@ async def test_queue_with_rate_limiter(
   - Priority ordering works correctly
   - Backpressure handling
   """
-  print(f"\n{'='*60}")
+  print(f"\n{'=' * 60}")
   print(f"Request Queue Integration Test")
-  print(f"{'='*60}")
+  print(f"{'=' * 60}")
   print(f"Model: {model}")
   print(f"Requests: {num_requests}")
   print(f"Initial RPM: {initial_rpm}")
@@ -742,9 +718,7 @@ async def test_queue_with_rate_limiter(
     if (i + 1) % 20 == 0:
       stats = queue.stats
       print(
-        f"  Submitted: {i+1}/{num_requests} | "
-        f"Queue depth: {stats.queue_depth} | "
-        f"Pending: {stats.pending_requests}"
+        f"  Submitted: {i + 1}/{num_requests} | Queue depth: {stats.queue_depth} | Pending: {stats.pending_requests}"
       )
 
   # Wait for all requests
@@ -787,14 +761,8 @@ async def test_queue_with_rate_limiter(
     throughput_rps=throughput,
     avg_latency_ms=statistics.mean(latencies) if latencies else 0,
     p50_latency_ms=statistics.median(latencies) if latencies else 0,
-    p95_latency_ms=(
-      statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else 0
-    ),
-    p99_latency_ms=(
-      statistics.quantiles(latencies, n=100)[98]
-      if len(latencies) >= 100
-      else 0
-    ),
+    p95_latency_ms=(statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else 0),
+    p99_latency_ms=(statistics.quantiles(latencies, n=100)[98] if len(latencies) >= 100 else 0),
     final_rpm=limiter_stats.current_rpm,
     rate_limit_events=limiter_stats.rate_limited_requests,
     circuit_open_events=limiter_stats.circuit_open_events,
@@ -891,9 +859,9 @@ async def run_all_tests(args):
       await gateway.close()
 
   # Summary
-  print(f"\n{'='*60}")
+  print(f"\n{'=' * 60}")
   print("Test Summary")
-  print(f"{'='*60}")
+  print(f"{'=' * 60}")
 
   for result in results:
     # Queue test expects rate limiting to occur, so we check for no errors (timeouts)
@@ -903,11 +871,7 @@ async def run_all_tests(args):
       error_count = result.error_requests
       status = "✅ PASS" if error_count == 0 else "❌ FAIL"
     else:
-      status = (
-        "✅ PASS"
-        if result.successful_requests > result.total_requests * 0.5
-        else "❌ FAIL"
-      )
+      status = "✅ PASS" if result.successful_requests > result.total_requests * 0.5 else "❌ FAIL"
     print(f"  {result.test_name}: {status}")
     print(f"    Throughput: {result.throughput_rps:.2f} req/s")
     print(f"    Success rate: {result.successful_requests / result.total_requests * 100:.1f}%")
@@ -981,17 +945,13 @@ def main():
 
   parser.add_argument(
     "--gateway-url",
-    default=os.environ.get(
-      "AUTONOMY_EXTERNAL_APIS_GATEWAY_URL", "http://localhost:8080"
-    ),
+    default=os.environ.get("AUTONOMY_EXTERNAL_APIS_GATEWAY_URL", "http://localhost:8080"),
     help="Gateway URL",
   )
 
   parser.add_argument(
     "--api-key",
-    default=os.environ.get(
-      "AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY", "test_key"
-    ),
+    default=os.environ.get("AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY", "test_key"),
     help="Gateway API key",
   )
 

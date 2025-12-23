@@ -663,14 +663,10 @@ class TestRetryLogic:
         return "low"
 
       # Submit both at similar times
-      task_high = asyncio.create_task(
-        queue.submit(high_priority_fails_once, priority=RequestPriority.HIGH)
-      )
+      task_high = asyncio.create_task(queue.submit(high_priority_fails_once, priority=RequestPriority.HIGH))
       # Small delay to ensure high priority is queued first
       await asyncio.sleep(0.01)
-      task_low = asyncio.create_task(
-        queue.submit(low_priority_request, priority=RequestPriority.LOW)
-      )
+      task_low = asyncio.create_task(queue.submit(low_priority_request, priority=RequestPriority.LOW))
 
       await asyncio.gather(task_high, task_low)
 
