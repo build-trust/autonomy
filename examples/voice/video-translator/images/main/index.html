@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Video Translator - Transcribe & Translate</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: #fdf0e6;
+        min-height: 100vh;
+        padding: 40px 20px;
+        color: #333;
+      }
+
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        color: #e85d04;
+        font-weight: 800;
+      }
+
+      .header p {
+        font-size: 1.1rem;
+        color: #6b5b4f;
+      }
+
+      .card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+        overflow: hidden;
+      }
+
+      .upload-section {
+        padding: 40px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .drop-zone {
+        border: 3px dashed #cbd5e1;
+        border-radius: 12px;
+        padding: 60px 40px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: #f8fafc;
+      }
+
+      .drop-zone:hover,
+      .drop-zone.dragover {
+        border-color: #3b82f6;
+        background: #eff6ff;
+      }
+
+      .drop-zone.processing {
+        border-color: #f59e0b;
+        background: #fffbeb;
+        cursor: not-allowed;
+      }
+
+      .drop-zone-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+      }
+
+      .drop-zone h3 {
+        font-size: 1.3rem;
+        color: #1e293b;
+        margin-bottom: 8px;
+      }
+
+      .drop-zone p {
+        color: #64748b;
+        font-size: 0.95rem;
+      }
+
+      .file-input {
+        display: none;
+      }
+
+      .supported-formats {
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .format-badge {
+        background: #e2e8f0;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        color: #475569;
+      }
+
+      .progress-section {
+        display: none;
+        padding: 30px 40px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .progress-section.active {
+        display: block;
+      }
+
+      .progress-header {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .progress-text {
+        font-size: 1.1rem;
+        color: #1e293b;
+      }
+
+      .progress-bar-container {
+        background: #e2e8f0;
+        border-radius: 10px;
+        height: 8px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        height: 100%;
+        width: 0%;
+        transition: width 0.3s ease;
+      }
+
+      .results-section {
+        display: none;
+        padding: 40px;
+      }
+
+      .results-section.active {
+        display: block;
+      }
+
+      .result-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 30px;
+      }
+
+      .result-header h2 {
+        font-size: 1.5rem;
+        color: #1e293b;
+      }
+
+      .result-filename {
+        background: #eff6ff;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        color: #3b82f6;
+        border: 1px solid #bfdbfe;
+      }
+
+      .result-tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .tab-btn {
+        padding: 10px 24px;
+        border: none;
+        background: #f1f5f9;
+        color: #64748b;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+      }
+
+      .tab-btn:hover {
+        background: #e2e8f0;
+      }
+
+      .tab-btn.active {
+        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        color: white;
+      }
+
+      .result-content {
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 24px;
+        min-height: 200px;
+        max-height: 500px;
+        overflow-y: auto;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 0.95rem;
+        line-height: 1.7;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+      }
+
+      /* Conversation styling */
+      .conversation {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .conversation-turn {
+        padding: 16px 20px;
+        border-radius: 12px;
+        background: white;
+        border-left: 4px solid #3b82f6;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        margin-left: 0;
+        transition: all 0.2s ease;
+      }
+
+      .conversation-turn:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .conversation-turn:nth-child(even) {
+        margin-left: 24px;
+        border-left-color: #8b5cf6;
+      }
+
+      .conversation-turn:nth-child(3n) {
+        margin-left: 48px;
+        border-left-color: #06b6d4;
+      }
+
+      .conversation-turn:nth-child(4n) {
+        margin-left: 12px;
+        border-left-color: #10b981;
+      }
+
+      .speaker-label {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #64748b;
+        margin-bottom: 8px;
+        padding: 2px 8px;
+        background: #f1f5f9;
+        border-radius: 4px;
+      }
+
+      .speaker-label.speaker-1 {
+        color: #3b82f6;
+        background: #eff6ff;
+      }
+
+      .speaker-label.speaker-2 {
+        color: #8b5cf6;
+        background: #f5f3ff;
+      }
+
+      .speaker-label.speaker-3 {
+        color: #06b6d4;
+        background: #ecfeff;
+      }
+
+      .speaker-label.speaker-4 {
+        color: #10b981;
+        background: #ecfdf5;
+      }
+
+      .turn-text {
+        color: #334155;
+        line-height: 1.7;
+      }
+
+      .plain-text {
+        white-space: pre-wrap;
+      }
+
+      .result-pane {
+        display: none;
+      }
+
+      .result-pane.active {
+        display: block;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .btn {
+        padding: 12px 28px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+      }
+
+      .btn-secondary {
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #e2e8f0;
+      }
+
+      .btn-secondary:hover {
+        background: #e2e8f0;
+      }
+
+      .error-message {
+        display: none;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #dc2626;
+        padding: 16px 20px;
+        border-radius: 8px;
+        margin: 20px 40px;
+      }
+
+      .error-message.active {
+        display: block;
+      }
+
+      .footer {
+        text-align: center;
+        margin-top: 30px;
+        color: #6b5b4f;
+        font-size: 0.9rem;
+      }
+
+      .footer a {
+        color: #e85d04;
+        text-decoration: none;
+        transition: color 0.2s ease;
+      }
+
+      .footer a:hover {
+        color: #d45a04;
+      }
+
+      .size-info {
+        margin-top: 16px;
+        font-size: 0.85rem;
+        color: #10b981;
+      }
+
+      /* Mobile responsive */
+      @media (max-width: 600px) {
+        .header h1 {
+          font-size: 1.8rem;
+        }
+
+        .upload-section,
+        .results-section {
+          padding: 24px;
+        }
+
+        .drop-zone {
+          padding: 40px 20px;
+        }
+
+        .result-tabs {
+          flex-wrap: wrap;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
+
+        .btn {
+          width: 100%;
+          justify-content: center;
+        }
+
+        .conversation-turn:nth-child(even),
+        .conversation-turn:nth-child(3n),
+        .conversation-turn:nth-child(4n) {
+          margin-left: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🎬 Video Translator</h1>
+        <p>Upload a video to transcribe its audio and translate it to English</p>
+      </div>
+
+      <div class="card">
+        <!-- Upload Section -->
+        <div class="upload-section">
+          <div class="drop-zone" id="dropZone">
+            <div class="drop-zone-icon">📹</div>
+            <h3>Drop your video here</h3>
+            <p>or click to browse</p>
+            <div class="supported-formats">
+              <span class="format-badge">MP4</span>
+              <span class="format-badge">MOV</span>
+              <span class="format-badge">AVI</span>
+              <span class="format-badge">MKV</span>
+              <span class="format-badge">WebM</span>
+            </div>
+          </div>
+          <input type="file" id="fileInput" class="file-input" accept=".mp4,.mov,.avi,.mkv,.webm,.m4v,.flv,.wmv" />
+        </div>
+
+        <!-- Progress Section -->
+        <div class="progress-section" id="progressSection">
+          <div class="progress-header">
+            <div class="spinner"></div>
+            <span class="progress-text" id="progressText">Processing video...</span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div class="error-message" id="errorMessage"></div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+          <div class="result-header">
+            <h2>✅ Translation Complete</h2>
+            <span class="result-filename" id="resultFilename"></span>
+          </div>
+
+          <div class="result-tabs">
+            <button class="tab-btn active" data-tab="translation">English Translation</button>
+            <button class="tab-btn" data-tab="transcript">Original Transcript</button>
+          </div>
+
+          <div class="result-pane active" id="translationPane">
+            <div class="result-content" id="translationContent"></div>
+          </div>
+
+          <div class="result-pane" id="transcriptPane">
+            <div class="result-content" id="transcriptContent"></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary" id="downloadBtn">📥 Download Results</button>
+            <button class="btn btn-secondary" id="newUploadBtn">➕ New Upload</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>Powered by <a href="https://autonomy.computer" target="_blank">Autonomy</a></p>
+      </div>
+    </div>
+
+    <script>
+      const dropZone = document.getElementById("dropZone");
+      const fileInput = document.getElementById("fileInput");
+      const progressSection = document.getElementById("progressSection");
+      const progressText = document.getElementById("progressText");
+      const progressBar = document.getElementById("progressBar");
+      const errorMessage = document.getElementById("errorMessage");
+      const resultsSection = document.getElementById("resultsSection");
+      const resultFilename = document.getElementById("resultFilename");
+      const translationContent = document.getElementById("translationContent");
+      const transcriptContent = document.getElementById("transcriptContent");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const newUploadBtn = document.getElementById("newUploadBtn");
+      const tabBtns = document.querySelectorAll(".tab-btn");
+
+      let currentResult = null;
+
+      // Parse text into conversation turns
+      function parseConversation(text) {
+        if (!text) return [];
+
+        const lines = text.split("\n");
+        const turns = [];
+        let currentTurn = null;
+        let speakerCount = 0;
+        const speakerMap = new Map();
+
+        // Common speaker patterns
+        const speakerPatterns = [
+          /^(Speaker\s*\d+|SPEAKER\s*\d+|Person\s*\d+|PERSON\s*\d+)\s*[:：]/i,
+          /^\[?(Speaker\s*\d+|SPEAKER\s*\d+)\]?\s*[:：]?/i,
+          /^(Host|Guest|Interviewer|Interviewee|Narrator|Voice\s*\d*)\s*[:：]/i,
+          /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*[:：]\s/,
+          /^(\w+)\s*[:：]\s+/,
+        ];
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) continue;
+
+          let foundSpeaker = null;
+          let remainingText = trimmedLine;
+
+          // Check for speaker patterns
+          for (const pattern of speakerPatterns) {
+            const match = trimmedLine.match(pattern);
+            if (match) {
+              foundSpeaker = match[1].trim();
+              remainingText = trimmedLine.slice(match[0].length).trim();
+              break;
+            }
+          }
+
+          if (foundSpeaker) {
+            // Save previous turn
+            if (currentTurn && currentTurn.text.trim()) {
+              turns.push(currentTurn);
+            }
+
+            // Assign speaker number
+            if (!speakerMap.has(foundSpeaker.toLowerCase())) {
+              speakerCount++;
+              speakerMap.set(foundSpeaker.toLowerCase(), speakerCount);
+            }
+
+            currentTurn = {
+              speaker: foundSpeaker,
+              speakerNum: speakerMap.get(foundSpeaker.toLowerCase()),
+              text: remainingText,
+            };
+          } else if (currentTurn) {
+            // Continue previous turn
+            currentTurn.text += (currentTurn.text ? "\n" : "") + trimmedLine;
+          } else {
+            // No speaker detected, create anonymous turn
+            speakerCount++;
+            currentTurn = {
+              speaker: null,
+              speakerNum: speakerCount,
+              text: trimmedLine,
+            };
+          }
+        }
+
+        // Don't forget the last turn
+        if (currentTurn && currentTurn.text.trim()) {
+          turns.push(currentTurn);
+        }
+
+        return turns;
+      }
+
+      // Render conversation as styled HTML
+      function renderConversation(text) {
+        const turns = parseConversation(text);
+
+        // If no clear conversation structure, return as plain text with nice formatting
+        if (turns.length <= 1) {
+          const div = document.createElement("div");
+          div.className = "plain-text";
+          div.textContent = text;
+          return div;
+        }
+
+        const container = document.createElement("div");
+        container.className = "conversation";
+
+        turns.forEach((turn, index) => {
+          const turnDiv = document.createElement("div");
+          turnDiv.className = "conversation-turn";
+
+          if (turn.speaker) {
+            const labelDiv = document.createElement("div");
+            labelDiv.className = `speaker-label speaker-${((turn.speakerNum - 1) % 4) + 1}`;
+            labelDiv.textContent = turn.speaker;
+            turnDiv.appendChild(labelDiv);
+          }
+
+          const textDiv = document.createElement("div");
+          textDiv.className = "turn-text";
+          textDiv.textContent = turn.text;
+          turnDiv.appendChild(textDiv);
+
+          container.appendChild(turnDiv);
+        });
+
+        return container;
+      }
+
+      // Drop zone events
+      dropZone.addEventListener("click", () => {
+        if (!dropZone.classList.contains("processing")) {
+          fileInput.click();
+        }
+      });
+
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (!dropZone.classList.contains("processing")) {
+          dropZone.classList.add("dragover");
+        }
+      });
+
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+      });
+
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+        if (!dropZone.classList.contains("processing") && e.dataTransfer.files.length) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      // Tab switching
+      tabBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const tab = btn.dataset.tab;
+          tabBtns.forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          document.querySelectorAll(".result-pane").forEach((p) => p.classList.remove("active"));
+          document.getElementById(tab + "Pane").classList.add("active");
+        });
+      });
+
+      // New upload button
+      newUploadBtn.addEventListener("click", resetUI);
+
+      // Download button
+      downloadBtn.addEventListener("click", () => {
+        if (!currentResult) return;
+
+        const content = `# Video Transcription & Translation
+
+**Source File:** ${currentResult.filename}
+**Processed:** ${currentResult.processed_at}
+
+---
+
+## Original Transcription
+
+${currentResult.original_transcript}
+
+---
+
+## English Translation
+
+${currentResult.english_translation}
+`;
+
+        const blob = new Blob([content], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = currentResult.filename.replace(/\.[^.]+$/, "") + "_translation.md";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      function resetUI() {
+        dropZone.classList.remove("processing");
+        progressSection.classList.remove("active");
+        resultsSection.classList.remove("active");
+        errorMessage.classList.remove("active");
+        progressBar.style.width = "0%";
+        fileInput.value = "";
+        currentResult = null;
+      }
+
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.classList.add("active");
+        dropZone.classList.remove("processing");
+        progressSection.classList.remove("active");
+      }
+
+      function updateProgress(stage, percent) {
+        progressText.textContent = stage;
+        progressBar.style.width = percent + "%";
+      }
+
+      async function handleFile(file) {
+        // Validate file type
+        const validExtensions = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".flv", ".wmv"];
+        const ext = "." + file.name.split(".").pop().toLowerCase();
+        if (!validExtensions.includes(ext)) {
+          showError(`Unsupported file type: ${ext}. Please upload a video file.`);
+          return;
+        }
+
+        // Show progress
+        resetUI();
+        dropZone.classList.add("processing");
+        progressSection.classList.add("active");
+        errorMessage.classList.remove("active");
+
+        updateProgress("Connecting...", 0);
+
+        try {
+          // Use chunked HTTP upload for reliability with large files
+          await uploadViaChunkedHttp(file);
+        } catch (error) {
+          showError(error.message || "An error occurred while processing the video.");
+        }
+      }
+
+      async function uploadViaChunkedHttp(file) {
+        /**
+         * WebSocket chunked upload with acknowledgments.
+         * Sends 1MB chunks sequentially, waiting for server ack before sending next.
+         * More memory efficient than parallel HTTP as it uses a single connection.
+         */
+        const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+        return new Promise((resolve, reject) => {
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          const wsUrl = `${protocol}//${window.location.host}/ws/upload`;
+
+          let ws;
+          let currentChunk = 0;
+          let keepaliveInterval;
+
+          try {
+            ws = new WebSocket(wsUrl);
+          } catch (e) {
+            reject(new Error("WebSocket not supported"));
+            return;
+          }
+
+          // Keepalive ping every 20 seconds
+          function startKeepalive() {
+            keepaliveInterval = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "ping" }));
+              }
+            }, 20000);
+          }
+
+          function stopKeepalive() {
+            if (keepaliveInterval) {
+              clearInterval(keepaliveInterval);
+            }
+          }
+
+          async function sendNextChunk() {
+            if (currentChunk >= totalChunks) {
+              ws.send(JSON.stringify({ type: "end" }));
+              return;
+            }
+
+            const start = currentChunk * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            const chunk = file.slice(start, end);
+            const arrayBuffer = await chunk.arrayBuffer();
+
+            ws.send(arrayBuffer);
+
+            // Update progress
+            const progress = Math.round(((currentChunk + 1) / totalChunks) * 100);
+            const displayProgress = 5 + Math.round((progress / 100) * 30);
+            updateProgress(`Uploading... ${progress}%`, displayProgress);
+          }
+
+          ws.onopen = () => {
+            startKeepalive();
+            updateProgress("Starting upload...", 5);
+            ws.send(
+              JSON.stringify({
+                type: "start",
+                filename: file.name,
+                size: file.size,
+                chunk_size: CHUNK_SIZE,
+                total_chunks: totalChunks,
+              }),
+            );
+          };
+
+          ws.onmessage = async (event) => {
+            const data = JSON.parse(event.data);
+
+            switch (data.type) {
+              case "ready":
+                currentChunk = 0;
+                await sendNextChunk();
+                break;
+
+              case "chunk_ack":
+                currentChunk++;
+                await sendNextChunk();
+                break;
+
+              case "pong":
+                break;
+
+              case "status":
+                if (data.message.includes("Processing")) {
+                  updateProgress("Processing video...", 40);
+                  simulateProcessingStages();
+                }
+                break;
+
+              case "result":
+                stopKeepalive();
+                if (data.success) {
+                  updateProgress("Complete!", 100);
+                  currentResult = data;
+
+                  setTimeout(() => {
+                    dropZone.classList.remove("processing");
+                    progressSection.classList.remove("active");
+                    resultsSection.classList.add("active");
+
+                    resultFilename.textContent = data.filename;
+
+                    translationContent.innerHTML = "";
+                    translationContent.appendChild(renderConversation(data.english_translation));
+
+                    transcriptContent.innerHTML = "";
+                    transcriptContent.appendChild(renderConversation(data.original_transcript));
+
+                    tabBtns.forEach((b) => b.classList.remove("active"));
+                    tabBtns[0].classList.add("active");
+                    document.querySelectorAll(".result-pane").forEach((p) => p.classList.remove("active"));
+                    document.getElementById("translationPane").classList.add("active");
+
+                    resolve(data);
+                  }, 500);
+                } else {
+                  reject(new Error(data.error || "Processing failed"));
+                }
+                ws.close();
+                break;
+
+              case "error":
+                stopKeepalive();
+                reject(new Error(data.error || "Upload failed"));
+                ws.close();
+                break;
+            }
+          };
+
+          ws.onerror = () => {
+            stopKeepalive();
+            reject(new Error("WebSocket connection failed"));
+          };
+
+          ws.onclose = (event) => {
+            stopKeepalive();
+            if (!event.wasClean && !currentResult) {
+              reject(new Error(`Connection closed at chunk ${currentChunk + 1}/${totalChunks}. Please try again.`));
+            }
+          };
+        });
+      }
+
+      function simulateProcessingStages() {
+        const stages = [
+          { text: "Extracting audio...", percent: 45, delay: 2000 },
+          { text: "Transcribing speech...", percent: 60, delay: 5000 },
+          { text: "Detecting language...", percent: 75, delay: 2000 },
+          { text: "Translating to English...", percent: 90, delay: 3000 },
+        ];
+
+        let delay = 0;
+        stages.forEach((stage) => {
+          delay += stage.delay;
+          setTimeout(() => {
+            if (progressSection.classList.contains("active") && !resultsSection.classList.contains("active")) {
+              updateProgress(stage.text, stage.percent);
+            }
+          }, delay);
+        });
+      }
+    </script>
+  </body>
+</html>

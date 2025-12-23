@@ -1,0 +1,8 @@
+name: vidtrans
+pods:
+  - name: main-pod
+    public: true
+    size: big
+    containers:
+      - name: main
+        image: main
