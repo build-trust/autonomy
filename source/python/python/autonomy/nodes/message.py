@@ -401,7 +401,9 @@ class Reference:
     async for response in self.send_request_stream(request, timeout=timeout):
       yield response
 
-  async def send_message(self, message: MessageContent | str, scope="", conversation="", timeout: Optional[float] = None):
+  async def send_message(
+    self, message: MessageContent | str, scope="", conversation="", timeout: Optional[float] = None
+  ):
     """
     Send a message without waiting for a response.
 
@@ -443,10 +445,7 @@ class Reference:
       from ..agents.errors import SendMessageTimeoutError
 
       try:
-        await asyncio.wait_for(
-          mailbox.send(self.name, message_json, self.name_of_remote_node),
-          timeout=timeout
-        )
+        await asyncio.wait_for(mailbox.send(self.name, message_json, self.name_of_remote_node), timeout=timeout)
       except asyncio.TimeoutError:
         raise SendMessageTimeoutError(timeout=timeout, agent_name=self.name)
     else:
