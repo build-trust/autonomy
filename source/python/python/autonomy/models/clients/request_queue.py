@@ -373,7 +373,7 @@ class ModelRequestQueue:
         if should_retry and queued.retry_count < self.retry_config.max_retry_attempts:
           # Calculate exponential backoff
           backoff = min(
-            self.retry_config.initial_seconds_between_retry_attempts * (2 ** queued.retry_count),
+            self.retry_config.initial_seconds_between_retry_attempts * (2**queued.retry_count),
             self.retry_config.max_seconds_between_retry_attempts,
           )
 
