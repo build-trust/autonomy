@@ -853,7 +853,8 @@
             playbackAudioContext = new (window.AudioContext || window.webkitAudioContext)({
               sampleRate: 24000,
             });
-            nextPlayTime = playbackAudioContext.currentTime;
+            // Add a small buffer (50ms) to prevent underruns
+            nextPlayTime = playbackAudioContext.currentTime + 0.05;
           }
 
           const audioBytes = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
@@ -876,9 +877,13 @@
           };
           scheduledSources.push(source);
 
-          if (nextPlayTime < playbackAudioContext.currentTime) {
-            nextPlayTime = playbackAudioContext.currentTime;
+          // If we've fallen behind, catch up with a small buffer to prevent glitches
+          const currentTime = playbackAudioContext.currentTime;
+          if (nextPlayTime < currentTime) {
+            // Add 30ms buffer when catching up to prevent choppy audio
+            nextPlayTime = currentTime + 0.03;
           }
+
           source.start(nextPlayTime);
           nextPlayTime += audioBuffer.duration;
         } catch (error) {
