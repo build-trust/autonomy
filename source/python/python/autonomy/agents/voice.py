@@ -47,6 +47,7 @@ except ImportError:
 
 from ..logs import get_logger
 from ..tools.protocol import InvokableTool
+from ..models.clients.gateway_config import get_gateway_url, get_gateway_api_key, get_client_metadata_headers
 
 if TYPE_CHECKING:
   from .agent import Agent
@@ -577,51 +578,38 @@ class VoiceSession:
     """
     Get WebSocket URL for realtime API.
 
-    Checks for LiteLLM proxy configuration first, falls back to direct OpenAI.
+    Uses the Autonomy External APIs Gateway for WebSocket connections.
 
     Returns:
         WebSocket URL string
     """
-    proxy_base = os.environ.get("LITELLM_PROXY_API_BASE")
-    if proxy_base:
-      # Convert HTTP(S) to WS(S)
-      ws_base = proxy_base.replace("https://", "wss://").replace("http://", "ws://")
-      url = f"{ws_base}/v1/realtime?model={self.agent._get_config('realtime_model')}"
-      logger.debug(f"Using LiteLLM proxy WebSocket: {url}")
-      return url
-
-    # Fallback to direct OpenAI
-    url = f"wss://api.openai.com/v1/realtime?model={self.agent._get_config('realtime_model')}"
-    logger.debug(f"Using direct OpenAI WebSocket: {url}")
+    gateway_url = get_gateway_url()
+    # Convert HTTP(S) to WS(S)
+    ws_url = gateway_url.replace("https://", "wss://").replace("http://", "ws://")
+    url = f"{ws_url}/v1/realtime?model={self.agent._get_config('realtime_model')}"
+    logger.debug(f"Using gateway WebSocket: {url}")
     return url
 
   def _get_auth_headers(self) -> Dict[str, str]:
     """
     Get authentication headers for WebSocket connection.
 
+    Uses the Autonomy External APIs Gateway authentication.
+
     Returns:
         Dictionary of headers
     """
-    headers = {}
+    api_key = get_gateway_api_key()
+    headers = {
+      "Authorization": f"Bearer {api_key}",
+      "OpenAI-Beta": "realtime=v1",
+    }
 
-    # Check for LiteLLM proxy API key
-    proxy_key = os.environ.get("LITELLM_PROXY_API_KEY")
-    if proxy_key:
-      # LiteLLM proxy expects both api-key and Authorization headers
-      headers["api-key"] = proxy_key
-      headers["Authorization"] = f"Bearer {proxy_key}"
-      logger.debug("Using LiteLLM proxy API key")
-      return headers
+    # Add client metadata headers for usage tracking
+    metadata_headers = get_client_metadata_headers()
+    headers.update(metadata_headers)
 
-    # Fallback to OpenAI API key
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key:
-      headers["Authorization"] = f"Bearer {openai_key}"
-      headers["OpenAI-Beta"] = "realtime=v1"
-      logger.debug("Using OpenAI API key")
-      return headers
-
-    logger.warning("No API key found in environment for realtime API")
+    logger.debug("Using gateway API key for realtime connection")
     return headers
 
   async def connect(self):

@@ -3,7 +3,7 @@ import inspect
 import re
 import traceback
 
-from typing import get_type_hints, Optional, get_origin, get_args, List, Dict, Set, Tuple
+from typing import get_type_hints, Optional, get_origin, get_args, List, Dict, Set, Tuple, Union
 from functools import wraps
 from docstring_parser import parse
 
@@ -140,7 +140,7 @@ class Tool(InvokableTool, InfoContext):
 
       # Handle Optional types (Optional[X] is Union[X, None])
       origin = get_origin(expected_type)
-      if origin is type(None) or (
+      if origin is Union or (
         hasattr(expected_type, "__class__") and expected_type.__class__.__name__ == "UnionType"
       ):
         # For Optional/Union types, try to get the non-None type

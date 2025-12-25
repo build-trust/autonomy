@@ -474,6 +474,29 @@
         border-color: #6366f1;
         color: #4f46e5;
       }
+
+      .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 12px;
+        text-align: center;
+        font-size: 13px;
+        color: #6e7781;
+        background: rgba(255, 255, 255, 0.9);
+        border-top: 1px solid #e1e4e8;
+      }
+
+      .footer a {
+        color: #6366f1;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .footer a:hover {
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
@@ -511,6 +534,10 @@
         </div>
       </div>
     </div>
+
+    <footer class="footer">
+      Built with <a href="https://autonomy.computer/" target="_blank" rel="noopener">Autonomy</a>
+    </footer>
 
     <script>
       const id = () => Math.random().toString(36).slice(2);
@@ -739,8 +766,8 @@
 
             const { pcm16, maxLevel } = e.data;
 
-            // Client-side interruption detection
-            if (isSpeaking && scheduledSources.length > 0 && maxLevel > 0.02) {
+            // Client-side interruption detection - threshold 0.15 to avoid false positives from ambient noise
+            if (isSpeaking && scheduledSources.length > 0 && maxLevel > 0.15) {
               console.log("⚡ Client-side interruption detected (level:", maxLevel.toFixed(3), ")");
               clearAudioQueue();
               isSpeaking = false;

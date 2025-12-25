@@ -112,7 +112,7 @@ async def get_shared_openai_client() -> AsyncOpenAI:
       http_client=http_client,
     )
 
-    logger.info(
+    logger.debug(
       f"Initialized shared OpenAI client for gateway at {gateway_url} "
       f"(max_connections={MAX_CONNECTIONS}, max_keepalive={MAX_KEEPALIVE_CONNECTIONS})"
     )
