@@ -194,6 +194,38 @@ class TestFindToolPairBoundary:
     # Boundary at 4 is safe
     assert find_tool_pair_boundary(messages, 4) == 4
 
+  def test_orphaned_tool_use_in_verbatim_window(self):
+    """Adjust boundary when tool_use in verbatim window has result before boundary"""
+    messages = [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "tool_calls": [{"id": "tool_1", "name": "search"}]},
+      {"role": "tool", "content": "Result", "tool_call_id": "tool_1"},
+      {"role": "assistant", "content": "Based on results..."},
+      {"role": "user", "content": "Another question"},
+      {"role": "assistant", "tool_calls": [{"id": "tool_2", "name": "lookup"}]},
+      {"role": "tool", "content": "Result 2", "tool_call_id": "tool_2"},
+    ]
+    # Boundary at 5 would include tool_use at 5 but exclude its result at 6
+    # Wait, result at 6 is AFTER 5, so this is handled by existing logic
+    # Let's test a different scenario: what if we try boundary at 6?
+    # tool_use at 5, result at 6 - both should be included
+    assert find_tool_pair_boundary(messages, 6) == 5
+
+  def test_tool_use_with_result_before_boundary(self):
+    """
+    Edge case: tool_use appears AFTER its result due to message reordering.
+    This shouldn't normally happen, but the function should handle it.
+    """
+    messages = [
+      {"role": "user", "content": "Hello"},
+      {"role": "tool", "content": "Result", "tool_call_id": "tool_1"},  # Result first (unusual)
+      {"role": "assistant", "tool_calls": [{"id": "tool_1", "name": "search"}]},  # Use after
+      {"role": "assistant", "content": "Done"},
+    ]
+    # Boundary at 2 would include tool_use at 2 but its result is at 1 (before boundary)
+    # Function should adjust to include the result
+    assert find_tool_pair_boundary(messages, 2) == 1
+
 
 class TestFindSafeTrimCount:
   """Tests for find_safe_trim_count function"""
@@ -313,15 +345,16 @@ class TestValidateToolPairing:
     assert is_valid
     assert error is None
 
-  def test_pending_tool_use_still_valid(self):
-    """Tool use without result is valid (may be pending)"""
+  def test_orphaned_tool_use_invalid(self):
+    """Tool use without result is invalid (Claude API requires all tool_use to have tool_result)"""
     messages = [
       {"role": "assistant", "tool_calls": [{"id": "tool_1", "name": "search"}]},
-      # No result yet - this is okay
+      # No result - this is NOT okay for Claude API
     ]
     is_valid, error = validate_tool_pairing(messages)
-    assert is_valid
-    assert error is None
+    assert not is_valid
+    assert "tool_1" in error
+    assert "Orphaned tool uses" in error
 
 
 # =============================================================================

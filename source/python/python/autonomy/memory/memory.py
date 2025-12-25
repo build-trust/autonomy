@@ -60,34 +60,55 @@ def find_tool_pair_boundary(messages: List[dict], start_index: int) -> int:
 
   Given a starting index, move backwards if needed to include any tool_use
   messages whose results appear at or after start_index. This prevents
-  orphaned tool results.
+  both orphaned tool_results AND orphaned tool_uses.
+
+  Claude/Anthropic API requires that every tool_use block has a corresponding
+  tool_result block. This function ensures the boundary includes complete pairs.
 
   Args:
     messages: List of conversation messages
     start_index: The proposed starting index for the verbatim window
 
   Returns:
-    Adjusted index that won't leave orphaned tool results (may be <= start_index)
+    Adjusted index that won't leave orphaned tool_results or tool_uses (may be <= start_index)
   """
   if start_index <= 0 or start_index >= len(messages):
     return start_index
 
-  # Build a map of tool_call_id -> index of the assistant message containing it
+  # Build maps for both tool_use and tool_result locations
   tool_use_index: Dict[str, int] = {}
+  tool_result_index: Dict[str, int] = {}
+
   for i, msg in enumerate(messages):
     for tool_id in get_tool_use_ids(msg):
       tool_use_index[tool_id] = i
+    tool_result_id = get_tool_result_id(msg)
+    if tool_result_id:
+      tool_result_index[tool_result_id] = i
 
-  # Find the minimum index we need to include to avoid orphaned tool results
+  # Find the minimum index we need to include to avoid orphaned pairs
   min_required_index = start_index
 
+  # Case 1: Check for orphaned tool_results (results in verbatim window, uses before boundary)
   for i in range(start_index, len(messages)):
     tool_result_id = get_tool_result_id(messages[i])
     if tool_result_id and tool_result_id in tool_use_index:
       tool_use_idx = tool_use_index[tool_result_id]
       if tool_use_idx < min_required_index:
         min_required_index = tool_use_idx
-        logger.debug(f"Tool pair boundary: tool result at index {i} requires tool_use at index {tool_use_idx}")
+        logger.debug(f"Tool pair boundary: tool_result at index {i} requires tool_use at index {tool_use_idx}")
+
+  # Case 2: Check for orphaned tool_uses (uses in verbatim window, results before boundary)
+  # This handles the case where a tool_use would be in the verbatim window but its
+  # tool_result was summarized away (before the current min_required_index)
+  for i in range(min_required_index, len(messages)):
+    for tool_id in get_tool_use_ids(messages[i]):
+      if tool_id in tool_result_index:
+        result_idx = tool_result_index[tool_id]
+        if result_idx < min_required_index:
+          # The tool_result is before our boundary - we need to include it
+          min_required_index = result_idx
+          logger.debug(f"Tool pair boundary: tool_use at index {i} requires tool_result at index {result_idx}")
 
   if min_required_index < start_index:
     logger.debug(f"Adjusted boundary from {start_index} to {min_required_index} to preserve tool pairs")
@@ -154,6 +175,9 @@ def validate_tool_pairing(messages: List[dict]) -> Tuple[bool, Optional[str]]:
   """
   Validate that all tool_use blocks have corresponding tool_result blocks.
 
+  Claude/Anthropic API requires that every tool_use block in the conversation
+  has a matching tool_result block. This function validates both directions.
+
   Args:
     messages: List of conversation messages to validate
 
@@ -176,11 +200,10 @@ def validate_tool_pairing(messages: List[dict]) -> Tuple[bool, Optional[str]]:
     return False, f"Orphaned tool results (no matching tool_use): {orphaned_results}"
 
   # Check for orphaned tool uses (uses without corresponding results)
-  # Note: This is less critical as the model can still process, but log it
+  # Claude API requires ALL tool_use blocks to have corresponding tool_result blocks
   orphaned_uses = tool_use_ids - tool_result_ids
   if orphaned_uses:
-    # This might be okay if tool calls are still pending, so just debug log
-    logger.debug(f"Tool calls without results (may be pending): {orphaned_uses}")
+    return False, f"Orphaned tool uses (no matching tool_result): {orphaned_uses}"
 
   return True, None
 

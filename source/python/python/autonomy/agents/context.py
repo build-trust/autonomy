@@ -826,11 +826,17 @@ class SummarizedHistorySection(ContextSection):
 
       result_messages = [summary_message] + messages[verbatim_start:]
 
-      # Validate tool pairing before returning (debug safety check)
+      # Validate tool pairing before returning
       # Only validate the conversation messages, not the summary
       is_valid, error = validate_tool_pairing(messages[verbatim_start:])
       if not is_valid:
         logger.error(f"[CONTEXT→{self.name}] Tool pairing validation failed for {cache_key}: {error}")
+        # Fall back to returning all messages to avoid Claude API error
+        # This is safer than returning broken tool pairs
+        logger.warning(
+          f"[CONTEXT→{self.name}] Falling back to all {total_messages} messages due to tool pairing issue"
+        )
+        return messages
 
       return result_messages
     else:
