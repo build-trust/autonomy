@@ -4,24 +4,31 @@ icon: "book-open"
 description: "Use Autonomy to embed your documentation into your product as intelligent agents that deliver tailored answers based on a user's current context and intent."
 ---
 
+import { DocsChatVoice } from "/snippets/docs-chat-voice.jsx"
+
 Most documentation lives outside the product and treats every reader the same.
 Autonomy lets you change that. By running documentation agents inside your app,
 you can give users answers that reflect who they are, what they are trying to do,
 and where they are in the product.
 
+Here is an example, the following voice enabled agents are powered by Autonomy.
+Give it a try, ask it anything about Autonomy, type below or click the microphone to talk:
+
+<DocsChatVoice />
+
 Agents, built with Autonomy, can power text and voice conversations
-rooted in knowledge from your docs stored in Mintlify, Gitbook,
-or other documentation systems. They can also trigger actions in your
-product.
+rooted in knowledge from docs stored in Mintlify, Gitbook,
+or other documentation systems. They can also trigger actions in a
+product by invoking APIs available to them as tools defined in python.
+
+We use this exact pattern on our own website. The chat and voice experience at
+https://autonomy.computer#learn runs on Autonomy and connects directly to our
+documentation stored in Mintlify and GitHub.
 
 <Frame>
   <img src="/guides/images/docs-agents/docs-agents.png"
       alt="From docs to in-product agents" />
 </Frame>
-
-We use this exact pattern on our own website. The chat and voice experience at
-https://autonomy.computer#learn runs on Autonomy and connects directly to our
-documentation stored in Mintlify and GitHub.
 
 This lets us tailor the experience of each visitor. Agents receive custom
 instructions that adapt responses for different audiences, such as developers,
