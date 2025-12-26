@@ -437,7 +437,7 @@ export const DocsChatVoice = () => {
     layout: {
       display: "flex",
       flexDirection: "row",
-      minHeight: "450px",
+      height: "500px",
     },
     chatPanel: {
       flex: "1 1 70%",
@@ -463,6 +463,7 @@ export const DocsChatVoice = () => {
       flexDirection: "column",
       gap: "12px",
       backgroundColor: "var(--background-muted, #f9fafb)",
+      maxHeight: "400px",
     },
     messageRow: {
       display: "flex",
