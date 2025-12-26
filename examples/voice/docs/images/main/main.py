@@ -4,6 +4,7 @@ import httpx
 import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from autonomy import (
     Agent,
@@ -113,6 +114,23 @@ Format for voice: no dashes, no parentheses, no lists. Use simple punctuation.
 
 
 app = FastAPI()
+
+# Add CORS middleware to allow requests from documentation sites
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://autonomy.computer",
+        "https://docs.autonomy.computer",
+        "https://*.mintlify.dev",
+        "https://*.mintlify.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 knowledge_tool = None
 
 
