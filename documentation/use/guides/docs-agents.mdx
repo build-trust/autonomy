@@ -1,7 +1,7 @@
 ---
 title: "Static docs to in-product agents"
 icon: "book-open"
-description: "Use Autonomy to embed your documentation into your product as intelligent agents that deliver tailored answers based on a user's current context and intent."
+description: "Use Autonomy to embed your documentation into your product as intelligent voice and text-based conversational agents that deliver tailored answers based on a user's current context and intent."
 ---
 
 import { DocsChatVoice } from "/snippets/docs-chat-voice.jsx"
@@ -157,6 +157,13 @@ def create_knowledge():
 | `vad_threshold` | Voice detection sensitivity (0.0-1.0). Higher = less sensitive. | `0.5` |
 | `vad_silence_duration_ms` | Silence before end of speech detection | `500` |
 | `delegation_instructions` | Instructions passed when delegating to the primary agent | None |
+
+<Note>
+**Multilingual Support**: The voice agent can detect and transcribe speech in multiple languages.
+If a user speaks in German, for example, the system may transcribe and respond in German automatically.
+To control this behavior, add language instructions to your agent configuration — either enforcing
+English responses by default or enabling intentional multilingual support.
+</Note>
 
 **Adding Filesystem Tools (Optional)**
 
