@@ -1,4 +1,4 @@
-name: docs1
+name: docs
 pods:
   - name: main-pod
     public: true

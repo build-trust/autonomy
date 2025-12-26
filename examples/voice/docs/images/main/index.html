@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Autonomy Docs - Voice Assistant</title>
+    <title>Autonomy Expert</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 
     <style>
       * {
@@ -12,62 +15,201 @@
         box-sizing: border-box;
       }
 
+      :root {
+        --bg-primary: #0a0a0a;
+        --bg-secondary: #141414;
+        --bg-tertiary: #1a1a1a;
+        --border-color: rgba(255, 255, 255, 0.1);
+        --text-primary: #ffffff;
+        --text-secondary: #a1a1a1;
+        --text-muted: #6b6b6b;
+        --accent: #e85c2b;
+        --accent-hover: #ff6b3d;
+        --accent-muted: rgba(232, 92, 43, 0.15);
+        --success: #22c55e;
+        --error: #ef4444;
+      }
+
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        background: #fafbfc;
-        min-height: 100vh;
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background: var(--bg-primary);
+        height: 100vh;
         display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #24292e;
+        flex-direction: column;
+        color: var(--text-primary);
         overflow: hidden;
       }
 
+      /* Header */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 32px;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-primary);
+      }
+
+      .logo {
+        height: 24px;
+        color: var(--text-primary);
+      }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .header-link {
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 500;
+        transition: color 0.2s ease;
+      }
+
+      .header-link:hover {
+        color: var(--text-primary);
+      }
+
+      .header-link.accent {
+        color: var(--accent);
+      }
+
+      .header-link.accent:hover {
+        color: var(--accent-hover);
+      }
+
+      /* Main container */
       .container {
         display: flex;
         flex-direction: row;
-        width: 100%;
-        height: 100vh;
-        padding: 0;
-        max-width: none;
+        flex: 1;
+        overflow: hidden;
       }
 
+      /* Transcript panel */
       .transcript-panel {
-        width: 70%;
-        height: 100%;
+        width: 65%;
         display: flex;
         flex-direction: column;
-        padding: 40px;
-        background: #fafbfc;
+        padding: 32px;
+        background: var(--bg-primary);
+        border-right: 1px solid var(--border-color);
+        overflow: hidden;
+        min-height: 0;
       }
 
+      .transcript-header {
+        margin-bottom: 24px;
+      }
+
+      .transcript-header h2 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .transcript-container {
+        flex: 1;
+        overflow-y: auto;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 24px;
+        min-height: 0;
+      }
+
+      .transcript-container::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .transcript-container::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .transcript-container::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 3px;
+      }
+
+      .transcript-item {
+        margin-bottom: 16px;
+        padding: 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .transcript-item.user {
+        background: var(--accent-muted);
+        margin-left: 40px;
+        border-left: 3px solid var(--accent);
+      }
+
+      .transcript-item.assistant {
+        background: var(--bg-tertiary);
+        margin-right: 40px;
+        border-left: 3px solid var(--text-muted);
+      }
+
+      .transcript-item .role {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      .transcript-item.user .role {
+        color: var(--accent);
+      }
+
+      .transcript-item .content {
+        color: var(--text-secondary);
+      }
+
+      .transcript-item.user .content {
+        color: var(--text-primary);
+      }
+
+      /* Voice panel */
       .voice-panel {
-        width: 30%;
+        width: 35%;
         height: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 40px;
+        gap: 48px;
         padding: 40px;
-        background: #f6f8fa;
-        border-left: 1px solid #e1e4e8;
+        background: var(--bg-secondary);
       }
 
-      .header {
-        margin-bottom: 20px;
+      .voice-title {
+        text-align: center;
       }
 
-      .header h1 {
+      .voice-title h1 {
         font-size: 24px;
         font-weight: 600;
-        color: #24292e;
+        color: var(--text-primary);
         margin-bottom: 8px;
       }
 
-      .header p {
+      .voice-title p {
         font-size: 14px;
-        color: #586069;
+        color: var(--text-secondary);
       }
 
       .circle-container {
@@ -80,44 +222,45 @@
         width: 200px;
         height: 200px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        background: linear-gradient(135deg, var(--accent) 0%, #c44d24 100%);
         cursor: pointer;
         transition: all 0.3s ease;
         display: flex;
         align-items: center;
         justify-content: center;
         box-shadow:
-          0 10px 40px rgba(99, 102, 241, 0.25),
+          0 10px 40px rgba(232, 92, 43, 0.3),
           inset 0 2px 10px rgba(255, 255, 255, 0.1);
         position: relative;
-        border: 2px solid rgba(99, 102, 241, 0.3);
+        border: none;
+        outline: none;
       }
 
       .voice-circle:hover {
         transform: scale(1.05);
         box-shadow:
-          0 15px 50px rgba(99, 102, 241, 0.35),
+          0 15px 50px rgba(232, 92, 43, 0.4),
           inset 0 2px 10px rgba(255, 255, 255, 0.15);
       }
 
       .voice-circle.listening {
         animation: pulse-listening 2s ease-in-out infinite;
-        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+        background: linear-gradient(135deg, #ff6b3d 0%, var(--accent) 100%);
       }
 
       .voice-circle.speaking {
         animation: pulse-speaking 1.5s ease-in-out infinite;
-        background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 100%);
+        background: linear-gradient(135deg, #ff8055 0%, var(--accent) 100%);
       }
 
       .voice-circle.processing {
         animation: pulse-processing 1s ease-in-out infinite;
-        background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+        background: linear-gradient(135deg, #c44d24 0%, #a33d1a 100%);
       }
 
       .voice-circle.delegating {
         animation: pulse-delegating 0.8s ease-in-out infinite;
-        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+        background: linear-gradient(135deg, #b84520 0%, #8a3015 100%);
       }
 
       .waveform-icon {
@@ -131,7 +274,7 @@
 
       .waveform-bar {
         width: 8px;
-        background: #ffffff;
+        background: rgba(255, 255, 255, 0.9);
         border-radius: 4px;
         transition: all 0.3s ease;
       }
@@ -150,10 +293,6 @@
       }
       .waveform-bar:nth-child(5) {
         height: 35px;
-      }
-
-      .voice-circle:hover .waveform-bar {
-        background: #ffffff;
       }
 
       .voice-circle.listening .waveform-bar,
@@ -211,15 +350,15 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(99, 102, 241, 0.25),
-            0 0 30px rgba(129, 140, 248, 0.2),
+            0 10px 40px rgba(232, 92, 43, 0.3),
+            0 0 30px rgba(255, 107, 61, 0.2),
             inset 0 2px 10px rgba(255, 255, 255, 0.1);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(99, 102, 241, 0.4),
-            0 0 60px rgba(129, 140, 248, 0.35),
+            0 10px 60px rgba(232, 92, 43, 0.45),
+            0 0 60px rgba(255, 107, 61, 0.35),
             inset 0 2px 15px rgba(255, 255, 255, 0.15);
           transform: scale(1.05);
         }
@@ -229,15 +368,15 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(165, 180, 252, 0.3),
-            0 0 35px rgba(165, 180, 252, 0.3),
+            0 10px 40px rgba(255, 128, 85, 0.35),
+            0 0 35px rgba(255, 128, 85, 0.3),
             inset 0 2px 10px rgba(255, 255, 255, 0.1);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(165, 180, 252, 0.45),
-            0 0 70px rgba(165, 180, 252, 0.45),
+            0 10px 60px rgba(255, 128, 85, 0.5),
+            0 0 70px rgba(255, 128, 85, 0.45),
             inset 0 2px 15px rgba(255, 255, 255, 0.15);
           transform: scale(1.08);
         }
@@ -247,15 +386,15 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(124, 58, 237, 0.25),
-            0 0 25px rgba(124, 58, 237, 0.25),
+            0 10px 40px rgba(196, 77, 36, 0.3),
+            0 0 25px rgba(196, 77, 36, 0.25),
             inset 0 2px 10px rgba(255, 255, 255, 0.1);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(124, 58, 237, 0.35),
-            0 0 50px rgba(124, 58, 237, 0.35),
+            0 10px 60px rgba(196, 77, 36, 0.4),
+            0 0 50px rgba(196, 77, 36, 0.35),
             inset 0 2px 15px rgba(255, 255, 255, 0.15);
           transform: scale(1.03);
         }
@@ -265,15 +404,15 @@
         0%,
         100% {
           box-shadow:
-            0 10px 40px rgba(79, 70, 229, 0.3),
-            0 0 30px rgba(79, 70, 229, 0.25),
+            0 10px 40px rgba(184, 69, 32, 0.35),
+            0 0 30px rgba(184, 69, 32, 0.3),
             inset 0 2px 10px rgba(255, 255, 255, 0.1);
           transform: scale(1);
         }
         50% {
           box-shadow:
-            0 10px 60px rgba(79, 70, 229, 0.45),
-            0 0 60px rgba(79, 70, 229, 0.4),
+            0 10px 60px rgba(184, 69, 32, 0.5),
+            0 0 60px rgba(184, 69, 32, 0.45),
             inset 0 2px 15px rgba(255, 255, 255, 0.15);
           transform: scale(1.06);
         }
@@ -287,7 +426,7 @@
         width: 240px;
         height: 240px;
         border-radius: 50%;
-        border: 2px solid rgba(99, 102, 241, 0.25);
+        border: 2px solid rgba(232, 92, 43, 0.3);
         opacity: 0;
         animation: wave-expand 2s ease-out infinite;
         pointer-events: none;
@@ -319,199 +458,330 @@
       }
 
       .status-text {
-        font-size: 18px;
-        color: #6366f1;
+        font-size: 16px;
+        color: var(--text-secondary);
         text-align: center;
-        min-height: 30px;
+        min-height: 24px;
         transition: all 0.3s ease;
         font-weight: 500;
-        letter-spacing: 0.5px;
       }
 
       .status-text.active {
-        color: #4f46e5;
-      }
-
-      .transcript-container {
-        width: 100%;
-        flex: 1;
-        overflow-y: auto;
-        background: #ffffff;
-        border: 1px solid #e1e4e8;
-        border-radius: 12px;
-        padding: 24px;
-      }
-
-      .transcript-item {
-        margin-bottom: 12px;
-        padding: 12px 16px;
-        border-radius: 8px;
-        font-size: 14px;
-        line-height: 1.6;
-      }
-
-      .transcript-item.user {
-        background: #f0f1ff;
-        margin-left: 20px;
-        border-left: 3px solid #6366f1;
-      }
-
-      .transcript-item.assistant {
-        background: #f6f8fa;
-        margin-right: 20px;
-        border-left: 3px solid #8b949e;
-      }
-
-      .transcript-item .role {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #6e7781;
-        margin-bottom: 6px;
-        font-weight: 600;
-      }
-
-      .transcript-item.user .role {
-        color: #4f46e5;
+        color: var(--accent);
       }
 
       .controls {
         display: flex;
         gap: 16px;
-        margin-top: 20px;
       }
 
       .control-button {
         padding: 12px 32px;
-        background: rgba(99, 102, 241, 0.1);
-        border: 2px solid rgba(99, 102, 241, 0.3);
-        border-radius: 24px;
-        color: #6366f1;
-        font-size: 16px;
+        background: transparent;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-secondary);
+        font-size: 14px;
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: all 0.2s ease;
         font-weight: 500;
-        letter-spacing: 0.5px;
       }
 
       .control-button:hover {
-        background: rgba(99, 102, 241, 0.2);
-        border-color: rgba(99, 102, 241, 0.6);
-        transform: translateY(-2px);
-        box-shadow: 0 5px 20px rgba(99, 102, 241, 0.25);
+        background: var(--bg-tertiary);
+        border-color: var(--text-muted);
+        color: var(--text-primary);
       }
 
       .control-button.danger {
-        border-color: rgba(239, 68, 68, 0.4);
-        color: #ef4444;
-        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: var(--error);
       }
 
       .control-button.danger:hover {
-        background: rgba(239, 68, 68, 0.2);
-        border-color: rgba(239, 68, 68, 0.6);
+        background: rgba(239, 68, 68, 0.1);
+        border-color: var(--error);
       }
 
+      /* Connection status */
       .connection-status {
         position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 8px 16px;
-        border-radius: 20px;
+        top: 16px;
+        right: 32px;
+        padding: 6px 12px;
+        border-radius: 6px;
         font-size: 12px;
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid #e1e4e8;
         font-weight: 500;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
       }
 
       .connection-status.connected {
-        border-color: rgba(34, 197, 94, 0.5);
-        color: #16a34a;
-        background: rgba(34, 197, 94, 0.1);
+        border-color: rgba(34, 197, 94, 0.3);
+        color: var(--success);
       }
 
       .connection-status.disconnected {
-        border-color: rgba(239, 68, 68, 0.5);
-        color: #ef4444;
-        background: rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+        color: var(--error);
       }
 
-      .suggestions {
-        margin-top: 20px;
-        padding: 16px;
-        background: #f6f8fa;
-        border-radius: 8px;
-        border: 1px solid #e1e4e8;
-      }
-
-      .suggestions h3 {
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #6e7781;
-        margin-bottom: 12px;
-        font-weight: 600;
-      }
-
-      .suggestion-chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .suggestion-chip {
-        padding: 8px 14px;
-        background: #ffffff;
-        border: 1px solid #e1e4e8;
-        border-radius: 20px;
-        font-size: 13px;
-        color: #24292e;
-        cursor: default;
-        transition: all 0.2s ease;
-      }
-
-      .suggestion-chip:hover {
-        border-color: #6366f1;
-        color: #4f46e5;
-      }
-
+      /* Footer */
       .footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        padding: 12px;
+        padding: 16px 32px;
         text-align: center;
         font-size: 13px;
-        color: #6e7781;
-        background: rgba(255, 255, 255, 0.9);
-        border-top: 1px solid #e1e4e8;
+        color: var(--text-muted);
+        background: var(--bg-primary);
+        border-top: 1px solid var(--border-color);
       }
 
       .footer a {
-        color: #6366f1;
+        color: var(--accent);
         text-decoration: none;
         font-weight: 500;
       }
 
       .footer a:hover {
+        color: var(--accent-hover);
         text-decoration: underline;
+      }
+
+      /* Placeholder text */
+      .placeholder-text {
+        color: var(--text-muted);
+        font-size: 14px;
+        text-align: center;
+        padding: 40px 20px;
+      }
+
+      /* Text input */
+      .input-form {
+        display: flex;
+        gap: 12px;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .text-input {
+        flex: 1;
+        padding: 12px 16px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.2s ease;
+      }
+
+      .text-input:focus {
+        border-color: var(--accent);
+      }
+
+      .text-input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .text-input:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .send-button {
+        padding: 12px 20px;
+        background: var(--accent);
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .send-button:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      .send-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .send-button svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      /* Responsive */
+      @media (max-width: 900px) {
+        .container {
+          flex-direction: column-reverse;
+        }
+
+        .transcript-panel,
+        .voice-panel {
+          width: 100%;
+          height: auto;
+        }
+
+        .voice-panel {
+          padding: 32px;
+          gap: 32px;
+          border-right: none;
+          border-bottom: 1px solid var(--border-color);
+        }
+
+        .transcript-panel {
+          flex: 1;
+          min-height: 300px;
+        }
+
+        .circle-container {
+          width: 160px;
+          height: 160px;
+        }
+
+        .voice-circle {
+          width: 160px;
+          height: 160px;
+        }
+
+        .waveform-icon {
+          width: 60px;
+          height: 60px;
+          gap: 4px;
+        }
+
+        .waveform-bar {
+          width: 6px;
+        }
+
+        .waveform-bar:nth-child(1) {
+          height: 24px;
+        }
+        .waveform-bar:nth-child(2) {
+          height: 40px;
+        }
+        .waveform-bar:nth-child(3) {
+          height: 32px;
+        }
+        .waveform-bar:nth-child(4) {
+          height: 48px;
+        }
+        .waveform-bar:nth-child(5) {
+          height: 28px;
+        }
+
+        @keyframes wave-expand {
+          0% {
+            width: 160px;
+            height: 160px;
+            opacity: 0.8;
+          }
+          100% {
+            width: 240px;
+            height: 240px;
+            opacity: 0;
+          }
+        }
+
+        .audio-wave {
+          width: 200px;
+          height: 200px;
+        }
       }
     </style>
   </head>
   <body>
+    <header class="header">
+      <a href="https://autonomy.computer" target="_blank" rel="noopener">
+        <svg class="logo" viewBox="0 0 652.94 59.4" xmlns="http://www.w3.org/2000/svg" aria-label="Autonomy">
+          <path
+            fill="currentColor"
+            d="M79.05,0H29.25c-5.1,0-10.5,4.05-12.3,9.15L0,59.4h27.75l6.3-18.45h12.45l-3.15,9.3c-1.8,5.1.9,9.15,6,9.15h18.6l17.1-50.25c1.65-5.1-1.05-9.15-6-9.15ZM56.4,11.7l-7.35,21.6h-12.45l7.35-21.6c.75-2.4,3.6-4.5,6-4.5h3.45c2.4,0,3.75,2.1,3,4.5Z"
+          />
+          <path
+            fill="currentColor"
+            d="M122.7,47.7c-.9,2.55-3.6,4.5-6.15,4.5h-3.3c-2.55,0-3.9-1.95-3-4.5L126.3,0h-27.75l-16.95,50.25c-1.8,5.1.9,9.15,6,9.15h49.8c4.95,0,10.5-4.05,12.15-9.15L166.5,0h-27.75l-16.05,47.7Z"
+          />
+          <polygon
+            fill="currentColor"
+            points="234.45 0 171.3 0 168.75 7.2 186.6 7.2 168.9 59.4 196.65 59.4 214.35 7.2 232.05 7.2 234.45 0"
+          />
+          <path
+            fill="currentColor"
+            d="M298.04,0h-49.8c-5.1,0-10.5,4.05-12.3,9.15l-13.8,41.1c-1.8,5.1.9,9.15,6,9.15h49.8c4.95,0,10.5-4.05,12.15-9.15l13.95-41.1c1.65-5.1-1.05-9.15-6-9.15ZM275.39,11.7l-12.15,36c-.9,2.55-3.6,4.5-6.15,4.5h-3.3c-2.55,0-3.9-1.95-3-4.5l12.15-36c.75-2.4,3.6-4.5,6-4.5h3.45c2.4,0,3.75,2.1,3,4.5Z"
+          />
+          <path
+            fill="currentColor"
+            d="M376.49,0h-58.95l-20.1,59.4h27.75l17.7-52.2h7.95c2.55,0,3.75,1.95,3,4.5l-16.2,47.7h27.75l17.1-50.25c1.65-5.1-1.05-9.15-6-9.15Z"
+          />
+          <path
+            fill="currentColor"
+            d="M454.94,0h-49.8c-5.1,0-10.5,4.05-12.3,9.15l-13.8,41.1c-1.8,5.1.9,9.15,6,9.15h49.8c4.95,0,10.5-4.05,12.15-9.15l13.95-41.1c1.65-5.1-1.05-9.15-6-9.15ZM432.29,11.7l-12.15,36c-.9,2.55-3.6,4.5-6.15,4.5h-3.3c-2.55,0-3.9-1.95-3-4.5l12.15-36c.75-2.4,3.6-4.5,6-4.5h3.45c2.4,0,3.75,2.1,3,4.5Z"
+          />
+          <path
+            fill="currentColor"
+            d="M565.49,0h-91.05l-20.1,59.4h26.4l17.55-52.2h6c2.55,0,3.9,1.95,3,4.5l-16.05,47.7h26.4l17.55-52.2h6c2.55,0,3.9,1.95,3,4.5l-16.05,47.7h26.25l17.1-50.25c1.65-5.1-1.05-9.15-6-9.15Z"
+          />
+          <path
+            fill="currentColor"
+            d="M625.19,0l-10.35,30.6c-.9,2.55-3.6,4.65-6.15,4.65h-3.3c-2.55,0-3.9-2.1-3-4.65l10.35-30.6h-27.75l-12.45,36.9c-1.05,3,.6,5.55,3.6,5.55h34.8l-1.8,5.25c-.9,2.55-3.6,4.5-6.15,4.5h-32.55l-2.55,7.2h55.95c4.95,0,10.5-4.05,12.15-9.15L652.94,0h-27.75Z"
+          />
+        </svg>
+      </a>
+    </header>
+
     <div id="connectionStatus" class="connection-status disconnected">Disconnected</div>
 
     <div class="container">
       <div class="transcript-panel">
+        <div class="transcript-header">
+          <h2>Conversation</h2>
+        </div>
         <div id="transcriptContainer" class="transcript-container">
-          <div style="color: #6e7781; font-size: 13px; text-align: center; padding: 20px">
-            Click the voice button to start a conversation...
+          <div class="transcript-item assistant">
+            <div class="role">Assistant</div>
+            <div class="content">
+              Hey! I am your interface to a team of agents that were just created, just for you, on Autonomy Computer.
+              This is a live demo. We have access to dozens of pages of documentation and general information about
+              Autonomy! We are part of a multi-tenant application to demonstrate that every user gets a sandboxed set of
+              agents - each with its own unique identity, state, memory, and tools.
+            </div>
           </div>
         </div>
+        <form id="inputForm" class="input-form">
+          <input type="text" id="textInput" class="text-input" placeholder="Type your question..." autocomplete="off" />
+          <button type="submit" id="sendButton" class="send-button">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+            Send
+          </button>
+        </form>
       </div>
 
       <div class="voice-panel">
+        <div class="voice-title">
+          <p>Click to start a voice conversation about Autonomy</p>
+        </div>
+
         <div class="circle-container">
           <button id="voiceCircle" class="voice-circle">
             <div class="waveform-icon">
@@ -541,7 +811,7 @@
 
     <script>
       const id = () => Math.random().toString(36).slice(2);
-      const visitorId = (localStorage.autonomy_visitor ||= id());
+      const visitorId = id();
 
       // State
       let ws = null;
@@ -556,6 +826,7 @@
       let nextPlayTime = 0;
       let scheduledSources = [];
       let isSpeaking = false;
+      let lastAudioPlayTime = 0; // Track when audio started for echo cancellation grace period
 
       // DOM elements
       const voiceCircle = document.getElementById("voiceCircle");
@@ -563,56 +834,48 @@
       const endButton = document.getElementById("endButton");
       const connectionStatus = document.getElementById("connectionStatus");
       const transcriptContainer = document.getElementById("transcriptContainer");
+      const inputForm = document.getElementById("inputForm");
+      const textInput = document.getElementById("textInput");
+      const sendButton = document.getElementById("sendButton");
+
+      // Text chat state
+      let isTextLoading = false;
+      let conversationId = id();
 
       // Connect to WebSocket
       async function connect() {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.host}/agents/docs/voice?scope=${visitorId}&conversation=${id()}`;
+        const wsUrl = `${protocol}//${window.location.host}/agents/docs/voice?scope=${visitorId}&conversation=${conversationId}`;
 
-        try {
-          updateStatus("Connecting...");
-          console.log("🔌 Connecting to:", wsUrl);
-
+        return new Promise((resolve, reject) => {
           ws = new WebSocket(wsUrl);
 
           ws.onopen = () => {
-            console.log("✅ WebSocket connected");
+            console.log("🔌 WebSocket connected");
             isConnected = true;
             connectionStatus.textContent = "Connected";
             connectionStatus.className = "connection-status connected";
-            updateStatus("Click to start a conversation.");
-
             ws.send(JSON.stringify({ type: "config" }));
+            resolve();
           };
 
           ws.onmessage = async (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              await handleServerMessage(data);
-            } catch (err) {
-              console.error("❌ Error handling message:", err);
-            }
+            const data = JSON.parse(event.data);
+            await handleServerMessage(data);
+          };
+
+          ws.onclose = () => {
+            console.log("📪 WebSocket closed");
+            isConnected = false;
+            connectionStatus.textContent = "Disconnected";
+            connectionStatus.className = "connection-status disconnected";
           };
 
           ws.onerror = (error) => {
             console.error("❌ WebSocket error:", error);
-            updateStatus("Connection error");
+            reject(error);
           };
-
-          ws.onclose = (event) => {
-            console.log("📪 WebSocket closed:", event.code, event.reason);
-            isConnected = false;
-            connectionStatus.textContent = "Disconnected";
-            connectionStatus.className = "connection-status disconnected";
-            if (isRecording) {
-              stopRecording();
-            }
-            updateStatus("Disconnected. Refresh to reconnect.");
-          };
-        } catch (error) {
-          console.error("❌ Connection error:", error);
-          updateStatus("Failed to connect");
-        }
+        });
       }
 
       // Handle messages from server
@@ -639,7 +902,7 @@
               console.log("🗣️ User:", data.text);
               addTranscript("user", data.text);
             } else {
-              console.log("🤖 Assistant:", data.text);
+              console.log("🤖 Autonomy:", data.text);
               addTranscript("assistant", data.text);
             }
             break;
@@ -650,7 +913,6 @@
           case "speech_started":
             console.log("🎤 Speech started (interrupted=" + data.interrupted + ")");
             // Always clear audio queue when user starts speaking
-            // Audio may still be scheduled/playing even if isSpeaking is false
             if (scheduledSources.length > 0) {
               console.log("🔇 Clearing audio queue - user started speaking");
               clearAudioQueue();
@@ -715,7 +977,7 @@
             sampleRate: 24000,
           });
 
-          // Create AudioWorklet for processing (replaces deprecated ScriptProcessorNode)
+          // Create AudioWorklet for processing
           const workletCode = `
             class PCMProcessor extends AudioWorkletProcessor {
               constructor() {
@@ -733,11 +995,14 @@
                     this.buffer[this.bufferIndex++] = inputData[i];
                     if (this.bufferIndex >= this.bufferSize) {
                       const pcm16 = new Int16Array(this.bufferSize);
+                      let maxLevel = 0;
                       for (let j = 0; j < this.bufferSize; j++) {
                         const s = Math.max(-1, Math.min(1, this.buffer[j]));
                         pcm16[j] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        const absVal = Math.abs(this.buffer[j]);
+                        if (absVal > maxLevel) maxLevel = absVal;
                       }
-                      this.port.postMessage({ pcm16: pcm16.buffer, maxLevel: Math.max(...this.buffer.map(Math.abs)) }, [pcm16.buffer]);
+                      this.port.postMessage({ pcm16: pcm16.buffer, maxLevel }, [pcm16.buffer]);
                       this.buffer = new Float32Array(this.bufferSize);
                       this.bufferIndex = 0;
                     }
@@ -766,8 +1031,10 @@
 
             const { pcm16, maxLevel } = e.data;
 
-            // Client-side interruption detection - threshold 0.15 to avoid false positives from ambient noise
-            if (isSpeaking && scheduledSources.length > 0 && maxLevel > 0.15) {
+            // Client-side interruption detection - threshold 0.25 to avoid false positives from ambient noise
+            // Also add 1000ms grace period after audio starts to avoid echo cancellation false positives
+            const timeSinceAudioStart = Date.now() - lastAudioPlayTime;
+            if (isSpeaking && scheduledSources.length > 0 && maxLevel > 0.25 && timeSinceAudioStart > 1000) {
               console.log("⚡ Client-side interruption detected (level:", maxLevel.toFixed(3), ")");
               clearAudioQueue();
               isSpeaking = false;
@@ -787,8 +1054,9 @@
           updateStatus("Listening...");
           endButton.style.display = "block";
 
-          transcriptContainer.innerHTML =
-            '<div style="color: #6e7781; font-size: 13px; text-align: center; padding: 20px">Conversation started...</div>';
+          // Disable text input during voice session
+          textInput.disabled = true;
+          sendButton.disabled = true;
 
           console.log("🎤 Recording started");
         } catch (error) {
@@ -803,6 +1071,10 @@
 
         console.log("⏹️ Stopping recording");
         isRecording = false;
+
+        // Re-enable text input
+        textInput.disabled = false;
+        sendButton.disabled = false;
 
         if (workletNode) {
           workletNode.disconnect();
@@ -857,6 +1129,11 @@
             nextPlayTime = playbackAudioContext.currentTime + 0.05;
           }
 
+          // Track when audio playback starts for echo cancellation grace period
+          if (scheduledSources.length === 0) {
+            lastAudioPlayTime = Date.now();
+          }
+
           const audioBytes = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
           const pcm16 = new Int16Array(audioBytes.buffer);
           const float32 = new Float32Array(pcm16.length);
@@ -907,16 +1184,16 @@
 
       // Add transcript to UI
       function addTranscript(role, text) {
-        const placeholder = transcriptContainer.querySelector('div[style*="color: #6e7781"]');
+        const placeholder = transcriptContainer.querySelector(".placeholder-text");
         if (placeholder) {
           placeholder.remove();
         }
 
         const item = document.createElement("div");
-        item.className = "transcript-item " + role;
+        item.className = `transcript-item ${role}`;
         item.innerHTML = `
-          <div class="role">${role === "user" ? "You" : "Autonomy Docs"}</div>
-          <div>${text}</div>
+          <div class="role">${role === "user" ? "You" : "Assistant"}</div>
+          <div class="content">${text}</div>
         `;
         transcriptContainer.appendChild(item);
         transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
@@ -926,30 +1203,222 @@
       function endSession() {
         stopRecording();
         clearAudioQueue();
-        scheduledSources = [];
-        isSpeaking = false;
+
         if (ws) {
           ws.close();
           ws = null;
         }
-        if (playbackAudioContext) {
-          playbackAudioContext.close();
-          playbackAudioContext = null;
+
+        isConnected = false;
+        connectionStatus.textContent = "Disconnected";
+        connectionStatus.className = "connection-status disconnected";
+        updateStatus("Click to start");
+      }
+
+      // Handle text form submission
+      async function handleTextSubmit(e) {
+        e.preventDefault();
+
+        const message = textInput.value.trim();
+        if (!message || isTextLoading || isRecording) return;
+
+        textInput.value = "";
+        isTextLoading = true;
+        textInput.disabled = true;
+        sendButton.disabled = true;
+
+        // Add user message to transcript
+        addTranscript("user", message);
+
+        // Add placeholder for assistant response with unique ID
+        const responseId = `streamingResponse-${Date.now()}`;
+        const placeholder = document.createElement("div");
+        placeholder.className = "transcript-item assistant";
+        placeholder.innerHTML = `
+          <div class="role">Assistant</div>
+          <div class="content" id="${responseId}">...</div>
+        `;
+        transcriptContainer.appendChild(placeholder);
+        transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+
+        // Get reference to the response element BEFORE the fetch
+        const responseEl = document.getElementById(responseId);
+
+        try {
+          const response = await fetch(`/agents/docs?stream=true`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              message: message,
+              scope: visitorId,
+              conversation: conversationId,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to get response");
+          }
+
+          if (response.body) {
+            // Handle newline-delimited JSON streaming from Autonomy HTTP API
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let pendingText = "";
+            let displayedText = "";
+            let streamDone = false;
+            let buffer = "";
+
+            // Typewriter loop - runs independently of stream reading
+            const typewriterLoop = async () => {
+              const baseDelay = 2; // Base delay in ms
+              const minCharsPerTick = 1;
+              const maxCharsPerTick = 5; // Max chars to display per tick when catching up
+
+              while (!streamDone || pendingText.length > 0) {
+                if (pendingText.length > 0) {
+                  // Calculate how many chars to display this tick
+                  // Display more chars per tick if we have a backlog
+                  const backlog = pendingText.length;
+                  const charsToDisplay = Math.min(maxCharsPerTick, Math.max(minCharsPerTick, Math.floor(backlog / 10)));
+
+                  const chars = pendingText.slice(0, charsToDisplay);
+                  pendingText = pendingText.slice(charsToDisplay);
+                  displayedText += chars;
+
+                  responseEl.textContent = displayedText;
+                  transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+
+                  // Shorter delay when catching up
+                  const delay = backlog > 50 ? 1 : baseDelay;
+                  await new Promise((resolve) => setTimeout(resolve, delay));
+                } else {
+                  // No pending text, wait a bit before checking again
+                  await new Promise((resolve) => setTimeout(resolve, 5));
+                }
+              }
+            };
+
+            // Start typewriter loop
+            const typewriterPromise = typewriterLoop();
+
+            // Helper to extract text from assistant message content
+            function extractText(content) {
+              if (typeof content === "string") {
+                return content;
+              } else if (content && typeof content === "object") {
+                // Handle {type: "text", text: "..."} format
+                if (content.type === "text" && content.text) {
+                  return content.text;
+                }
+                // Handle {text: "..."} format
+                if (content.text) {
+                  return content.text;
+                }
+              } else if (Array.isArray(content)) {
+                return content
+                  .map((c) => extractText(c))
+                  .filter(Boolean)
+                  .join("");
+              }
+              return "";
+            }
+
+            // Helper to get assistant response from a parsed JSON object
+            function getAssistantText(data) {
+              // Format: {messages: [{role: "assistant", content: {...}}]}
+              if (data.messages && Array.isArray(data.messages)) {
+                for (let i = data.messages.length - 1; i >= 0; i--) {
+                  const msg = data.messages[i];
+                  if (msg.role === "assistant" && msg.content) {
+                    return extractText(msg.content);
+                  }
+                }
+              }
+              // Format: {content: "..."} or {response: "..."}
+              if (data.content) return extractText(data.content);
+              if (data.response) return data.response;
+              if (data.text) return data.text;
+              return "";
+            }
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const data = JSON.parse(line);
+                  console.log("📦 Parsed response chunk:", data);
+                  const text = getAssistantText(data);
+                  console.log("📝 Extracted text:", text);
+                  if (text) {
+                    // Queue text for typewriter effect
+                    pendingText += text;
+                  }
+                } catch (parseErr) {
+                  console.log("⚠️ Parse error for line:", line, parseErr);
+                }
+              }
+            }
+
+            // Process remaining buffer
+            if (buffer.trim()) {
+              console.log("📦 Processing remaining buffer:", buffer);
+              try {
+                const data = JSON.parse(buffer);
+                console.log("📦 Parsed buffer:", data);
+                const text = getAssistantText(data);
+                console.log("📝 Extracted text from buffer:", text);
+                if (text) {
+                  // Queue text for typewriter effect
+                  pendingText += text;
+                }
+              } catch (parseErr) {
+                console.log("⚠️ Buffer parse error:", parseErr);
+              }
+            }
+
+            // Signal stream is done and wait for typewriter to finish
+            streamDone = true;
+            await typewriterPromise;
+
+            if (!displayedText) {
+              responseEl.textContent = "No response received.";
+            }
+          } else {
+            // Fallback for non-streaming
+            const data = await response.json();
+            responseEl.textContent = data.response || data.content || "No response";
+          }
+        } catch (error) {
+          console.error("Text chat error:", error);
+          responseEl.textContent = "Sorry, I encountered an error. Please try again.";
+        } finally {
+          isTextLoading = false;
+          textInput.disabled = false;
+          sendButton.disabled = false;
+          textInput.focus();
         }
-        updateStatus("Session ended. Click to start again.");
       }
 
       // Event listeners
       voiceCircle.addEventListener("click", startRecording);
       endButton.addEventListener("click", endSession);
+      inputForm.addEventListener("submit", handleTextSubmit);
 
-      // Connect on load
-      window.addEventListener("load", connect);
-
-      // Cleanup on unload
-      window.addEventListener("beforeunload", () => {
-        stopRecording();
-        if (ws) ws.close();
+      // Handle Enter key in text input
+      textInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          inputForm.dispatchEvent(new Event("submit"));
+        }
       });
     </script>
   </body>
