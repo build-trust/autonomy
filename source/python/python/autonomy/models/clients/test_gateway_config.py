@@ -2,6 +2,8 @@
 Tests for gateway configuration module.
 """
 
+import base64
+import json
 import os
 import tempfile
 import time
@@ -15,9 +17,14 @@ from .gateway_config import (
   use_anthropic_sdk,
   get_client_metadata_headers,
   clear_token_cache,
+  get_token_expiration,
+  get_token_time_remaining,
+  _parse_jwt_expiration,
+  _is_token_expiring_soon,
   DEFAULT_GATEWAY_URL,
   DEFAULT_GATEWAY_API_KEY,
   _FILE_CACHE_TTL_SECONDS,
+  _TOKEN_EXPIRY_BUFFER_SECONDS,
 )
 
 
@@ -332,3 +339,217 @@ class TestClientMetadataHeaders:
       for key, value in headers.items():
         assert isinstance(key, str)
         assert isinstance(value, str)
+
+
+def _create_jwt_token(payload: dict, secret: str = "test-secret") -> str:
+  """
+  Create a simple JWT token for testing.
+  Note: This is a simplified implementation for testing only.
+  """
+  header = {"alg": "HS256", "typ": "JWT"}
+  header_b64 = base64.urlsafe_b64encode(json.dumps(header).encode()).rstrip(b"=").decode()
+  payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
+  # For testing, we don't need a valid signature
+  signature = "test_signature"
+  return f"{header_b64}.{payload_b64}.{signature}"
+
+
+class TestJWTExpirationParsing:
+  """Tests for JWT token expiration parsing functionality."""
+
+  def test_parse_jwt_expiration_valid_token(self):
+    """Test parsing expiration from a valid JWT token."""
+    exp_time = int(time.time()) + 3600  # 1 hour from now
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time, "iat": int(time.time())})
+    assert _parse_jwt_expiration(token) == exp_time
+
+  def test_parse_jwt_expiration_no_exp_claim(self):
+    """Test parsing JWT without exp claim returns None."""
+    token = _create_jwt_token({"sub": "test-zone", "iat": int(time.time())})
+    assert _parse_jwt_expiration(token) is None
+
+  def test_parse_jwt_expiration_invalid_format(self):
+    """Test parsing invalid token format returns None."""
+    assert _parse_jwt_expiration("not-a-jwt") is None
+    assert _parse_jwt_expiration("only.two") is None
+    assert _parse_jwt_expiration("") is None
+
+  def test_parse_jwt_expiration_invalid_base64(self):
+    """Test parsing token with invalid base64 returns None."""
+    assert _parse_jwt_expiration("header.!!!invalid!!!.signature") is None
+
+  def test_parse_jwt_expiration_invalid_json(self):
+    """Test parsing token with invalid JSON payload returns None."""
+    header = base64.urlsafe_b64encode(b'{"alg":"HS256"}').rstrip(b"=").decode()
+    invalid_payload = base64.urlsafe_b64encode(b"not-json").rstrip(b"=").decode()
+    token = f"{header}.{invalid_payload}.signature"
+    assert _parse_jwt_expiration(token) is None
+
+
+class TestTokenExpiringCheck:
+  """Tests for token expiring soon check functionality."""
+
+  def test_token_not_expiring_soon(self):
+    """Test token that expires in the future is not expiring soon."""
+    exp_time = int(time.time()) + 3600  # 1 hour from now
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+    assert _is_token_expiring_soon(token) is False
+
+  def test_token_expiring_soon(self):
+    """Test token that expires soon is detected."""
+    exp_time = int(time.time()) + 300  # 5 minutes from now (less than 10 min buffer)
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+    assert _is_token_expiring_soon(token) is True
+
+  def test_token_already_expired(self):
+    """Test token that has already expired is detected."""
+    exp_time = int(time.time()) - 60  # 1 minute ago
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+    assert _is_token_expiring_soon(token) is True
+
+  def test_token_expiring_with_custom_buffer(self):
+    """Test token expiring soon with custom buffer time."""
+    exp_time = int(time.time()) + 120  # 2 minutes from now
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+    # With 60 second buffer, should not be expiring soon
+    assert _is_token_expiring_soon(token, buffer_seconds=60) is False
+    # With 180 second buffer, should be expiring soon
+    assert _is_token_expiring_soon(token, buffer_seconds=180) is True
+
+  def test_token_without_exp_not_expiring_soon(self):
+    """Test token without exp claim is not considered expiring soon."""
+    token = _create_jwt_token({"sub": "test-zone", "iat": int(time.time())})
+    assert _is_token_expiring_soon(token) is False
+
+  def test_invalid_token_not_expiring_soon(self):
+    """Test invalid token is not considered expiring soon."""
+    assert _is_token_expiring_soon("not-a-jwt") is False
+
+
+class TestTokenExpirationCacheRefresh:
+  """Tests for automatic token cache refresh on expiring tokens."""
+
+  def setup_method(self):
+    """Clear token cache before each test."""
+    clear_token_cache()
+
+  def test_expiring_token_triggers_refresh(self):
+    """Test that an expiring token triggers a file re-read."""
+    # Create initial token that will expire soon
+    exp_time_soon = int(time.time()) + 300  # 5 minutes (less than 10 min buffer)
+    token_soon = _create_jwt_token({"sub": "test-zone", "exp": exp_time_soon})
+
+    # Create updated token with longer expiry
+    exp_time_long = int(time.time()) + 7200  # 2 hours
+    token_long = _create_jwt_token({"sub": "test-zone", "exp": exp_time_long})
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+      f.write(token_soon)
+      f.flush()
+      try:
+        with patch.dict(os.environ, {"AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY_FILE": f.name}, clear=True):
+          # First read - gets soon-expiring token
+          result1 = get_gateway_api_key()
+          assert result1 == token_soon
+
+          # Update file with longer-lived token
+          with open(f.name, "w") as update_f:
+            update_f.write(token_long)
+
+          # Second read - should trigger refresh because token is expiring soon
+          result2 = get_gateway_api_key()
+          assert result2 == token_long
+      finally:
+        os.unlink(f.name)
+
+  def test_valid_token_uses_cache(self):
+    """Test that a valid (not expiring) token uses cache."""
+    exp_time = int(time.time()) + 7200  # 2 hours
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+      f.write(token)
+      f.flush()
+      try:
+        with patch.dict(os.environ, {"AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY_FILE": f.name}, clear=True):
+          # First read
+          result1 = get_gateway_api_key()
+          assert result1 == token
+
+          # Update file
+          new_token = _create_jwt_token({"sub": "test-zone-2", "exp": exp_time})
+          with open(f.name, "w") as update_f:
+            update_f.write(new_token)
+
+          # Second read - should use cache since token is not expiring
+          result2 = get_gateway_api_key()
+          assert result2 == token  # Still cached
+      finally:
+        os.unlink(f.name)
+
+
+class TestTokenExpirationHelpers:
+  """Tests for token expiration helper functions."""
+
+  def setup_method(self):
+    """Clear token cache before each test."""
+    clear_token_cache()
+
+  def test_get_token_expiration_no_cache(self):
+    """Test get_token_expiration returns None when no token cached."""
+    assert get_token_expiration() is None
+
+  def test_get_token_expiration_with_cache(self):
+    """Test get_token_expiration returns exp when token is cached."""
+    exp_time = int(time.time()) + 3600
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+      f.write(token)
+      f.flush()
+      try:
+        with patch.dict(os.environ, {"AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY_FILE": f.name}, clear=True):
+          get_gateway_api_key()  # Populate cache
+          assert get_token_expiration() == exp_time
+      finally:
+        os.unlink(f.name)
+
+  def test_get_token_time_remaining_no_cache(self):
+    """Test get_token_time_remaining returns None when no token cached."""
+    assert get_token_time_remaining() is None
+
+  def test_get_token_time_remaining_with_cache(self):
+    """Test get_token_time_remaining returns correct value."""
+    exp_time = int(time.time()) + 3600  # 1 hour
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+      f.write(token)
+      f.flush()
+      try:
+        with patch.dict(os.environ, {"AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY_FILE": f.name}, clear=True):
+          get_gateway_api_key()  # Populate cache
+          remaining = get_token_time_remaining()
+          # Should be approximately 3600 seconds (allow some tolerance)
+          assert remaining is not None
+          assert 3590 <= remaining <= 3600
+      finally:
+        os.unlink(f.name)
+
+  def test_get_token_time_remaining_expired(self):
+    """Test get_token_time_remaining returns negative for expired token."""
+    exp_time = int(time.time()) - 60  # Expired 1 minute ago
+    token = _create_jwt_token({"sub": "test-zone", "exp": exp_time})
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+      f.write(token)
+      f.flush()
+      try:
+        with patch.dict(os.environ, {"AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY_FILE": f.name}, clear=True):
+          get_gateway_api_key()  # Populate cache
+          remaining = get_token_time_remaining()
+          # Should be negative since token is expired
+          assert remaining is not None
+          assert remaining < 0
+      finally:
+        os.unlink(f.name)

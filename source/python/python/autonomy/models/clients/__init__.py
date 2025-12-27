@@ -14,6 +14,8 @@ from .gateway_config import (
   get_gateway_api_key,
   use_anthropic_sdk,
   clear_token_cache,
+  get_token_expiration,
+  get_token_time_remaining,
 )
 
 __all__ = [
@@ -30,4 +32,6 @@ __all__ = [
   "get_gateway_api_key",
   "use_anthropic_sdk",
   "clear_token_cache",
+  "get_token_expiration",
+  "get_token_time_remaining",
 ]

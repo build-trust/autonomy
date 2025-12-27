@@ -27,7 +27,7 @@ from typing import List, Optional
 from copy import deepcopy
 
 import tiktoken
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, AuthenticationError
 
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
@@ -38,6 +38,7 @@ from .gateway_config import (
   get_gateway_url,
   get_gateway_api_key,
   get_client_metadata_headers,
+  clear_token_cache,
 )
 from .rate_limiter import RateLimiterConfig
 from .request_queue import QueueConfig, QueueManager, RetryConfig
@@ -568,6 +569,7 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     agent_name: Optional[str] = None,
     scope: Optional[str] = None,
     conversation: Optional[str] = None,
+    _retry_on_auth_error: bool = True,
     **kwargs,
   ):
     """
@@ -578,6 +580,7 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     :param agent_name: Optional agent name for logging
     :param scope: Optional scope for logging
     :param conversation: Optional conversation ID for logging
+    :param _retry_on_auth_error: Whether to retry on 401 errors (internal use)
     :param kwargs: Additional parameters
     :return: Completion response (converted to OpenAI-like format)
     """
@@ -622,10 +625,38 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
       return response
 
     # Route through queue if throttling is enabled
-    if self._throttle:
-      response = await self._execute_with_queue(make_request)
-    else:
-      response = await make_request()
+    try:
+      if self._throttle:
+        response = await self._execute_with_queue(make_request)
+      else:
+        response = await make_request()
+    except AuthenticationError as e:
+      # On 401 errors, clear token cache and retry once
+      # This handles cases where the K8s secret was updated but we have a stale cached token
+      if _retry_on_auth_error:
+        self.logger.warning(
+          f"Authentication error (401), clearing token cache and retrying: {e}"
+        )
+        clear_token_cache()
+        # Recreate client with fresh token
+        self._client = None
+        return await self._complete_chat(
+          system,
+          messages,
+          agent_name=agent_name,
+          scope=scope,
+          conversation=conversation,
+          _retry_on_auth_error=False,  # Don't retry again
+          **kwargs,
+        )
+      else:
+        # Already retried, re-raise
+        self.logger.error(
+          f"Authentication error (401) persists after token refresh. "
+          f"This may indicate the token file hasn't been updated by K8s yet. "
+          f"Consider restarting the pod."
+        )
+        raise
 
     # Log response
     log_raw_response(
