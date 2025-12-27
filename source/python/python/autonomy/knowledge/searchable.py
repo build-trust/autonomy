@@ -9,6 +9,10 @@ from .util import download_url
 from ..models import Model
 from ..autonomy_in_rust_for_python import debug
 
+# Maximum number of texts to embed in a single API call
+# Cohere and other embedding APIs typically limit to 128 texts per request
+EMBEDDING_BATCH_SIZE = 96
+
 
 class SearchableKnowledge(KnowledgeProvider):
   def __init__(
@@ -60,8 +64,8 @@ class SearchableKnowledge(KnowledgeProvider):
     whole_document = await self.text_extractor.extract_text(text, content_type)
     text_pieces = self.chunker.chunk(whole_document)
 
-    # A single call is much faster than calling the model for each text piece
-    embeddings = await self.model.embeddings(text_pieces)
+    # Use batched embeddings to handle API limits
+    embeddings = await self._batch_embeddings(text_pieces)
 
     text_pieces = [TextPiece(text, embedding) for text, embedding in zip(text_pieces, embeddings)]
     await self.storage.store_text_piece(
@@ -69,6 +73,25 @@ class SearchableKnowledge(KnowledgeProvider):
       document_name,
       text_pieces,
     )
+
+  async def _batch_embeddings(self, texts: List[str]) -> List[List[float]]:
+    """
+    Generate embeddings for texts in batches to avoid API limits.
+
+    :param texts: List of text strings to embed
+    :return: List of embedding vectors
+    """
+    if len(texts) <= EMBEDDING_BATCH_SIZE:
+      return await self.model.embeddings(texts)
+
+    # Process in batches
+    all_embeddings = []
+    for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+      batch = texts[i : i + EMBEDDING_BATCH_SIZE]
+      batch_embeddings = await self.model.embeddings(batch)
+      all_embeddings.extend(batch_embeddings)
+
+    return all_embeddings
 
   async def add_document(self, document_name: str, document_url: str, content_type: Optional[str] = None):
     """
@@ -85,8 +108,8 @@ class SearchableKnowledge(KnowledgeProvider):
     whole_document = await self.text_extractor.extract_text(content, content_type)
     text_pieces = self.chunker.chunk(whole_document)
 
-    # A single call is much faster than calling the model for each text piece
-    embeddings = await self.model.embeddings(text_pieces)
+    # Use batched embeddings to handle API limits
+    embeddings = await self._batch_embeddings(text_pieces)
 
     text_pieces = [TextPiece(text, embedding) for text, embedding in zip(text_pieces, embeddings)]
     await self.storage.store_text_piece(
