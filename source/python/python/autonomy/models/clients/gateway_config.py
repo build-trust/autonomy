@@ -297,16 +297,22 @@ def get_client_metadata_headers() -> dict:
 
 def clear_token_cache() -> None:
   """
-  Clear the token file cache.
+  Clear the token file cache and reset shared clients.
 
   This forces the next call to get_gateway_api_key() to re-read the token
-  from the file. Useful for testing or when you know the token has been
-  updated.
+  from the file, and resets the shared SDK clients so they will be recreated
+  with the new token. Useful for handling 401 errors when tokens are refreshed.
   """
   _token_file_cache["token"] = None
   _token_file_cache["read_at"] = 0.0
   _token_file_cache["file_path"] = None
   _token_file_cache["token_exp"] = None
+
+  # Also reset the shared clients so they get recreated with new credentials
+  # Import here to avoid circular imports
+  from .shared_clients import reset_shared_clients
+
+  reset_shared_clients()
 
 
 def get_token_expiration() -> Optional[int]:
