@@ -27,7 +27,7 @@ from typing import List, Optional
 from copy import deepcopy
 
 import tiktoken
-from anthropic import AsyncAnthropic, AuthenticationError
+from anthropic import AsyncAnthropic, AuthenticationError, APIStatusError
 
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
@@ -410,6 +410,7 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     agent_name: Optional[str] = None,
     scope: Optional[str] = None,
     conversation: Optional[str] = None,
+    _retry_on_auth_error: bool = True,
     **kwargs,
   ):
     """
@@ -421,6 +422,7 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
     :param agent_name: Optional agent name for logging
     :param scope: Optional scope for logging
     :param conversation: Optional conversation ID for logging
+    :param _retry_on_auth_error: Whether to retry on 401 errors (internal use)
     :param kwargs: Additional parameters
     :yields: Response chunks (converted to OpenAI-like format for compatibility)
     """
@@ -444,47 +446,109 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
 
     # Get shared client and make streaming request
     client = await self._get_client()
-    async with client.messages.stream(**request_kwargs) as stream:
-      accumulated_content = ""
-      accumulated_tool_calls = []
-
-      async for event in stream:
-        # Convert Anthropic events to OpenAI-like format for compatibility
-        chunk = self._convert_anthropic_event_to_openai(event, is_thinking)
-        if chunk:
-          # Track content
-          if chunk.choices[0].delta.content:
-            accumulated_content += chunk.choices[0].delta.content
-
-          # Track tool calls
-          if hasattr(chunk.choices[0].delta, "tool_calls") and chunk.choices[0].delta.tool_calls:
-            for tc in chunk.choices[0].delta.tool_calls:
-              accumulated_tool_calls.append(tc)
-
+    try:
+      stream_context = client.messages.stream(**request_kwargs)
+    except (AuthenticationError, APIStatusError) as e:
+      # Handle 401 errors - clear token cache and retry once
+      is_auth_error = isinstance(e, AuthenticationError) or (isinstance(e, APIStatusError) and e.status_code == 401)
+      if is_auth_error and _retry_on_auth_error:
+        self.logger.warning(f"Authentication error (401) in stream setup, clearing token cache and retrying: {e}")
+        clear_token_cache()
+        # Recreate client with fresh token
+        self._client = None
+        # Retry by yielding from recursive call
+        async for chunk in self._complete_chat_stream(
+          system,
+          messages,
+          is_thinking,
+          agent_name=agent_name,
+          scope=scope,
+          conversation=conversation,
+          _retry_on_auth_error=False,  # Don't retry again
+          **kwargs,
+        ):
           yield chunk
+        return
+      else:
+        if is_auth_error:
+          self.logger.error(
+            f"Authentication error (401) persists after token refresh in stream setup. "
+            f"This may indicate the token file hasn't been updated by K8s yet. "
+            f"Consider restarting the pod."
+          )
+        raise
 
-      # Log accumulated response
-      response_dict = {
-        "choices": [
-          {
-            "message": {
-              "role": "assistant",
-              "content": accumulated_content if accumulated_content else None,
-            },
-            "finish_reason": "stop",
-          }
-        ]
-      }
-      if accumulated_tool_calls:
-        response_dict["choices"][0]["message"]["tool_calls"] = accumulated_tool_calls
+    try:
+      async with stream_context as stream:
+        accumulated_content = ""
+        accumulated_tool_calls = []
 
-      log_raw_response(
-        response=response_dict,
-        model_name=self.name,
-        agent_name=agent_name,
-        scope=scope,
-        conversation=conversation,
-      )
+        async for event in stream:
+          # Convert Anthropic events to OpenAI-like format for compatibility
+          chunk = self._convert_anthropic_event_to_openai(event, is_thinking)
+          if chunk:
+            # Track content
+            if chunk.choices[0].delta.content:
+              accumulated_content += chunk.choices[0].delta.content
+
+            # Track tool calls
+            if hasattr(chunk.choices[0].delta, "tool_calls") and chunk.choices[0].delta.tool_calls:
+              for tc in chunk.choices[0].delta.tool_calls:
+                accumulated_tool_calls.append(tc)
+
+            yield chunk
+
+        # Log accumulated response
+        response_dict = {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": accumulated_content if accumulated_content else None,
+              },
+              "finish_reason": "stop",
+            }
+          ]
+        }
+        if accumulated_tool_calls:
+          response_dict["choices"][0]["message"]["tool_calls"] = accumulated_tool_calls
+
+        log_raw_response(
+          response=response_dict,
+          model_name=self.name,
+          agent_name=agent_name,
+          scope=scope,
+          conversation=conversation,
+        )
+    except (AuthenticationError, APIStatusError) as e:
+      # Handle 401 errors during streaming - clear token cache and retry once
+      is_auth_error = isinstance(e, AuthenticationError) or (isinstance(e, APIStatusError) and e.status_code == 401)
+      if is_auth_error and _retry_on_auth_error:
+        self.logger.warning(f"Authentication error (401) during stream, clearing token cache and retrying: {e}")
+        clear_token_cache()
+        # Recreate client with fresh token
+        self._client = None
+        # Retry by yielding from recursive call
+        async for chunk in self._complete_chat_stream(
+          system,
+          messages,
+          is_thinking,
+          agent_name=agent_name,
+          scope=scope,
+          conversation=conversation,
+          _retry_on_auth_error=False,  # Don't retry again
+          **kwargs,
+        ):
+          yield chunk
+        return
+      else:
+        if is_auth_error:
+          self.logger.error(
+            f"Authentication error (401) persists after token refresh during stream. "
+            f"This may indicate the token file hasn't been updated by K8s yet. "
+            f"Consider restarting the pod."
+          )
+        raise
 
   def _convert_anthropic_event_to_openai(self, event, is_thinking: bool):
     """
@@ -634,9 +698,7 @@ class AnthropicGatewayClient(InfoContext, DebugContext):
       # On 401 errors, clear token cache and retry once
       # This handles cases where the K8s secret was updated but we have a stale cached token
       if _retry_on_auth_error:
-        self.logger.warning(
-          f"Authentication error (401), clearing token cache and retrying: {e}"
-        )
+        self.logger.warning(f"Authentication error (401), clearing token cache and retrying: {e}")
         clear_token_cache()
         # Recreate client with fresh token
         self._client = None
