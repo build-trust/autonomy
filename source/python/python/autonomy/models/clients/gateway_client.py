@@ -705,19 +705,22 @@ class GatewayClient(InfoContext, DebugContext):
 
     return response.content
 
-  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs) -> str:
+  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs):
     """
     Transcribe audio to text through the gateway.
 
     :param audio_file: Audio file or bytes to transcribe
     :param language: Optional language code
-    :param kwargs: Additional parameters
-    :return: Transcribed text
+    :param kwargs: Additional parameters including:
+      - model: Model to use (default: "whisper-1", can use "gpt-4o-transcribe-diarize" for diarization)
+      - response_format: Response format (use "diarized_json" for speaker diarization with gpt-4o-transcribe-diarize)
+    :return: Transcribed text (str) or full response object if response_format is specified
     """
     self.logger.info("Transcribing audio to text")
 
-    # Use whisper-1 model for speech-to-text
+    # Use whisper-1 model for speech-to-text by default
     stt_model = kwargs.pop("model", "whisper-1")
+    response_format = kwargs.get("response_format", None)
 
     client = await self._get_client()
     transcription = await client.audio.transcriptions.create(
@@ -726,5 +729,9 @@ class GatewayClient(InfoContext, DebugContext):
       language=language,
       **kwargs,
     )
+
+    # For diarization or structured formats, return the full response
+    if response_format in ("diarized_json", "verbose_json", "json"):
+      return transcription
 
     return transcription.text

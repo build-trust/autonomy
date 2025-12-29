@@ -755,17 +755,20 @@ class LiteLLMClient(InfoContext, DebugContext):
     # Return audio bytes
     return response.content
 
-  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs) -> str:
+  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs):
     """
     Transcribe audio to text using LiteLLM's transcription endpoint.
 
     :param audio_file: Audio file or bytes to transcribe
     :param language: Optional language code (e.g., 'en', 'es', 'fr')
-    :param kwargs: Additional parameters
-    :return: Transcribed text
+    :param kwargs: Additional parameters including:
+      - model: Model to use (can use "gpt-4o-transcribe-diarize" for diarization)
+      - response_format: Response format (use "diarized_json" for speaker diarization with gpt-4o-transcribe-diarize)
+    :return: Transcribed text (str) or full response object if response_format is specified
     """
     # parameters provided in kwargs will override the default parameters
     merged_kwargs = {**self.kwargs, **kwargs}
+    response_format = merged_kwargs.get("response_format", None)
 
     if language:
       merged_kwargs["language"] = language
@@ -776,6 +779,10 @@ class LiteLLMClient(InfoContext, DebugContext):
       audio_file.name = "audio.mp3"  # Give it a name for content-type detection
 
     response = await router.atranscription(model=self.name, file=audio_file, **merged_kwargs)
+
+    # For diarization or structured formats, return the full response
+    if response_format in ("diarized_json", "verbose_json", "json"):
+      return response
 
     return response.text
 

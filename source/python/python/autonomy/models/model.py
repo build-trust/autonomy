@@ -389,14 +389,16 @@ class Model(InfoContext, DebugContext):
     """
     return await self.client.text_to_speech(text, voice, response_format, **kwargs)
 
-  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs) -> str:
+  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs):
     """
     Transcribe audio to text.
 
     :param audio_file: Audio file or bytes to transcribe
     :param language: Optional language code (e.g., 'en', 'es', 'fr')
-    :param kwargs: Additional parameters
-    :return: Transcribed text
+    :param kwargs: Additional parameters including:
+      - model: Model to use (default uses instance model, can use "gpt-4o-transcribe-diarize" for diarization)
+      - response_format: Response format (use "diarized_json" for speaker diarization with gpt-4o-transcribe-diarize)
+    :return: Transcribed text (str) or full response object if response_format is specified
     """
     return await self.client.speech_to_text(audio_file, language, **kwargs)
 
