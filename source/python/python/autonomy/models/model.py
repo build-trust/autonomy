@@ -6,7 +6,7 @@ from ..nodes.message import ConversationMessage
 from .clients.litellm_client import LiteLLMClient, PROVIDER_ALIASES, ALL_PROVIDER_ALLOWED_FULL_NAMES
 from .clients.gateway_client import GatewayClient
 from .clients.anthropic_gateway_client import AnthropicGatewayClient
-from .clients.gateway_config import use_anthropic_sdk, get_gateway_url, get_gateway_api_key
+from .clients.gateway_config import use_anthropic_sdk, get_gateway_url, get_gateway_api_key, clear_token_cache
 
 logger = get_logger("model")
 
@@ -57,6 +57,17 @@ def is_anthropic_model(model_name: str) -> bool:
   return False
 
 
+def _fetch_gateway_models_request(gateway_url: str, api_key: str) -> httpx.Response:
+  """Make the actual HTTP request to fetch models."""
+  response = httpx.get(
+    f"{gateway_url}/v1/models",
+    headers={"Authorization": f"Bearer {api_key}"},
+    timeout=10.0,
+  )
+  response.raise_for_status()
+  return response
+
+
 def _fetch_gateway_models() -> List[str]:
   """
   Fetch available models from the gateway and deduplicate by showing
@@ -65,18 +76,36 @@ def _fetch_gateway_models() -> List[str]:
   When two models share the same alias (e.g., Bedrock and Anthropic direct
   both have Claude models), show only the alias once.
 
+  Includes 401 retry logic: if the token is expired, clears the cache
+  and retries once with fresh credentials.
+
   :return: List of model IDs/aliases from the gateway (deduplicated)
   """
   try:
     gateway_url = get_gateway_url()
     api_key = get_gateway_api_key()
 
-    response = httpx.get(
-      f"{gateway_url}/v1/models",
-      headers={"Authorization": f"Bearer {api_key}"},
-      timeout=10.0,
-    )
-    response.raise_for_status()
+    try:
+      response = _fetch_gateway_models_request(gateway_url, api_key)
+    except httpx.HTTPStatusError as e:
+      if e.response.status_code == 401:
+        logger.warning(
+          "Authentication error (401) listing models, clearing token cache and retrying"
+        )
+        clear_token_cache()
+        # Get fresh credentials after clearing cache
+        api_key = get_gateway_api_key()
+        try:
+          response = _fetch_gateway_models_request(gateway_url, api_key)
+        except httpx.HTTPStatusError as retry_error:
+          if retry_error.response.status_code == 401:
+            logger.error(
+              "Authentication error (401) persists after token refresh when listing models. "
+              "This may indicate the token file hasn't been updated by K8s yet."
+            )
+          raise
+      else:
+        raise
 
     data = response.json()
     raw_models = [model["id"] for model in data.get("data", [])]
