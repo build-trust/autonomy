@@ -47,7 +47,12 @@ except ImportError:
 
 from ..logs import get_logger
 from ..tools.protocol import InvokableTool
-from ..models.clients.gateway_config import get_gateway_url, get_gateway_api_key, get_client_metadata_headers
+from ..models.clients.gateway_config import (
+  get_gateway_url,
+  get_gateway_api_key,
+  get_client_metadata_headers,
+  clear_token_cache,
+)
 
 if TYPE_CHECKING:
   from .agent import Agent
@@ -612,11 +617,14 @@ class VoiceSession:
     logger.debug("Using gateway API key for realtime connection")
     return headers
 
-  async def connect(self):
+  async def connect(self, _retry_on_auth_error: bool = True):
     """
     Connect to the realtime API.
 
     Establishes WebSocket connection and sends session configuration.
+
+    Args:
+        _retry_on_auth_error: Whether to retry on 401 errors (internal use)
 
     Raises:
         RuntimeError: If connection fails
@@ -644,6 +652,14 @@ class VoiceSession:
 
     except Exception as e:
       self.connected = False
+      error_str = str(e)
+
+      # Check for 401 authentication errors and retry once
+      if _retry_on_auth_error and ("401" in error_str or "Unauthorized" in error_str or "Invalid API key" in error_str):
+        logger.warning(f"Authentication error (401) in WebSocket connect, clearing token cache and retrying: {e}")
+        clear_token_cache()
+        return await self.connect(_retry_on_auth_error=False)
+
       logger.error(f"❌ Failed to connect to realtime API: {e}")
       raise RuntimeError(f"Failed to establish WebSocket connection: {e}")
 
