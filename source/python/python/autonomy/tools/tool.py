@@ -140,9 +140,7 @@ class Tool(InvokableTool, InfoContext):
 
       # Handle Optional types (Optional[X] is Union[X, None])
       origin = get_origin(expected_type)
-      if origin is Union or (
-        hasattr(expected_type, "__class__") and expected_type.__class__.__name__ == "UnionType"
-      ):
+      if origin is Union or (hasattr(expected_type, "__class__") and expected_type.__class__.__name__ == "UnionType"):
         # For Optional/Union types, try to get the non-None type
         type_args = get_args(expected_type)
         if type_args:

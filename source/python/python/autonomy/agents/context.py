@@ -833,9 +833,7 @@ class SummarizedHistorySection(ContextSection):
         logger.error(f"[CONTEXT→{self.name}] Tool pairing validation failed for {cache_key}: {error}")
         # Fall back to returning all messages to avoid Claude API error
         # This is safer than returning broken tool pairs
-        logger.warning(
-          f"[CONTEXT→{self.name}] Falling back to all {total_messages} messages due to tool pairing issue"
-        )
+        logger.warning(f"[CONTEXT→{self.name}] Falling back to all {total_messages} messages due to tool pairing issue")
         return messages
 
       return result_messages
