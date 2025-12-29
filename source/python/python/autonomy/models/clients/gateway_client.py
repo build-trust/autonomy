@@ -660,32 +660,56 @@ class GatewayClient(InfoContext, DebugContext):
     # (attached as _gateway_hint_rpm and _gateway_circuit_state by make_request)
     return await queue.submit(request_fn)
 
-  async def embeddings(self, text: List[str], **kwargs) -> List[List[float]]:
+  async def embeddings(self, text: List[str], _retry_on_auth_error: bool = True, **kwargs) -> List[List[float]]:
     """
     Generate embeddings through the gateway.
 
     :param text: List of texts to embed
+    :param _retry_on_auth_error: Whether to retry on 401 errors (internal use)
     :param kwargs: Additional parameters
     :return: List of embedding vectors
     """
     self.logger.info(f"Generating embeddings for {len(text)} texts")
 
     client = await self._get_client()
-    response = await client.embeddings.create(
-      model=self.name,
-      input=text,
-      **kwargs,
-    )
+    try:
+      response = await client.embeddings.create(
+        model=self.name,
+        input=text,
+        **kwargs,
+      )
+    except AuthenticationError as e:
+      # On 401 errors, clear token cache and retry once
+      if _retry_on_auth_error:
+        self.logger.warning(f"Authentication error (401) in embeddings, clearing token cache and retrying: {e}")
+        clear_token_cache()
+        self._client = None
+        return await self.embeddings(text, _retry_on_auth_error=False, **kwargs)
+      else:
+        self.logger.error(
+          "Authentication error (401) persists after token refresh in embeddings. "
+          "This may indicate the token file hasn't been updated by K8s yet. "
+          "Consider restarting the pod."
+        )
+        raise
 
     return [item.embedding for item in response.data]
 
-  async def text_to_speech(self, text: str, voice: str = "alloy", response_format: str = "mp3", **kwargs) -> bytes:
+  async def text_to_speech(
+    self,
+    text: str,
+    voice: str = "alloy",
+    response_format: str = "mp3",
+    _retry_on_auth_error: bool = True,
+    **kwargs,
+  ) -> bytes:
     """
     Convert text to speech through the gateway.
 
     :param text: Text to convert
     :param voice: Voice to use
     :param response_format: Audio format
+    :param _retry_on_auth_error: Whether to retry on 401 errors (internal use)
     :param kwargs: Additional parameters
     :return: Audio bytes
     """
@@ -695,22 +719,42 @@ class GatewayClient(InfoContext, DebugContext):
     tts_model = kwargs.pop("model", "tts-1")
 
     client = await self._get_client()
-    response = await client.audio.speech.create(
-      model=tts_model,
-      voice=voice,
-      input=text,
-      response_format=response_format,
-      **kwargs,
-    )
+    try:
+      response = await client.audio.speech.create(
+        model=tts_model,
+        voice=voice,
+        input=text,
+        response_format=response_format,
+        **kwargs,
+      )
+    except AuthenticationError as e:
+      # On 401 errors, clear token cache and retry once
+      if _retry_on_auth_error:
+        self.logger.warning(f"Authentication error (401) in text_to_speech, clearing token cache and retrying: {e}")
+        clear_token_cache()
+        self._client = None
+        return await self.text_to_speech(
+          text, voice=voice, response_format=response_format, _retry_on_auth_error=False, model=tts_model, **kwargs
+        )
+      else:
+        self.logger.error(
+          "Authentication error (401) persists after token refresh in text_to_speech. "
+          "This may indicate the token file hasn't been updated by K8s yet. "
+          "Consider restarting the pod."
+        )
+        raise
 
     return response.content
 
-  async def speech_to_text(self, audio_file, language: Optional[str] = None, **kwargs):
+  async def speech_to_text(
+    self, audio_file, language: Optional[str] = None, _retry_on_auth_error: bool = True, **kwargs
+  ):
     """
     Transcribe audio to text through the gateway.
 
     :param audio_file: Audio file or bytes to transcribe
     :param language: Optional language code
+    :param _retry_on_auth_error: Whether to retry on 401 errors (internal use)
     :param kwargs: Additional parameters including:
       - model: Model to use (default: "whisper-1", can use "gpt-4o-transcribe-diarize" for diarization)
       - response_format: Response format (use "diarized_json" for speaker diarization with gpt-4o-transcribe-diarize)
@@ -723,12 +767,29 @@ class GatewayClient(InfoContext, DebugContext):
     response_format = kwargs.get("response_format", None)
 
     client = await self._get_client()
-    transcription = await client.audio.transcriptions.create(
-      model=stt_model,
-      file=audio_file,
-      language=language,
-      **kwargs,
-    )
+    try:
+      transcription = await client.audio.transcriptions.create(
+        model=stt_model,
+        file=audio_file,
+        language=language,
+        **kwargs,
+      )
+    except AuthenticationError as e:
+      # On 401 errors, clear token cache and retry once
+      if _retry_on_auth_error:
+        self.logger.warning(f"Authentication error (401) in speech_to_text, clearing token cache and retrying: {e}")
+        clear_token_cache()
+        self._client = None
+        return await self.speech_to_text(
+          audio_file, language=language, _retry_on_auth_error=False, model=stt_model, **kwargs
+        )
+      else:
+        self.logger.error(
+          "Authentication error (401) persists after token refresh in speech_to_text. "
+          "This may indicate the token file hasn't been updated by K8s yet. "
+          "Consider restarting the pod."
+        )
+        raise
 
     # For diarization or structured formats, return the full response
     if response_format in ("diarized_json", "verbose_json", "json"):
