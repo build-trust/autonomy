@@ -517,6 +517,61 @@
 
       let currentResult = null;
 
+      // Clean up translation format by removing --- delimiters and metadata
+      function cleanTranslationFormat(text) {
+        if (!text) return "";
+
+        // Remove leading/trailing --- delimiters
+        let cleaned = text.replace(/^---\s*/gm, "").replace(/\s*---$/gm, "");
+
+        // Remove "Source Language: ..." line
+        cleaned = cleaned.replace(/^Source Language:\s*\w+\s*\n*/im, "");
+
+        // Remove "Translation:" label if on its own line
+        cleaned = cleaned.replace(/^Translation:\s*\n*/im, "");
+
+        // Trim whitespace
+        cleaned = cleaned.trim();
+
+        return cleaned;
+      }
+
+      // Add Speaker 1 labels to original transcript (which doesn't have speaker info from Whisper)
+      function formatTranscriptWithSpeakers(text) {
+        if (!text) return "";
+
+        // Split into sentences (roughly 2-3 sentences per "turn" for readability)
+        // Match sentence endings: . ! ? followed by space or end
+        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+
+        if (sentences.length === 0) return text;
+
+        // Group sentences into chunks of 2-3 for readability
+        const chunks = [];
+        let currentChunk = [];
+        let sentenceCount = 0;
+
+        for (const sentence of sentences) {
+          currentChunk.push(sentence.trim());
+          sentenceCount++;
+
+          // Create a new chunk every 2-3 sentences or if we hit a natural break
+          if (sentenceCount >= 2) {
+            chunks.push(currentChunk.join(" "));
+            currentChunk = [];
+            sentenceCount = 0;
+          }
+        }
+
+        // Don't forget remaining sentences
+        if (currentChunk.length > 0) {
+          chunks.push(currentChunk.join(" "));
+        }
+
+        // Format with Speaker 1 labels
+        return chunks.map((chunk) => `Speaker 1: ${chunk}`).join("\n\n");
+      }
+
       // Parse text into conversation turns
       function parseConversation(text) {
         if (!text) return [];
@@ -863,10 +918,14 @@ ${currentResult.english_translation}
                     resultFilename.textContent = data.filename;
 
                     translationContent.innerHTML = "";
-                    translationContent.appendChild(renderConversation(data.english_translation));
+                    translationContent.appendChild(
+                      renderConversation(cleanTranslationFormat(data.english_translation)),
+                    );
 
                     transcriptContent.innerHTML = "";
-                    transcriptContent.appendChild(renderConversation(data.original_transcript));
+                    transcriptContent.appendChild(
+                      renderConversation(formatTranscriptWithSpeakers(data.original_transcript)),
+                    );
 
                     tabBtns.forEach((b) => b.classList.remove("active"));
                     tabBtns[0].classList.add("active");

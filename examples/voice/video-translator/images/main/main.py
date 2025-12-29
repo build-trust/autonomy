@@ -44,39 +44,54 @@ chunked_uploads = {}
 
 TRANSLATOR_INSTRUCTIONS = """
 You are a professional translator. You will receive transcribed text that may be
-in any language. Your job is to:
+in any language. The transcription may already include speaker labels (e.g., "Speaker A:", "Speaker B:").
+
+Your job is to:
 1. Identify the source language
 2. Translate the text accurately to English
-3. IMPORTANT: Preserve speaker labels, conversation structure, and paragraph breaks
+3. PRESERVE any existing speaker labels from the transcription
 
 Output format:
 ---
 Source Language: [detected language]
 
 Translation:
-[The English translation with speaker labels preserved]
+[speaker label if present]: [translated text]
 ---
 
 CRITICAL RULES:
-- If the transcript has speaker labels (e.g., "Speaker 1:", "Person A:", names), PRESERVE them exactly
+- PRESERVE existing speaker labels exactly as they appear in the input (e.g., "Speaker A:", "Speaker B:")
+- If the input has speaker labels, keep them in the translation
+- If the input has NO speaker labels, add "Speaker 1:", "Speaker 2:", etc. based on dialogue turns
 - Keep each speaker's dialogue on separate lines with their label
-- Format as: "Speaker 1: [translated text]" on its own line
-- Maintain the conversation flow and turn-taking structure
-- If there are no speaker labels, add them if you can distinguish different voices/speakers
 - Be accurate and natural while preserving the meaning and tone
 
-Example output with speakers:
+Example input with speaker labels:
+Speaker A: Hola, ¿cómo estás?
+Speaker B: Muy bien, gracias.
+
+Example output:
 ---
 Source Language: Spanish
 
 Translation:
-Speaker 1: Hello, how are you today?
-Speaker 2: I'm doing well, thank you for asking.
-Speaker 1: Great! Shall we begin the meeting?
+Speaker A: Hello, how are you?
+Speaker B: Very well, thank you.
+---
+
+Example input without speaker labels:
+Hola, bienvenidos al programa de hoy.
+
+Example output:
+---
+Source Language: Spanish
+
+Translation:
+Speaker 1: Hello, welcome to today's program.
 ---
 
 If the text is already in English, still format it the same way but note "Source Language: English"
-and provide any cleanup/formatting improvements while preserving speaker structure.
+and provide any cleanup/formatting improvements while adding speaker labels.
 """
 
 
@@ -166,17 +181,111 @@ async def extract_audio_chunk(video_path: str, audio_path: str, start_time: floa
   return True
 
 
-async def transcribe_audio(audio_path: str) -> str:
-  """Transcribe audio file using Whisper."""
-  model = Model("whisper-1")
+async def transcribe_audio(audio_path: str, use_diarization: bool = True) -> str:
+  """Transcribe audio file using GPT-4o with diarization or Whisper fallback.
 
-  with open(audio_path, "rb") as audio_file:
-    transcript = await model.speech_to_text(
-      audio_file=audio_file,
-      language=None  # Auto-detect language
-    )
+  Args:
+    audio_path: Path to the audio file
+    use_diarization: If True, use gpt-4o-transcribe-diarize for speaker labels
 
-  return transcript
+  Returns:
+    Transcribed text, with speaker labels if diarization is enabled
+  """
+  if use_diarization:
+    # Use GPT-4o transcribe with diarization for speaker labels
+    model = Model("gpt-4o-transcribe-diarize")
+
+    with open(audio_path, "rb") as audio_file:
+      # Request diarized_json to get speaker-labeled segments
+      result = await model.speech_to_text(
+        audio_file=audio_file,
+        language=None,  # Auto-detect language
+        model="gpt-4o-transcribe-diarize",
+        response_format="diarized_json"
+      )
+
+    # Parse diarized response - extract speaker-labeled text
+    return format_diarized_transcript(result)
+  else:
+    # Fallback to basic Whisper
+    model = Model("whisper-1")
+
+    with open(audio_path, "rb") as audio_file:
+      transcript = await model.speech_to_text(
+        audio_file=audio_file,
+        language=None  # Auto-detect language
+      )
+
+    return transcript
+
+
+def format_diarized_transcript(result) -> str:
+  """Format diarized transcription result into readable text with speaker labels.
+
+  Args:
+    result: The response from gpt-4o-transcribe-diarize (diarized_json format)
+
+  Returns:
+    Formatted transcript with speaker labels
+  """
+  segments = None
+
+  # Try to get segments from different sources
+  if hasattr(result, 'model_dump'):
+    # OpenAI SDK response - use model_dump to get raw dict with segments
+    raw = result.model_dump()
+    segments = raw.get('segments', [])
+  elif hasattr(result, 'segments'):
+    segments = result.segments
+  elif isinstance(result, dict):
+    segments = result.get('segments', [])
+
+  if segments:
+    # Diarized format with segments
+    lines = []
+    current_speaker = None
+    current_text = []
+
+    for segment in segments:
+      # Handle both dict and object segments
+      if isinstance(segment, dict):
+        speaker = segment.get('speaker', 'Speaker')
+        text = segment.get('text', '').strip()
+      else:
+        speaker = getattr(segment, 'speaker', None) or 'Speaker'
+        text = getattr(segment, 'text', '').strip()
+
+      if not text:
+        continue
+
+      # Normalize speaker label (A -> Speaker A, etc.)
+      if speaker and len(speaker) == 1 and speaker.isalpha():
+        speaker = f"Speaker {speaker}"
+
+      if speaker != current_speaker:
+        # Output previous speaker's text
+        if current_speaker and current_text:
+          lines.append(f"{current_speaker}: {' '.join(current_text)}")
+        current_speaker = speaker
+        current_text = [text]
+      else:
+        current_text.append(text)
+
+    # Don't forget the last speaker's text
+    if current_speaker and current_text:
+      lines.append(f"{current_speaker}: {' '.join(current_text)}")
+
+    if lines:
+      return '\n'.join(lines)
+
+  # Fallback: if no segments, try to get plain text
+  if hasattr(result, 'text') and result.text:
+    return result.text
+  elif isinstance(result, dict) and result.get('text'):
+    return result.get('text')
+
+  # Last resort: convert to string
+  return str(result)
 
 
 async def get_video_duration(video_path: str) -> float:
@@ -203,10 +312,16 @@ async def get_video_duration(video_path: str) -> float:
     return 0.0
 
 
-async def transcribe_audio_chunked(video_path: str, temp_dir: str) -> str:
+async def transcribe_audio_chunked(video_path: str, temp_dir: str, use_diarization: bool = True) -> str:
   """Transcribe a video by extracting and processing audio in chunks to avoid OOM.
 
   This never extracts the full audio - always works in chunks to minimize memory usage.
+  Uses gpt-4o-transcribe-diarize for native speaker diarization.
+
+  Args:
+    video_path: Path to the video file
+    temp_dir: Temporary directory for audio chunks
+    use_diarization: If True, use gpt-4o-transcribe-diarize for speaker labels
   """
   # Get video duration directly without extracting audio
   total_duration = await get_video_duration(video_path)
@@ -222,10 +337,11 @@ async def transcribe_audio_chunked(video_path: str, temp_dir: str) -> str:
     total_duration = 3600  # Assume 1 hour if we can't determine
 
   print(f"Video duration: {total_duration:.1f} seconds ({total_duration/60:.1f} min)")
+  print(f"Using diarization: {use_diarization}")
 
-  # Always process in chunks - 10 minutes each
-  # This keeps memory usage low regardless of video length
-  chunk_duration = 600  # 10 minutes
+  # gpt-4o-transcribe-diarize has a 1400 second (~23 min) limit
+  # Use 20 minute chunks to stay safely under the limit
+  chunk_duration = 1200 if use_diarization else 600  # 20 min for diarize, 10 min for whisper
   transcripts = []
   current_time = 0
   chunk_num = 0
@@ -247,15 +363,25 @@ async def transcribe_audio_chunked(video_path: str, temp_dir: str) -> str:
 
     if success and chunk_audio.exists() and chunk_audio.stat().st_size > 0:
       audio_size_kb = chunk_audio.stat().st_size / 1024
-      print(f"Chunk {chunk_num}: audio extracted ({audio_size_kb:.0f} KB), transcribing...")
+      print(f"Chunk {chunk_num}: audio extracted ({audio_size_kb:.0f} KB), transcribing with {'diarization' if use_diarization else 'whisper'}...")
 
       try:
-        chunk_transcript = await transcribe_audio(str(chunk_audio))
+        chunk_transcript = await transcribe_audio(str(chunk_audio), use_diarization=use_diarization)
         if chunk_transcript and chunk_transcript.strip():
           transcripts.append(chunk_transcript.strip())
           print(f"Chunk {chunk_num}: transcribed {len(chunk_transcript)} chars")
       except Exception as e:
-        print(f"Error transcribing chunk {chunk_num}: {e}")
+        print(f"Error transcribing chunk {chunk_num} with diarization: {e}")
+        # Fallback to whisper if diarization fails
+        if use_diarization:
+          print(f"Chunk {chunk_num}: falling back to whisper...")
+          try:
+            chunk_transcript = await transcribe_audio(str(chunk_audio), use_diarization=False)
+            if chunk_transcript and chunk_transcript.strip():
+              transcripts.append(chunk_transcript.strip())
+              print(f"Chunk {chunk_num}: transcribed {len(chunk_transcript)} chars (whisper fallback)")
+          except Exception as e2:
+            print(f"Error transcribing chunk {chunk_num} with whisper fallback: {e2}")
       finally:
         # Clean up chunk immediately to save disk space and memory
         chunk_audio.unlink(missing_ok=True)
@@ -489,7 +615,8 @@ async def upload_video(file: UploadFile = File(...)):
   """
   Direct video upload endpoint for the demo UI.
 
-  Accepts a video file, processes it, and returns the results.
+  Accepts a video file, streams it to disk, processes it, and returns the results.
+  Uses streaming to avoid loading entire file into memory (prevents OOM on large files).
   """
   # Validate file type
   ext = Path(file.filename or "video.mp4").suffix.lower()
@@ -499,11 +626,30 @@ async def upload_video(file: UploadFile = File(...)):
       status_code=400
     )
 
-  # Read file content
-  video_bytes = await file.read()
+  # Stream file to disk to avoid OOM on large files
+  temp_dir = tempfile.mkdtemp()
+  try:
+    filename = file.filename or "uploaded_video.mp4"
+    video_path = Path(temp_dir) / filename
+    chunk_size = 1024 * 1024  # 1MB chunks
 
-  # Process the video
-  result = await process_video_file(video_bytes, file.filename or "uploaded_video")
+    print(f"Streaming upload to disk: {filename}")
+    with open(video_path, "wb") as f:
+      while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+          break
+        f.write(chunk)
+
+    file_size = video_path.stat().st_size
+    print(f"Upload complete: {filename}, {file_size / (1024*1024):.1f} MB")
+
+    # Process the video from disk
+    result = await process_video_file_from_disk(str(video_path), filename)
+  finally:
+    # Clean up temp directory
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    gc.collect()
 
   return JSONResponse(result)
 
