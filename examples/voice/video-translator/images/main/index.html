@@ -227,86 +227,9 @@
         overflow-y: auto;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         font-size: 0.95rem;
-        line-height: 1.7;
+        line-height: 1.8;
         color: #334155;
         border: 1px solid #e2e8f0;
-      }
-
-      /* Conversation styling */
-      .conversation {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-      }
-
-      .conversation-turn {
-        padding: 16px 20px;
-        border-radius: 12px;
-        background: white;
-        border-left: 4px solid #3b82f6;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-        margin-left: 0;
-        transition: all 0.2s ease;
-      }
-
-      .conversation-turn:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      }
-
-      .conversation-turn:nth-child(even) {
-        margin-left: 24px;
-        border-left-color: #8b5cf6;
-      }
-
-      .conversation-turn:nth-child(3n) {
-        margin-left: 48px;
-        border-left-color: #06b6d4;
-      }
-
-      .conversation-turn:nth-child(4n) {
-        margin-left: 12px;
-        border-left-color: #10b981;
-      }
-
-      .speaker-label {
-        display: inline-block;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: #64748b;
-        margin-bottom: 8px;
-        padding: 2px 8px;
-        background: #f1f5f9;
-        border-radius: 4px;
-      }
-
-      .speaker-label.speaker-1 {
-        color: #3b82f6;
-        background: #eff6ff;
-      }
-
-      .speaker-label.speaker-2 {
-        color: #8b5cf6;
-        background: #f5f3ff;
-      }
-
-      .speaker-label.speaker-3 {
-        color: #06b6d4;
-        background: #ecfeff;
-      }
-
-      .speaker-label.speaker-4 {
-        color: #10b981;
-        background: #ecfdf5;
-      }
-
-      .turn-text {
-        color: #334155;
-        line-height: 1.7;
-      }
-
-      .plain-text {
         white-space: pre-wrap;
       }
 
@@ -420,12 +343,6 @@
           width: 100%;
           justify-content: center;
         }
-
-        .conversation-turn:nth-child(even),
-        .conversation-turn:nth-child(3n),
-        .conversation-turn:nth-child(4n) {
-          margin-left: 12px;
-        }
       }
     </style>
   </head>
@@ -534,154 +451,6 @@
         cleaned = cleaned.trim();
 
         return cleaned;
-      }
-
-      // Add Speaker 1 labels to original transcript (which doesn't have speaker info from Whisper)
-      function formatTranscriptWithSpeakers(text) {
-        if (!text) return "";
-
-        // Split into sentences (roughly 2-3 sentences per "turn" for readability)
-        // Match sentence endings: . ! ? followed by space or end
-        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-
-        if (sentences.length === 0) return text;
-
-        // Group sentences into chunks of 2-3 for readability
-        const chunks = [];
-        let currentChunk = [];
-        let sentenceCount = 0;
-
-        for (const sentence of sentences) {
-          currentChunk.push(sentence.trim());
-          sentenceCount++;
-
-          // Create a new chunk every 2-3 sentences or if we hit a natural break
-          if (sentenceCount >= 2) {
-            chunks.push(currentChunk.join(" "));
-            currentChunk = [];
-            sentenceCount = 0;
-          }
-        }
-
-        // Don't forget remaining sentences
-        if (currentChunk.length > 0) {
-          chunks.push(currentChunk.join(" "));
-        }
-
-        // Format with Speaker 1 labels
-        return chunks.map((chunk) => `Speaker 1: ${chunk}`).join("\n\n");
-      }
-
-      // Parse text into conversation turns
-      function parseConversation(text) {
-        if (!text) return [];
-
-        const lines = text.split("\n");
-        const turns = [];
-        let currentTurn = null;
-        let speakerCount = 0;
-        const speakerMap = new Map();
-
-        // Common speaker patterns
-        const speakerPatterns = [
-          /^(Speaker\s*\d+|SPEAKER\s*\d+|Person\s*\d+|PERSON\s*\d+)\s*[:：]/i,
-          /^\[?(Speaker\s*\d+|SPEAKER\s*\d+)\]?\s*[:：]?/i,
-          /^(Host|Guest|Interviewer|Interviewee|Narrator|Voice\s*\d*)\s*[:：]/i,
-          /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*[:：]\s/,
-          /^(\w+)\s*[:：]\s+/,
-        ];
-
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine) continue;
-
-          let foundSpeaker = null;
-          let remainingText = trimmedLine;
-
-          // Check for speaker patterns
-          for (const pattern of speakerPatterns) {
-            const match = trimmedLine.match(pattern);
-            if (match) {
-              foundSpeaker = match[1].trim();
-              remainingText = trimmedLine.slice(match[0].length).trim();
-              break;
-            }
-          }
-
-          if (foundSpeaker) {
-            // Save previous turn
-            if (currentTurn && currentTurn.text.trim()) {
-              turns.push(currentTurn);
-            }
-
-            // Assign speaker number
-            if (!speakerMap.has(foundSpeaker.toLowerCase())) {
-              speakerCount++;
-              speakerMap.set(foundSpeaker.toLowerCase(), speakerCount);
-            }
-
-            currentTurn = {
-              speaker: foundSpeaker,
-              speakerNum: speakerMap.get(foundSpeaker.toLowerCase()),
-              text: remainingText,
-            };
-          } else if (currentTurn) {
-            // Continue previous turn
-            currentTurn.text += (currentTurn.text ? "\n" : "") + trimmedLine;
-          } else {
-            // No speaker detected, create anonymous turn
-            speakerCount++;
-            currentTurn = {
-              speaker: null,
-              speakerNum: speakerCount,
-              text: trimmedLine,
-            };
-          }
-        }
-
-        // Don't forget the last turn
-        if (currentTurn && currentTurn.text.trim()) {
-          turns.push(currentTurn);
-        }
-
-        return turns;
-      }
-
-      // Render conversation as styled HTML
-      function renderConversation(text) {
-        const turns = parseConversation(text);
-
-        // If no clear conversation structure, return as plain text with nice formatting
-        if (turns.length <= 1) {
-          const div = document.createElement("div");
-          div.className = "plain-text";
-          div.textContent = text;
-          return div;
-        }
-
-        const container = document.createElement("div");
-        container.className = "conversation";
-
-        turns.forEach((turn, index) => {
-          const turnDiv = document.createElement("div");
-          turnDiv.className = "conversation-turn";
-
-          if (turn.speaker) {
-            const labelDiv = document.createElement("div");
-            labelDiv.className = `speaker-label speaker-${((turn.speakerNum - 1) % 4) + 1}`;
-            labelDiv.textContent = turn.speaker;
-            turnDiv.appendChild(labelDiv);
-          }
-
-          const textDiv = document.createElement("div");
-          textDiv.className = "turn-text";
-          textDiv.textContent = turn.text;
-          turnDiv.appendChild(textDiv);
-
-          container.appendChild(turnDiv);
-        });
-
-        return container;
       }
 
       // Drop zone events
@@ -917,15 +686,8 @@ ${currentResult.english_translation}
 
                     resultFilename.textContent = data.filename;
 
-                    translationContent.innerHTML = "";
-                    translationContent.appendChild(
-                      renderConversation(cleanTranslationFormat(data.english_translation)),
-                    );
-
-                    transcriptContent.innerHTML = "";
-                    transcriptContent.appendChild(
-                      renderConversation(formatTranscriptWithSpeakers(data.original_transcript)),
-                    );
+                    translationContent.textContent = cleanTranslationFormat(data.english_translation);
+                    transcriptContent.textContent = data.original_transcript;
 
                     tabBtns.forEach((b) => b.classList.remove("active"));
                     tabBtns[0].classList.add("active");

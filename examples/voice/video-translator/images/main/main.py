@@ -197,11 +197,13 @@ async def transcribe_audio(audio_path: str, use_diarization: bool = True) -> str
 
     with open(audio_path, "rb") as audio_file:
       # Request diarized_json to get speaker-labeled segments
+      # chunking_strategy="auto" is required for audio longer than 30 seconds
       result = await model.speech_to_text(
         audio_file=audio_file,
         language=None,  # Auto-detect language
         model="gpt-4o-transcribe-diarize",
-        response_format="diarized_json"
+        response_format="diarized_json",
+        chunking_strategy="auto"
       )
 
     # Parse diarized response - extract speaker-labeled text
