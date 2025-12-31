@@ -30,7 +30,7 @@ from copy import deepcopy
 
 import httpx
 import tiktoken
-from openai import AsyncOpenAI, AuthenticationError, APIStatusError
+from openai import AsyncOpenAI, AuthenticationError, APIStatusError, DefaultHttpxClient
 
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
@@ -758,6 +758,7 @@ class GatewayClient(InfoContext, DebugContext):
     :param kwargs: Additional parameters including:
       - model: Model to use (default: "whisper-1", can use "gpt-4o-transcribe-diarize" for diarization)
       - response_format: Response format (use "diarized_json" for speaker diarization with gpt-4o-transcribe-diarize)
+      - timeout: Custom timeout in seconds (default: 600 for long audio files)
     :return: Transcribed text (str) or full response object if response_format is specified
     """
     self.logger.info("Transcribing audio to text")
@@ -766,9 +767,28 @@ class GatewayClient(InfoContext, DebugContext):
     stt_model = kwargs.pop("model", "whisper-1")
     response_format = kwargs.get("response_format", None)
 
-    client = await self._get_client()
+    # Extract custom timeout (default 600s = 10 minutes for long audio files)
+    # Audio transcription can take 7+ minutes for 20-minute chunks
+    custom_timeout = kwargs.pop("timeout", 600)
+
+    # Create a dedicated client with extended timeout for audio transcription
+    # The shared client has a 120s read timeout which is too short for long audio
+    audio_timeout = httpx.Timeout(
+      connect=10.0,
+      read=float(custom_timeout),
+      write=60.0,  # Uploading large audio files may take time
+      pool=10.0,
+    )
+
+    audio_client = AsyncOpenAI(
+      base_url=get_gateway_url() + "/v1",
+      api_key=get_gateway_api_key(),
+      default_headers=get_client_metadata_headers(),
+      timeout=audio_timeout,
+    )
+
     try:
-      transcription = await client.audio.transcriptions.create(
+      transcription = await audio_client.audio.transcriptions.create(
         model=stt_model,
         file=audio_file,
         language=language,
@@ -790,6 +810,9 @@ class GatewayClient(InfoContext, DebugContext):
           "Consider restarting the pod."
         )
         raise
+    finally:
+      # Close the dedicated audio client to avoid connection leaks
+      await audio_client.close()
 
     # For diarization or structured formats, return the full response
     if response_format in ("diarized_json", "verbose_json", "json"):
