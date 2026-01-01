@@ -44,7 +44,7 @@
       .card {
         background: white;
         border-radius: 16px;
-        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         overflow: hidden;
       }
 
@@ -393,16 +393,16 @@
           </div>
 
           <div class="result-tabs">
-            <button class="tab-btn active" data-tab="translation">English Translation</button>
-            <button class="tab-btn" data-tab="transcript">Original Transcript</button>
+            <button class="tab-btn active" data-tab="transcript">Original Transcript</button>
+            <button class="tab-btn" data-tab="translation">English Translation</button>
           </div>
 
-          <div class="result-pane active" id="translationPane">
-            <div class="result-content" id="translationContent"></div>
-          </div>
-
-          <div class="result-pane" id="transcriptPane">
+          <div class="result-pane active" id="transcriptPane">
             <div class="result-content" id="transcriptContent"></div>
+          </div>
+
+          <div class="result-pane" id="translationPane">
+            <div class="result-content" id="translationContent"></div>
           </div>
 
           <div class="actions">
@@ -567,21 +567,35 @@ ${currentResult.english_translation}
         progressSection.classList.add("active");
         errorMessage.classList.remove("active");
 
+        // Check queue status before starting
+        try {
+          const queueResponse = await fetch("/queue/status");
+          const queueStatus = await queueResponse.json();
+          if (queueStatus.current_job) {
+            updateProgress(
+              `⏳ Server is busy processing "${queueStatus.current_job.filename}". Your video will be queued.`,
+              0,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 2000)); // Show message briefly
+          }
+        } catch (e) {
+          // Queue check failed, proceed anyway
+          console.warn("Could not check queue status:", e);
+        }
+
         updateProgress("Connecting...", 0);
 
         try {
-          // Use chunked HTTP upload for reliability with large files
-          await uploadViaChunkedHttp(file);
+          await uploadViaWebSocket(file);
         } catch (error) {
           showError(error.message || "An error occurred while processing the video.");
         }
       }
 
-      async function uploadViaChunkedHttp(file) {
+      async function uploadViaWebSocket(file) {
         /**
-         * WebSocket chunked upload with acknowledgments.
+         * Upload file via WebSocket with chunked acknowledgments.
          * Sends 1MB chunks sequentially, waiting for server ack before sending next.
-         * More memory efficient than parallel HTTP as it uses a single connection.
          */
         const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -666,11 +680,18 @@ ${currentResult.english_translation}
               case "pong":
                 break;
 
+              case "queued":
+                updateProgress(`⏳ ${data.message}`, 35);
+                break;
+
+              case "queue_update":
+                updateProgress(`⏳ ${data.message}`, 35);
+                break;
+
               case "status":
-                if (data.message.includes("Processing")) {
-                  updateProgress("Processing video...", 40);
-                  simulateProcessingStages();
-                }
+                // Use real progress from backend
+                const percent = data.percent || 40;
+                updateProgress(data.message, percent);
                 break;
 
               case "result":
@@ -692,7 +713,7 @@ ${currentResult.english_translation}
                     tabBtns.forEach((b) => b.classList.remove("active"));
                     tabBtns[0].classList.add("active");
                     document.querySelectorAll(".result-pane").forEach((p) => p.classList.remove("active"));
-                    document.getElementById("translationPane").classList.add("active");
+                    document.getElementById("transcriptPane").classList.add("active");
 
                     resolve(data);
                   }, 500);
@@ -721,25 +742,6 @@ ${currentResult.english_translation}
               reject(new Error(`Connection closed at chunk ${currentChunk + 1}/${totalChunks}. Please try again.`));
             }
           };
-        });
-      }
-
-      function simulateProcessingStages() {
-        const stages = [
-          { text: "Extracting audio...", percent: 45, delay: 2000 },
-          { text: "Transcribing speech...", percent: 60, delay: 5000 },
-          { text: "Detecting language...", percent: 75, delay: 2000 },
-          { text: "Translating to English...", percent: 90, delay: 3000 },
-        ];
-
-        let delay = 0;
-        stages.forEach((stage) => {
-          delay += stage.delay;
-          setTimeout(() => {
-            if (progressSection.classList.contains("active") && !resultsSection.classList.contains("active")) {
-              updateProgress(stage.text, stage.percent);
-            }
-          }, delay);
         });
       }
     </script>
