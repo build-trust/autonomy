@@ -1,6 +1,6 @@
-# Instructions for Agents
+# Instructions for Coding Agents
 
-These instructions define how Agents should assist with this project.
+These instructions define how Coding Agents should assist with this project.
 
 ## Project Overview
 
@@ -94,3 +94,59 @@ When testing agents and streaming responses:
 
 ## Documentation
 - Don't create too many summary documents and markdown files.
+
+### Use Active Verb Forms in Documentation
+
+When writing comments, docstrings, commit messages, or documentation, prefer **active verb phrases** over **nominalized noun phrases**.
+
+#### Why
+
+- Active verbs are clearer and more direct
+- They specify *who/what* performs the action
+- They reduce ambiguity
+- They're easier to scan and understand
+
+#### Examples
+
+| ❌ Avoid (Nominalized) | ✅ Prefer (Active) |
+|------------------------|-------------------|
+| User authentication handling | Authenticate users |
+| WebSocket connection management | Manage WebSocket connections |
+| Error logging and reporting | Log and report errors |
+| Data validation | Validate data |
+| Cache invalidation | Invalidate cache |
+| Request processing | Process requests |
+| for downloading/uploading files | to download and upload files |
+| for extracting audio | to extract audio |
+| for translating text | to translate text |
+
+#### Prefer "to + verb" Over "for + gerund"
+
+When describing what a module or function does, prefer infinitive phrases ("to + verb") over gerund phrases ("for + gerund"):
+
+| ❌ Avoid | ✅ Prefer |
+|----------|----------|
+| "provides functions for extracting audio" | "provides functions to extract audio" |
+| "for downloading and uploading files" | "to download and upload files" |
+| "for managing webhooks" | "to manage webhooks" |
+
+#### Apply To
+
+- Function/method docstrings
+- TODO comments
+- Commit messages
+- PR descriptions
+- README sections
+- Inline comments explaining intent
+
+#### Exceptions
+
+Nominalized forms are acceptable for:
+- Class names (`ConnectionManager`, `RequestHandler`)
+- Module names
+- Category labels in structured docs
+- When the noun form is the actual domain term
+
+#### Quick Test
+
+If you can ask **"Who does what?"** and rewrite to answer that question with a subject + verb, use the active form.
