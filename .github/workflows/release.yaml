@@ -1,3 +1,11 @@
+# Release Process for the autonomy command:
+#
+# 1. Run this workflow (optionally provide a commit SHA, otherwise uses default branch HEAD)
+# 2. Mark the draft release as a pre-release
+# 3. Test with:
+#    curl -sSfL autonomy.computer/install | bash -s -- --version v0.159.0 && . "$HOME/.autonomy/env"
+# 4. Mark the release as latest
+
 name: Release
 
 permissions:
