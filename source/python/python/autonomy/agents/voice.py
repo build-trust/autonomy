@@ -11,7 +11,7 @@ Architecture:
                               ↓
                         VoiceAgent
                               ↓ (delegate_to_primary)
-                       Primary Agent (main agent with tools)
+                        Primary Agent (main agent with tools)
 
 Example:
     # VoiceAgent is created automatically when an Agent has voice config
@@ -78,7 +78,7 @@ class VoiceConfig(TypedDict, total=False):
   Architecture:
       User ←→ Voice Agent (fast, low latency)
                     ↓ (complex tasks)
-             Primary Agent (powerful, has tools)
+              Primary Agent (powerful, has tools)
 
   Example:
       # Minimal - all defaults

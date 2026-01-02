@@ -1475,7 +1475,7 @@ class Agent:
 
     Example context structure:
       [SystemMessage(instructions), UserMessage(query), AssistantMessage(response),
-       ToolCallResponseMessage(result), FrameworkMessage(tool_schemas)]
+      ToolCallResponseMessage(result), FrameworkMessage(tool_schemas)]
     """
 
     # Build context using the template (applies to agent-scoped memory)

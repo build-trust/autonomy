@@ -32,37 +32,37 @@ Verification Scenarios Tested:
 ------------------------------
 
 1. Single Client Rate Limiting (--test single-client)
-   - Client starts above capacity, hits rate limits, and backs off
-   - AIMD sawtooth pattern observed (e.g., 60 → 31 → 60 → 31 RPM)
-   - Example: --use-mock --mock-capacity 60 --initial-rpm 200 --requests 50
-     Result: 60% success rate, converges to oscillating around 60 RPM
+  - Client starts above capacity, hits rate limits, and backs off
+  - AIMD sawtooth pattern observed (e.g., 60 → 31 → 60 → 31 RPM)
+  - Example: --use-mock --mock-capacity 60 --initial-rpm 200 --requests 50
+    Result: 60% success rate, converges to oscillating around 60 RPM
 
 2. Multi-Client Fair Sharing (--test multi-client)
-   - Multiple clients compete for shared capacity
-   - AIMD ensures fair convergence (fairness CV < 10%)
-   - Example: --use-mock --mock-capacity 120 --initial-rpm 100 --clients 3 --requests 60
-     Result: 3 clients converge to ~40 RPM each, convergence time ~6-20s
+  - Multiple clients compete for shared capacity
+  - AIMD ensures fair convergence (fairness CV < 10%)
+  - Example: --use-mock --mock-capacity 120 --initial-rpm 100 --clients 3 --requests 60
+    Result: 3 clients converge to ~40 RPM each, convergence time ~6-20s
 
 3. High Throughput Scenario
-   - Test with high-capacity models (nova-micro, embeddings)
-   - Example: --use-mock --mock-capacity 600 --initial-rpm 100 --requests 50
-     Result: Client quickly ramps up to match capacity, minimal rate limits
+  - Test with high-capacity models (nova-micro, embeddings)
+  - Example: --use-mock --mock-capacity 600 --initial-rpm 100 --requests 50
+    Result: Client quickly ramps up to match capacity, minimal rate limits
 
 4. Low RPM Scenario (validates token bucket fix)
-   - Test with low initial RPM to verify first request proceeds
-   - Example: --use-mock --mock-capacity 30 --initial-rpm 20 --requests 20
-     Result: Requests proceed without hanging (bug fix validated)
+  - Test with low initial RPM to verify first request proceeds
+  - Example: --use-mock --mock-capacity 30 --initial-rpm 20 --requests 20
+    Result: Requests proceed without hanging (bug fix validated)
 
 5. Queue Integration (--test queue)
-   - Request queue properly integrates with rate limiter
-   - Priority ordering works (HIGH > NORMAL > LOW)
-   - Example: --use-mock --mock-capacity 100 --initial-rpm 80 --requests 40
-     Result: Queue manages backpressure, rate limiter adapts to capacity
+  - Request queue properly integrates with rate limiter
+  - Priority ordering works (HIGH > NORMAL > LOW)
+  - Example: --use-mock --mock-capacity 100 --initial-rpm 80 --requests 40
+    Result: Queue manages backpressure, rate limiter adapts to capacity
 
 6. Gateway Headers (--test headers) - requires real gateway
-   - Verifies X-RateLimit-Hint-RPM header on success
-   - Verifies X-Gateway-Circuit-State header
-   - Verifies Retry-After header on 429 responses
+  - Verifies X-RateLimit-Hint-RPM header on success
+  - Verifies X-Gateway-Circuit-State header
+  - Verifies Retry-After header on 429 responses
 
 Expected Behaviors:
 -------------------

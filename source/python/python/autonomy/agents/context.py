@@ -18,32 +18,32 @@ Context templates solve the problem of managing complex model inputs by:
 ## Key Components
 
 1. **ContextSection**: Base class for sections (optional - uses duck typing)
-   - Defines the interface: `get_messages(memory, scope, conversation, context)`
-   - Memory is passed as first argument for accessing conversation history
-   - Can be enabled/disabled independently
-   - Supports shared context dict for inter-section communication
-   - Any object with `get_messages()` can be a section
+  - Defines the interface: `get_messages(memory, scope, conversation, context)`
+  - Memory is passed as first argument for accessing conversation history
+  - Can be enabled/disabled independently
+  - Supports shared context dict for inter-section communication
+  - Any object with `get_messages()` can be a section
 
 2. **SystemInstructionsSection**: Agent's system prompt and instructions
-   - Always appears first (typically)
-   - Sets behavioral parameters for the model
-   - Static content, rarely changes during conversation
+  - Always appears first (typically)
+  - Sets behavioral parameters for the model
+  - Static content, rarely changes during conversation
 
 3. **ConversationHistorySection**: Message history from memory
-   - Core conversational context
-   - Supports filtering (e.g., exclude internal messages)
-   - Supports transformation (e.g., redact sensitive info)
-   - Can limit message count for long conversations
+  - Core conversational context
+  - Supports filtering (e.g., exclude internal messages)
+  - Supports transformation (e.g., redact sensitive info)
+  - Can limit message count for long conversations
 
 4. **AdditionalContextSection**: Flexible section for custom context
-   - Can use static messages or provider functions
-   - Perfect for RAG, current time, user preferences, etc.
-   - Enables dynamic context injection
+  - Can use static messages or provider functions
+  - Perfect for RAG, current time, user preferences, etc.
+  - Enables dynamic context injection
 
 5. **ContextTemplate**: Orchestrates sections to build final context
-   - Maintains ordered list of sections
-   - Builds context by combining section outputs
-   - Provides section management (add/remove/get)
+  - Maintains ordered list of sections
+  - Builds context by combining section outputs
+  - Provides section management (add/remove/get)
 
 ## Architecture
 
@@ -51,20 +51,20 @@ Context templates solve the problem of managing complex model inputs by:
 ┌─────────────────────────────────────────────────────────────┐
 │                    ContextTemplate                          │
 │                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  1. SystemInstructionsSection                        │  │
-│  │     → Returns: [system message]                      │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  1. SystemInstructionsSection                        │   │
+│  │     → Returns: [system message]                      │   │
+│  └──────────────────────────────────────────────────────┘   │
 │                          ↓                                  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  2. AdditionalContextSection                         │  │
-│  │     → Returns: [context message 1, context msg 2]    │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  2. AdditionalContextSection                         │   │
+│  │     → Returns: [context message 1, context msg 2]    │   │
+│  └──────────────────────────────────────────────────────┘   │
 │                          ↓                                  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  3. ConversationHistorySection                       │  │
-│  │     → Returns: [user msg, assistant msg, ...]        │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  3. ConversationHistorySection                       │   │
+│  │     → Returns: [user msg, assistant msg, ...]        │   │
+│  └──────────────────────────────────────────────────────┘   │
 │                          ↓                                  │
 │              Combined messages → Model                      │
 └─────────────────────────────────────────────────────────────┘
@@ -913,7 +913,7 @@ class AdditionalContextSection(ContextSection):
       name: Section identifier (default: "additional_context")
       enabled: Whether section is active (default: True)
       provider_fn: Optional async function that returns message dicts
-                   Signature: async (scope, conversation, context) -> List[dict]
+                    Signature: async (scope, conversation, context) -> List[dict]
     """
     super().__init__(name, enabled)
     self.provider_fn = provider_fn

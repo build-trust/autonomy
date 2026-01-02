@@ -2385,16 +2385,16 @@ class TestLiveGateway:
 
   Setup:
   1. AWS setup (WARNING: production cluster)
-     export AWS_PROFILE=PowerUserAccess-demo-a
-     aws sso login
+    export AWS_PROFILE=PowerUserAccess-demo-a
+    aws sso login
 
   2. Port-forward (separate terminal)
-     kubectl port-forward -n autonomy-external-apis-gateway service/autonomy-external-apis-gateway 8080:8080
+    kubectl port-forward -n autonomy-external-apis-gateway service/autonomy-external-apis-gateway 8080:8080
 
   3. Configure
-     export AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1
-     export AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080
-     export AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=test_key
+    export AUTONOMY_USE_EXTERNAL_APIS_GATEWAY=1
+    export AUTONOMY_EXTERNAL_APIS_GATEWAY_URL=http://localhost:8080
+    export AUTONOMY_EXTERNAL_APIS_GATEWAY_API_KEY=test_key
   """
 
   @staticmethod

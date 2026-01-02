@@ -89,9 +89,7 @@ def _fetch_gateway_models() -> List[str]:
       response = _fetch_gateway_models_request(gateway_url, api_key)
     except httpx.HTTPStatusError as e:
       if e.response.status_code == 401:
-        logger.warning(
-          "Authentication error (401) listing models, clearing token cache and retrying"
-        )
+        logger.warning("Authentication error (401) listing models, clearing token cache and retrying")
         clear_token_cache()
         # Get fresh credentials after clearing cache
         api_key = get_gateway_api_key()

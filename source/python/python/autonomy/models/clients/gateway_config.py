@@ -322,7 +322,7 @@ def get_token_expiration() -> Optional[int]:
   This can be useful for debugging or monitoring token lifecycle.
 
   :return: Unix timestamp of token expiration, or None if no token is cached
-           or expiration couldn't be determined
+            or expiration couldn't be determined
   """
   if _token_file_cache["token"] is None:
     return None
@@ -334,7 +334,7 @@ def get_token_time_remaining() -> Optional[float]:
   Get the number of seconds until the currently cached token expires.
 
   :return: Seconds until expiration (negative if expired), or None if
-           no token is cached or expiration couldn't be determined
+            no token is cached or expiration couldn't be determined
   """
   exp = get_token_expiration()
   if exp is None:

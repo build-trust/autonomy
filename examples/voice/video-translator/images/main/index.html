@@ -593,10 +593,8 @@ ${currentResult.english_translation}
       }
 
       async function uploadViaWebSocket(file) {
-        /**
-         * Upload file via WebSocket with chunked acknowledgments.
-         * Sends 1MB chunks sequentially, waiting for server ack before sending next.
-         */
+        // Upload file via WebSocket with chunked acknowledgments.
+        // Sends 1MB chunks sequentially, waiting for server ack before sending next.
         const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
