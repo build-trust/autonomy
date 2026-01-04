@@ -3280,7 +3280,7 @@ dependencies = [
 [[package]]
 name = "ockam"
 version = "0.157.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "hex",
  "ockam_abac",
@@ -3300,7 +3300,7 @@ dependencies = [
 [[package]]
 name = "ockam_abac"
 version = "0.84.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "cfg-if",
  "either",
@@ -3324,7 +3324,7 @@ dependencies = [
 [[package]]
 name = "ockam_api"
 version = "0.100.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "base64-url",
  "bytes",
@@ -3408,7 +3408,7 @@ dependencies = [
 [[package]]
 name = "ockam_command"
 version = "0.159.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "arboard",
  "async-trait",
@@ -3469,7 +3469,7 @@ dependencies = [
 [[package]]
 name = "ockam_core"
 version = "0.126.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -3511,7 +3511,7 @@ dependencies = [
 [[package]]
 name = "ockam_executor"
 version = "0.95.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "crossbeam-queue",
  "futures",
@@ -3524,7 +3524,7 @@ dependencies = [
 [[package]]
 name = "ockam_identity"
 version = "0.138.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -3552,7 +3552,7 @@ dependencies = [
 [[package]]
 name = "ockam_macros"
 version = "0.39.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3562,7 +3562,7 @@ dependencies = [
 [[package]]
 name = "ockam_multiaddr"
 version = "0.71.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "miette",
  "minicbor",
@@ -3576,7 +3576,7 @@ dependencies = [
 [[package]]
 name = "ockam_node"
 version = "0.142.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "cfg-if",
  "fs2",
@@ -3609,7 +3609,7 @@ dependencies = [
 [[package]]
 name = "ockam_transport_core"
 version = "0.104.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "minicbor",
  "ockam_core",
@@ -3620,7 +3620,7 @@ dependencies = [
 [[package]]
 name = "ockam_transport_tcp"
 version = "0.140.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "async-trait",
  "aya",
@@ -3656,7 +3656,7 @@ dependencies = [
 [[package]]
 name = "ockam_transport_udp"
 version = "0.84.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "cfg-if",
  "minicbor",
@@ -3671,7 +3671,7 @@ dependencies = [
 [[package]]
 name = "ockam_vault"
 version = "0.136.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "aes-gcm",
  "arrayref",
@@ -3698,7 +3698,7 @@ dependencies = [
 [[package]]
 name = "ockam_vault_aws"
 version = "0.62.0"
-source = "git+https://github.com/build-trust/ockam?branch=develop#a321d56b3cc9c9b5fc2a1a7748ffd82355515066"
+source = "git+https://github.com/build-trust/ockam?branch=develop#0a95224650e8987cbef23bfa3a9dc5ad1d400872"
 dependencies = [
  "aws-config",
  "aws-sdk-kms",
