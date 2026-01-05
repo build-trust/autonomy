@@ -30,7 +30,7 @@ from copy import deepcopy
 
 import httpx
 import tiktoken
-from openai import AsyncOpenAI, AuthenticationError, APIStatusError, DefaultHttpxClient
+from openai import AsyncOpenAI, AuthenticationError, APIConnectionError, APIStatusError, DefaultHttpxClient
 
 from ...logs import get_logger, InfoContext, DebugContext
 from ...nodes.message import ConversationMessage
@@ -591,6 +591,28 @@ class GatewayClient(InfoContext, DebugContext):
           f"Consider restarting the pod."
         )
         raise
+    except APIConnectionError as e:
+      # OpenAI client sometimes reports 401 errors as "Connection error" (APIConnectionError)
+      # This can happen when the gateway rejects requests with expired tokens.
+      # Retry once with a fresh token in case this is a token expiration issue.
+      if _retry_on_auth_error:
+        self.logger.warning(f"Connection error (may be expired token), clearing token cache and retrying: {e}")
+        clear_token_cache()
+        self._client = None
+        return await self._complete_chat(
+          messages,
+          agent_name=agent_name,
+          scope=scope,
+          conversation=conversation,
+          _retry_on_auth_error=False,
+          **kwargs,
+        )
+      else:
+        self.logger.error(
+          "Connection error persists after token refresh. "
+          "This may indicate a network issue or the gateway is unavailable."
+        )
+        raise
 
     # Log response
     log_raw_response(
@@ -692,6 +714,23 @@ class GatewayClient(InfoContext, DebugContext):
           "Consider restarting the pod."
         )
         raise
+    except APIConnectionError as e:
+      # OpenAI client sometimes reports 401 errors as "Connection error" (APIConnectionError)
+      # This can happen when the gateway rejects requests with expired tokens.
+      # Retry once with a fresh token in case this is a token expiration issue.
+      if _retry_on_auth_error:
+        self.logger.warning(
+          f"Connection error in embeddings (may be expired token), clearing token cache and retrying: {e}"
+        )
+        clear_token_cache()
+        self._client = None
+        return await self.embeddings(text, _retry_on_auth_error=False, **kwargs)
+      else:
+        self.logger.error(
+          "Connection error persists after token refresh in embeddings. "
+          "This may indicate a network issue or the gateway is unavailable."
+        )
+        raise
 
     return [item.embedding for item in response.data]
 
@@ -741,6 +780,25 @@ class GatewayClient(InfoContext, DebugContext):
           "Authentication error (401) persists after token refresh in text_to_speech. "
           "This may indicate the token file hasn't been updated by K8s yet. "
           "Consider restarting the pod."
+        )
+        raise
+    except APIConnectionError as e:
+      # OpenAI client sometimes reports 401 errors as "Connection error" (APIConnectionError)
+      # This can happen when the gateway rejects requests with expired tokens.
+      # Retry once with a fresh token in case this is a token expiration issue.
+      if _retry_on_auth_error:
+        self.logger.warning(
+          f"Connection error in text_to_speech (may be expired token), clearing token cache and retrying: {e}"
+        )
+        clear_token_cache()
+        self._client = None
+        return await self.text_to_speech(
+          text, voice=voice, response_format=response_format, _retry_on_auth_error=False, model=tts_model, **kwargs
+        )
+      else:
+        self.logger.error(
+          "Connection error persists after token refresh in text_to_speech. "
+          "This may indicate a network issue or the gateway is unavailable."
         )
         raise
 
@@ -808,6 +866,25 @@ class GatewayClient(InfoContext, DebugContext):
           "Authentication error (401) persists after token refresh in speech_to_text. "
           "This may indicate the token file hasn't been updated by K8s yet. "
           "Consider restarting the pod."
+        )
+        raise
+    except APIConnectionError as e:
+      # OpenAI client sometimes reports 401 errors as "Connection error" (APIConnectionError)
+      # This can happen when the gateway rejects requests with expired tokens.
+      # Retry once with a fresh token in case this is a token expiration issue.
+      if _retry_on_auth_error:
+        self.logger.warning(
+          f"Connection error in speech_to_text (may be expired token), clearing token cache and retrying: {e}"
+        )
+        clear_token_cache()
+        self._client = None
+        return await self.speech_to_text(
+          audio_file, language=language, _retry_on_auth_error=False, model=stt_model, **kwargs
+        )
+      else:
+        self.logger.error(
+          "Connection error persists after token refresh in speech_to_text. "
+          "This may indicate a network issue or the gateway is unavailable."
         )
         raise
     finally:
