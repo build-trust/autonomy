@@ -26,7 +26,7 @@ FilesystemTools provides:
 - **Four visibility levels**: all, agent, scope, conversation (default)
 - **Conversation-level isolation (default)**: Maximum privacy - each conversation gets separate storage
 - **Security**: Path validation prevents directory traversal
-- **Ten operations**: list_directory, read_file, write_file, edit_file, find_files, search_in_files, remove_file, remove_directory, copy_file, move_file
+- **Eight operations**: list_directory, read_file, write_file, edit_file, find_files, search_in_files, remove_file, remove_directory
 - **Virtual filesystem**: Agents see "/" as their visibility root
 - **Factory mode**: Automatic isolation - no manual setup needed
 
@@ -42,6 +42,23 @@ FilesystemTools supports four visibility levels for flexible isolation:
 | `all` | `/data/` | Global configuration - shared across everyone |
 
 **Default**: `visibility="conversation"` provides maximum privacy by isolating each conversation.
+
+## Available Tools
+
+When you add `FilesystemTools()` to an agent, these tools become available:
+
+| Tool | Description |
+|------|-------------|
+| `list_directory` | List files and directories at a path |
+| `read_file` | Read file contents, optionally by line range |
+| `write_file` | Create or overwrite a file |
+| `edit_file` | Replace text in a file using exact string matching |
+| `find_files` | Find files matching a glob pattern |
+| `search_in_files` | Search for a regex pattern in files |
+| `remove_file` | Delete a file |
+| `remove_directory` | Delete a directory |
+
+See [Available Filesystem Operations](#available-filesystem-operations) for detailed parameter documentation.
 
 ## Complete Example: Multi-Tenant Agent with Automatic Isolation
 
@@ -282,7 +299,7 @@ agent = await Agent.start(
 
 ## Available Filesystem Operations
 
-FilesystemTools provides ten operations for file management. Note that the method names shown below are the actual Python method names - agents will call these directly.
+FilesystemTools provides eight operations for file management. Note that the method names shown below are the actual Python method names - agents will call these directly.
 
 ### list_directory(path)
 
@@ -448,56 +465,6 @@ fs_tools.remove_directory("old_project", recursive=True)  # Delete directory and
 - `recursive` (bool, default=False): If True, deletes directory and all contents. If False, only deletes empty directories.
 
 **Warning**: When using `recursive=True`, ALL files and subdirectories will be permanently deleted. This operation cannot be undone.
-
-### copy_file(source, destination, recursive=False)
-
-Copy a file or directory to a new location.
-
-```python
-# Copy a file
-fs_tools.copy_file("config.yaml", "config.backup.yaml")
-
-# Copy to different directory (creates parent dirs automatically)
-fs_tools.copy_file("report.pdf", "archive/2024/report.pdf")
-
-# Copy a directory
-fs_tools.copy_file("templates", "backup/templates", recursive=True)
-```
-
-**Returns**: Success message or error if operation fails.
-
-**Parameters**:
-- `source` (str): Source file or directory path, relative to visibility root
-- `destination` (str): Destination path, relative to visibility root
-- `recursive` (bool, default=False): Required for copying directories. If False, only copies files.
-
-**Use for**: Creating backups, duplicating configuration files, copying templates.
-
-### move_file(source, destination)
-
-Move or rename a file or directory.
-
-```python
-# Rename a file
-fs_tools.move_file("draft.md", "final.md")
-
-# Move file to different directory
-fs_tools.move_file("report.pdf", "archive/2024/report.pdf")
-
-# Rename a directory
-fs_tools.move_file("old_folder", "new_folder")
-
-# Move directory to new location
-fs_tools.move_file("temp", "archive/temp")
-```
-
-**Returns**: Success message or error if operation fails.
-
-**Parameters**:
-- `source` (str): Source file or directory path, relative to visibility root
-- `destination` (str): Destination path, relative to visibility root
-
-**Note**: This is a move operation, not a copy - the source will no longer exist after the operation. Parent directories in destination path are created automatically.
 
 ## Factory Mode vs Direct Mode
 

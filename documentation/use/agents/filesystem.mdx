@@ -17,6 +17,25 @@ Use filesystem tools for agents that:
 
 ---
 
+## Available Tools
+
+When you add `FilesystemTools()` to an agent, these tools become available:
+
+| Tool | Description |
+|------|-------------|
+| `list_directory` | List files and directories at a path |
+| `read_file` | Read file contents, optionally by line range |
+| `write_file` | Create or overwrite a file |
+| `edit_file` | Replace text in a file using exact string matching |
+| `find_files` | Find files matching a glob pattern |
+| `search_in_files` | Search for a regex pattern in files |
+| `remove_file` | Delete a file |
+| `remove_directory` | Delete a directory |
+
+See [Available Operations](#available-operations) for detailed parameter documentation.
+
+---
+
 ## Quick Start
 
 Add filesystem tools to your agent with default (conversation-level) isolation:
@@ -155,7 +174,7 @@ tools=[FilesystemTools(visibility="all")]
 
 ## Available Operations
 
-Filesystem tools provide these operations:
+Filesystem tools provide eight operations for file management:
 
 ### List Directory
 
@@ -172,6 +191,7 @@ Read file contents:
 
 ```python
 # Agent can call: read_file(path="notes.txt")
+# Agent can call: read_file(path="log.txt", start_line=10, end_line=20)
 # Returns: File contents as text
 ```
 
@@ -191,8 +211,8 @@ Modify existing files with search/replace:
 ```python
 # Agent can call: edit_file(
 #   path="config.json",
-#   old_text="\"debug\": false",
-#   new_text="\"debug\": true"
+#   old_string="\"debug\": false",
+#   new_string="\"debug\": true"
 # )
 ```
 
@@ -201,16 +221,18 @@ Modify existing files with search/replace:
 Search for files by name pattern:
 
 ```python
-# Agent can call: find_files(pattern="*.txt", path=".")
+# Agent can call: find_files(pattern="*.txt")
+# Agent can call: find_files(pattern="**/*.md")
 # Returns: List of matching file paths
 ```
 
 ### Search in Files
 
-Search file contents:
+Search file contents with regex:
 
 ```python
-# Agent can call: search_in_files(query="TODO", path=".")
+# Agent can call: search_in_files(pattern="TODO", path=".")
+# Agent can call: search_in_files(pattern="def main", path=".", context_lines=2)
 # Returns: Files containing the search term with context
 ```
 
@@ -224,26 +246,11 @@ Delete a file:
 
 ### Remove Directory
 
-Delete a directory and its contents:
+Delete a directory:
 
 ```python
 # Agent can call: remove_directory(path="temp")
-```
-
-### Copy File
-
-Copy a file to a new location:
-
-```python
-# Agent can call: copy_file(source="original.txt", destination="backup.txt")
-```
-
-### Move File
-
-Move or rename a file:
-
-```python
-# Agent can call: move_file(source="draft.txt", destination="final.txt")
+# Agent can call: remove_directory(path="old_project", recursive=True)
 ```
 
 ---

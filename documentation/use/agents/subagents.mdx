@@ -20,6 +20,22 @@ Subagents are ideal for:
 
 ---
 
+## Available Tools
+
+When you configure subagents, the parent agent automatically gets these tools:
+
+| Tool | Description |
+|------|-------------|
+| `start_subagent` | Start a subagent manually by role name |
+| `delegate_to_subagent` | Delegate a single task to a subagent and wait for response |
+| `delegate_to_subagents_parallel` | Delegate multiple tasks to parallel subagent instances |
+| `list_subagents` | List all configured and running subagents |
+| `stop_subagent` | Stop a running subagent |
+
+See [Subagent Tools](#subagent-tools) for detailed parameter documentation.
+
+---
+
 ## Quick Start
 
 Define subagents in your agent configuration:
@@ -404,7 +420,7 @@ delegate_to_subagents_parallel(
 
 ## Runner Distribution
 
-For true parallelism across multiple nodes, use runner filters:
+To distribute subagents across multiple runner nodes, use runner filters:
 
 ```python
 await Agent.start(
