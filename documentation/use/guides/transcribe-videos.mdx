@@ -1,0 +1,550 @@
+---
+title: "Transcribe multi-lingual videos with AI"
+icon: "video"
+description: "Build an agentic product that automatically transcribes multi-lingual videos and translates the transcripts to english."
+---
+
+To build a scalable video transcription product, you need to handle large file uploads,
+manage socket connections for real-time progress, integrate speech-to-text and language models,
+wrangle rate-limits, etc. As you scale to many users, infrastructure becomes the hardest 
+art: you must orchestrate jobs, scale horizontally, balance load across model providers, pool
+connections, and handle failures gracefully.
+
+Most teams spend more time building infrastructure than focusing on their product.
+
+This guide walks through building a highly scalable agentic product that automatically
+transcribes videos and translates transcripts to English.
+
+
+```text
++----------------------+       +----------------------+       +----------------------+
+|     Video File       |------>|    Extract Audio     |------>|      Transcribe      |
+|    (.mp4, .mov)      |       |      (ffmpeg)        |       |      and Diarize     |
++----------------------+       +----------------------+       +-----------+----------+
+                                                                          |
+            +-------------------------------------------------------------+
+            |
+            v
++----------------------+       +----------------------+       +----------------------+
+|   Match Speakers     |       | Translate to English |       |       Results        |
+|   Across Chunks      |------>|       (Agent)        |------>|    (transcript +     |
+|      (Agent)         |       |                      |       |     translation)     |
++----------------------+       +----------------------+       +----------------------+
+```
+
+The complete source code is available in [Autonomy examples](https://github.com/build-trust/autonomy/tree/main/examples/voice/video-translator).
+
+The [Autonomy Computer](/what-is-autonomy#autonomy-computer) provides all of this infrastructure.
+You get access to [speech-to-text models](/agents/models#speech-to-text-models) like `gpt-4o-transcribe-diarize`
+for transcription with speaker identification, [language models](/agents/models#chat-models) for translation agents,
+built-in [HTTP and WebSocket servers](/applications/programming-interfaces) for uploads with streaming progress,
+and a [runtime](/applications/runtime-architecture) that handles deployment and scaling automatically.
+
+---
+
+## How it works
+
+When a video is uploaded (via the web UI or Box webhook), the service:
+
+1. **Extracts audio** - Uses ffmpeg to extract audio chunks from the video.
+2. **Transcribes with diarization** - Uses `gpt-4o-transcribe-diarize` to identify different speakers.
+3. **Matches speakers** - For long videos, an agent analyzes context to unify speaker labels across chunks.
+4. **Translates** - A translator agent converts the transcript to English while preserving speaker labels.
+5. **Returns results** - Provides both the original transcript and English translation.
+
+---
+
+## Quick start
+
+<Steps>
+<Step title="Sign up and install the autonomy command">
+Complete the [steps to get started](/get-started) with Autonomy.
+</Step>
+<Step title="Get the example code">
+
+```bash /dev/null/terminal.sh
+curl -sL https://github.com/build-trust/autonomy/archive/refs/heads/main.tar.gz | \
+  tar -xz --strip-components=3 autonomy-main/examples/voice/video-translator
+cd video-translator
+```
+
+This creates the following structure:
+
+```text File Structure:
+video-translator/
+|-- autonomy.yaml
+|-- secrets.yaml.example
+|-- images/
+    |-- main/
+        |-- Dockerfile
+        |-- main.py           # Application entry point
+        |-- transcribe.py     # Speech-to-text with diarization
+        |-- translate.py      # Translation agent
+        |-- speakers.py       # Cross-chunk speaker matching
+        |-- audio.py          # Audio extraction with ffmpeg
+        |-- box.py            # Box webhook integration
+        |-- upload.py         # WebSocket upload handler
+        |-- jobs.py           # Processing queue management
+        |-- index.html        # Web upload interface
+```
+</Step>
+<Step title="Deploy">
+
+```bash /dev/null/terminal.sh
+autonomy
+```
+
+Once deployed, open your zone URL in a browser to access the upload interface.
+</Step>
+</Steps>
+
+---
+
+## Configure Box integration (optional)
+
+The service can automatically process videos uploaded to a Box folder.
+
+<Steps>
+<Step title="Get Box API credentials">
+Create a Box application at [app.box.com/developers/console](https://app.box.com/developers/console):
+
+1. Create a new Custom App with Server Authentication (Client Credentials Grant).
+2. Note your Client ID, Client Secret, and Enterprise ID.
+3. Authorize the application in your Box admin console.
+</Step>
+<Step title="Create secrets.yaml">
+Copy `secrets.yaml.example` and fill in your credentials:
+
+```yaml secrets.yaml
+BOX_CLIENT_ID: "your_box_client_id"
+BOX_CLIENT_SECRET: "your_box_client_secret"
+BOX_ENTERPRISE_ID: "your_box_enterprise_id"
+BOX_FOLDER_ID: "your_box_folder_id"
+WEBHOOK_BASE_URL: "https://your-zone.cluster.autonomy.computer"
+```
+
+Find the folder ID in the Box web UI — it's the ID in the URL when viewing a folder.
+</Step>
+<Step title="Redeploy">
+
+```bash /dev/null/terminal.sh
+autonomy
+```
+
+The service automatically creates a Box webhook when it starts. Videos uploaded to the configured folder are processed and results are uploaded back as markdown files.
+</Step>
+</Steps>
+
+---
+
+## Learn how it works
+
+### Transcription with speaker diarization
+
+The service uses `gpt-4o-transcribe-diarize` for transcription with automatic speaker identification:
+
+```python images/main/transcribe.py
+async def transcribe_audio(audio_path: str, use_diarization: bool = True) -> tuple:
+    """Transcribe audio file using GPT-4o with diarization."""
+    if use_diarization:
+        model = Model("gpt-4o-transcribe-diarize")
+
+        with open(audio_path, "rb") as audio_file:
+            result = await model.speech_to_text(
+                audio_file=audio_file,
+                language=None,  # Auto-detect language
+                model="gpt-4o-transcribe-diarize",
+                response_format="diarized_json",
+                chunking_strategy="auto",
+            )
+
+        transcript = format_diarized_transcript(result)
+        return transcript, result
+```
+
+The diarization model returns segments with speaker labels:
+
+```text
+Speaker A: Welcome to today's interview. I'm here with Dr. Lopez.
+
+Speaker B: Thank you for having me. I'm excited to discuss our research.
+
+Speaker A: Let's start with the basics. What inspired this project?
+```
+
+### Chunked processing for long videos
+
+For videos longer than 5 minutes, the service processes audio in chunks to stay within API limits:
+
+```python images/main/transcribe.py
+async def transcribe_audio_chunked(
+    video_path: str,
+    temp_dir: str,
+    use_diarization: bool = True,
+    progress_callback=None,
+) -> str:
+    """Transcribe a video by extracting and processing audio in chunks."""
+    total_duration = await get_video_duration(video_path)
+
+    MAX_CHUNK_SIZE_MB = 5
+    ESTIMATED_MB_PER_MIN = 1.0
+    MAX_CHUNK_DURATION = 300  # 5 minutes
+
+    chunk_duration = min(
+        (MAX_CHUNK_SIZE_MB / ESTIMATED_MB_PER_MIN) * 60,
+        MAX_CHUNK_DURATION
+    )
+
+    transcripts = []
+    current_time = 0
+    chunk_num = 0
+
+    while current_time < total_duration:
+        chunk_num += 1
+        chunk_audio = Path(temp_dir) / f"chunk_{chunk_num}.mp3"
+
+        # Extract audio chunk
+        success = await extract_audio_chunk(
+            video_path, str(chunk_audio), current_time, chunk_duration
+        )
+
+        if success:
+            # Transcribe chunk with diarization
+            chunk_transcript, _ = await transcribe_audio(
+                str(chunk_audio), use_diarization=use_diarization
+            )
+
+            # Prefix speaker labels with chunk number for later matching
+            if use_diarization:
+                chunk_transcript = prefix_speakers_with_chunk(
+                    chunk_transcript, chunk_num
+                )
+
+            transcripts.append(chunk_transcript.strip())
+
+        current_time += chunk_duration
+
+    return "\n\n".join(transcripts)
+```
+
+### Speaker matching across chunks
+
+When a video is split into chunks, the same speaker may get different labels in each chunk. An agent analyzes the transcript to unify speaker labels:
+
+```python images/main/speakers.py
+SPEAKER_MATCHER_INSTRUCTIONS = """
+You are an expert at analyzing transcripts to identify and match speakers.
+
+You will receive a transcript transcribed in multiple chunks. Each chunk has
+its own speaker labels (e.g., "Speaker 1A", "Speaker 1B" for chunk 1).
+
+Analyze the transcript and return ONLY a JSON mapping of speaker labels.
+
+CLUES TO LOOK FOR:
+- Self-introductions: "I'm Maria", "My name is Dr. Lopez"
+- Being addressed by name: "Thank you, Maria"
+- Role indicators: "As the host...", "In my research..."
+- Speaking patterns: Who asks questions (host) vs who answers (guest)
+
+OUTPUT FORMAT (JSON only):
+{
+  "mapping": {
+    "Speaker 1A": "Maria (Host)",
+    "Speaker 1B": "Dr. Lopez (Guest)",
+    "Speaker 2A": "Maria (Host)"
+  },
+  "confidence": "high",
+  "notes": "Maria identified as host from introduction."
+}
+"""
+```
+
+The mapping is applied programmatically for efficiency:
+
+```python images/main/speakers.py
+async def match_speakers_across_chunks(transcript: str) -> str:
+    """Unify speaker labels across transcript chunks using LLM analysis."""
+    model = Model("claude-sonnet-4-5")
+    messages = [
+        {"role": "system", "content": SPEAKER_MATCHER_INSTRUCTIONS},
+        {
+            "role": "user",
+            "content": f"Analyze this transcript and return a JSON speaker mapping:\n\n{transcript}",
+        },
+    ]
+
+    response = await model.complete_chat(messages, stream=False)
+    result = response.choices[0].message.content.strip()
+
+    # Parse the JSON mapping
+    mapping_data = extract_json_from_response(result)
+    mapping = mapping_data.get("mapping", {})
+
+    # Apply mapping to transcript
+    return apply_speaker_mapping(transcript, mapping)
+```
+
+### Translation agent
+
+The translator agent converts transcripts to English while preserving speaker labels:
+
+```python images/main/translate.py
+TRANSLATOR_INSTRUCTIONS = """
+You are a professional translator. You will receive transcribed text that may be
+in any language. The transcription includes speaker labels.
+
+Your job is to:
+1. Identify the source language
+2. Translate the text accurately to English
+3. PRESERVE all existing speaker labels exactly as they appear
+
+Output format:
+---
+Source Language: [detected language]
+
+Translation:
+[speaker label]: [translated text]
+---
+
+CRITICAL RULES:
+- PRESERVE existing speaker labels EXACTLY as they appear in the input
+- DO NOT modify, rename, or add any speaker labels
+- Maintain natural, fluent English while preserving the original meaning
+"""
+
+async def initialize(node: Node) -> bool:
+    """Initialize the translator agent."""
+    global _agent
+
+    _agent = await Agent.start(
+        node=node,
+        name="translator",
+        instructions=TRANSLATOR_INSTRUCTIONS,
+        model=Model("claude-sonnet-4-5"),
+    )
+
+    return True
+```
+
+For long transcripts, the translator processes chunks at speaker boundaries:
+
+```python images/main/translate.py
+def split_transcript_into_chunks(
+    text: str, max_chars: int = 15000
+) -> list[str]:
+    """Split transcript into chunks at speaker boundaries."""
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    # Split on double newlines (speaker boundaries)
+    segments = text.split("\n\n")
+
+    for segment in segments:
+        segment_length = len(segment) + 2
+
+        if current_length + segment_length > max_chars and current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+            current_chunk = []
+            current_length = 0
+
+        current_chunk.append(segment)
+        current_length += segment_length
+
+    if current_chunk:
+        chunks.append("\n\n".join(current_chunk))
+
+    return chunks
+```
+
+### Box webhook integration
+
+The service registers a webhook with Box to automatically process uploaded videos:
+
+```python images/main/main.py
+@app.post("/webhook/box")
+async def box_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Handle Box webhook notifications for FILE.UPLOADED events."""
+    payload = await request.json()
+
+    # Validate payload and determine action
+    result = box.validate_webhook_payload(payload, VIDEO_EXTENSIONS)
+
+    if result["action"] == "challenge":
+        return JSONResponse({"challenge": result["challenge"]})
+
+    if result["action"] == "ignore":
+        return JSONResponse(result["response"])
+
+    # Process the video in the background
+    file_id = result["file_id"]
+    filename = result["filename"]
+
+    background_tasks.add_task(
+        box.process_video,
+        file_id,
+        filename,
+        process_video,
+        generate_result_markdown,
+    )
+
+    return JSONResponse(
+        {"status": "processing", "file_id": file_id, "filename": filename}
+    )
+```
+
+Results are uploaded back to Box as markdown files alongside the original video.
+
+### WebSocket uploads with progress
+
+The web interface uses WebSocket for chunked uploads with real-time progress:
+
+```python images/main/upload.py
+async def handle_websocket_upload(scope, receive, send, process_video_func):
+    """Handle chunked video uploads via raw ASGI WebSocket."""
+    await send({"type": "websocket.accept"})
+
+    while True:
+        message = await receive()
+
+        if message["type"] == "websocket.receive":
+            if "text" in message:
+                data = json.loads(message["text"])
+
+                if data.get("type") == "start":
+                    # Initialize upload
+                    filename = data.get("filename")
+                    temp_dir = tempfile.mkdtemp()
+                    video_path = Path(temp_dir) / filename
+                    video_file = open(video_path, "wb")
+                    await send_json({"type": "ready"})
+
+                elif data.get("type") == "end":
+                    # Process the video
+                    video_file.close()
+                    result = await process_video_func(
+                        str(video_path), filename, progress_callback
+                    )
+                    await send_json({"type": "result", **result})
+
+            elif "bytes" in message:
+                # Write chunk to file
+                video_file.write(message["bytes"])
+                await send_json({"type": "chunk_ack"})
+```
+
+### Processing queue
+
+The service queues videos to process one at a time, preventing resource exhaustion:
+
+```python images/main/jobs.py
+@dataclass
+class ProcessingJob:
+    """Represent a video processing job in the queue."""
+    id: str
+    filename: str
+    status: str  # "queued", "processing", "complete", "error"
+    progress: int
+    queued_at: datetime
+
+processing_lock = asyncio.Lock()
+current_job: Optional[ProcessingJob] = None
+job_queue: deque[ProcessingJob] = deque()
+```
+
+Clients waiting in the queue receive position updates:
+
+```python images/main/upload.py
+while job.status == "queued":
+    await asyncio.sleep(2)
+
+    async with processing_lock:
+        position = get_job_position(job_id)
+        if position:
+            await send_json({
+                "type": "queue_update",
+                "position": position,
+                "message": f"You are #{position} in queue.",
+            })
+```
+
+---
+
+## API reference
+
+### POST /webhook/box
+
+Receives Box webhook notifications. Automatically registered when Box credentials are configured.
+
+### WebSocket /ws/upload
+
+Upload videos via WebSocket with progress updates.
+
+**Messages from client:**
+- `{"type": "start", "filename": "video.mp4", "size": 12345, "total_chunks": 10}`
+- Binary chunk data
+- `{"type": "end"}`
+
+**Messages from server:**
+- `{"type": "ready"}` - Ready to receive chunks
+- `{"type": "chunk_ack"}` - Chunk received
+- `{"type": "status", "message": "Processing...", "percent": 50}`
+- `{"type": "result", "success": true, "original_transcript": "...", "english_translation": "..."}`
+
+### GET /queue/status
+
+Returns current processing queue status.
+
+### GET /health
+
+Health check endpoint.
+
+---
+
+**Learn more**
+
+<CardGroup cols={2}>
+  <Card href="/models" title="Models" icon="microchip" iconType="solid">
+    Available models for transcription and translation.
+  </Card>
+  <Card href="/agents" title="Agents" icon="robot" iconType="solid">
+    Build agents with custom instructions and tools.
+  </Card>
+  <Card href="/applications/programming-interfaces" title="Programming Interfaces" icon="code" iconType="solid">
+    Create APIs for Autonomy applications.
+  </Card>
+  <Card href="/guides/box" title="Box Integration" icon="box" iconType="solid">
+    Build voice agents for Box documents.
+  </Card>
+</CardGroup>
+
+**Troubleshoot**
+
+<AccordionGroup>
+  <Accordion title="Video processing fails with memory errors">
+    - Reduce `MAX_CHUNK_DURATION` to process smaller audio segments.
+    - Use `size: big` in your pod configuration for more resources.
+    - Ensure the video file isn't corrupted.
+  </Accordion>
+  
+  <Accordion title="Speaker labels are inconsistent">
+    - The speaker matcher works best with clear speaker introductions.
+    - For videos with many speakers, results may vary.
+    - Check the matcher's confidence level in the logs.
+  </Accordion>
+  
+  <Accordion title="Box webhook not receiving events">
+    - Verify the webhook URL is publicly accessible.
+    - Check Box admin console for webhook status.
+    - Ensure the Box app has proper permissions.
+  </Accordion>
+  
+  <Accordion title="Translation is slow for long videos">
+    - Translation is chunked at ~15,000 characters per request.
+    - Consider using a faster model for initial testing.
+    - Check your zone logs for timeout errors.
+  </Accordion>
+</AccordionGroup>

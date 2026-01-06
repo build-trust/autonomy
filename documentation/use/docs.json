@@ -44,7 +44,7 @@
       },
       {
         "group": "GUIDES",
-        "pages": ["guides/box", "guides/docs-agents"]
+        "pages": ["guides/box", "guides/docs-agents", "guides/transcribe-videos"]
       }
     ]
   },
