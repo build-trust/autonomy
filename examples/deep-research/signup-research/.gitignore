@@ -1,0 +1,46 @@
+# Secrets - never commit
+secrets.yaml
+
+# Node modules
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Dependencies
+ui/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build artifacts
+dist/
+build/
+public/

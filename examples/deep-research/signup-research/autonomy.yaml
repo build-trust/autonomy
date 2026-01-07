@@ -1,0 +1,9 @@
+name: research
+pods:
+  - name: main-pod
+    public: true
+    containers:
+      - name: main
+        image: main
+        env:
+          - LINKUP_API_KEY: secrets.LINKUP_API_KEY
