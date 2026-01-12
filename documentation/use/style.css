@@ -81,6 +81,55 @@
     }
 }
 
+/* --------------------------------------------------------------------------
+   Wide Mode Overrides (triggered by #force-wide-mode div)
+   -------------------------------------------------------------------------- */
+
+/* Allow the main content container to expand */
+body:has(#force-wide-mode) .peer.is-center ~ .peer-\[\.is-center\]\:max-w-3xl {
+    max-width: 100% !important;
+    margin-right: 2.5rem !important;
+}
+
+/* Allow the content wrapper to expand */
+body:has(#force-wide-mode) #content-area {
+    max-width: 100% !important;
+    margin-right: 2.5rem !important;
+}
+
+/* Allow the prose container to expand */
+body:has(#force-wide-mode) .prose {
+    max-width: 100% !important;
+    margin-right: 0 !important;
+}
+
+/* Constrain text elements for readability in wide mode */
+body:has(#force-wide-mode) .prose > p,
+body:has(#force-wide-mode) .prose > ul,
+body:has(#force-wide-mode) .prose > ol,
+body:has(#force-wide-mode) .prose > h1,
+body:has(#force-wide-mode) .prose > h2,
+body:has(#force-wide-mode) .prose > h3,
+body:has(#force-wide-mode) .prose > h4,
+body:has(#force-wide-mode) .prose > h5,
+body:has(#force-wide-mode) .prose > h6 {
+    max-width: 50rem !important;
+}
+
+/* Override the main content container if needed */
+body:has(#force-wide-mode) .peer.is-center ~ * {
+    max-width: 100% !important;
+    margin-right: 2.5rem !important;
+}
+
+/* Override for extra-large screens */
+@media (min-width: 1536px) {
+    body:has(#force-wide-mode) .\32xl\:max-w-2xl {
+        max-width: 100% !important;
+        margin-right: 2.5rem !important;
+    }
+}
+
 /* ==========================================================================
    VISUAL STYLING
    ========================================================================== */
