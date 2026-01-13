@@ -5,8 +5,7 @@ mode: "wide"
 description: "Use a coding agent like Claude Code to build and ship a multi-agent Autonomy app."
 ---
 
-Coding agents like Claude Code, Codex CLI, Gemini CLI, Cursor, Devin, and Zed can
-use Autonomy documentation to ship complete autonomous applications.
+Coding agents like Claude Code, Codex CLI, Gemini CLI, Cursor, Devin, and Zed can use Autonomy documentation to ship complete autonomous applications.
 
 1. Follow the initial instructions to [Get Started with Autonomy](/get-started).
 2. Set up your favorite coding agent and give it the following prompt.
@@ -14,8 +13,10 @@ use Autonomy documentation to ship complete autonomous applications.
 ---
 
 ```text Prompt:
-Use curl to fetch and read this doc and included links on creating a new Autonomy application:
+Use curl to fetch the raw markdown from this doc and all its linked pages on creating a new Autonomy application:
 https://autonomy.computer/docs/_for-coding-agents.md
+
+Read all documentation thoroughly before writing any code.
 
 Use the above documentation to create a new Autonomy app that news editors can use for fact-checking news stories.
 The workflow is:
@@ -32,6 +33,7 @@ Keep the app limited to one Autonomy node.
 Deploy and test the app in Autonomy.
 Unset NO_COLOR in your shell before running any autonomy command.
 ```
+
 ---
 
 Your coding agent will:
@@ -46,17 +48,17 @@ Your coding agent will:
 
 ---
 
-<iframe width="100%" height="450" src="https://www.youtube.com/embed/WZ_bMqwZECw?si=-8G7nP5ClI8MCc5R&amp" title="Get started with Autonomy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+<iframe width="100%" height="450" src="https://www.youtube.com/embed/WZ_bMqwZECw?si=-8G7nP5ClI8MCc5R&amp" title="Get started with Autonomy" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen />
 
 ---
 
 ## Learn More
 
 <CardGroup cols={2}>
-  <Card href="/agents/agents" title="Agents" icon="star-shooting" iconType="solid">
+  <Card title="Agents" icon="star-shooting" iconType="solid" href="/agents/agents">
     Create deep work agents.
   </Card>
-  <Card href="/agents/tools" title="Tools" icon="screwdriver-wrench" iconType="solid">
+  <Card title="Tools" icon="screwdriver-wrench" iconType="solid" href="/agents/tools">
     Give agents the ability to take actions.
   </Card>
 </CardGroup>
