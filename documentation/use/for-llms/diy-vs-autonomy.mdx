@@ -4,6 +4,22 @@ description: "Comparing Autonomy to building your own autonomous platform with c
 mode: "wide"
 ---
 
+## Autonomous systems require a new platform layer.
+
+**Autonomy is an Autonomous-Native PaaS**: a complete platform-as-a-service that’s built with an opinionated set of primitives designed to run software that reasons, acts, and operates continuously at scale. 
+
+AI powered applications, agents, and autonomous systems are no longer speculative. They are already in production, doing real work on behalf of users and organizations. Their growth is explosive, and their total addressable market is effectively unbounded. Every complex programatic workflow is now a candidate for automation or delegation to autonomous software. 
+
+When a new class of applications arrives, infrastructure has to change too. This has happened before. On-prem infrastructure was not “wrong,” but it could not support elastic, distributed systems. Cloud-native succeeded because it introduced new primitives, containers, microservices, service meshes, and PaaS layers that matched how modern applications actually ran. 
+
+Autonomous Native is the next such shift. Autonomous systems are not just “AI-powered apps,” and they are not just collections of a couple of agents. They are long-lived, stateful systems that reason, plan, act, observe, and adapt over long periods of time. They coordinate with other autonomous systems. They operate across trust boundaries. They interact continuously with data, tools, SaaS platforms, and humans. To work in production, they must be safe, auditable, governable, and cost-efficient at massive scale. 
+
+The assumptions baked into cloud-native infrastructure do not hold once autonomy becomes the default. Containers and functions are the wrong unit of execution. Request-response is the wrong communication model. Perimeter security is the wrong trust model. Manual orchestration is the wrong operational model. Cloud-native systems were designed for applications that react. 
+
+Autonomous systems act. Autonomy exists to support these new autonomous applications. Autonomy provides the runtime layer for Autonomous-Native systems: an actor-based execution model where autonomous agents are lightweight, stateful, long-lived, and cheap to run at extreme density. Autonomy also includes a built-in trust and connectivity layer, powered by Ockam Open Source, that provides cryptographic identity, end-to-end secure messaging, and zero-trust communication across clouds, networks, and organizations. These capabilities are not add-ons. They are core to how Autonomy works. Together, this turns existing cloud infrastructure into a substrate for autonomous systems, without replacing Kubernetes, containers, data platforms, or SaaS. Those systems remain. Autonomy sits above them, coordinating execution, identity, communication, and governance in a way cloud-native platforms were never designed to do. 
+
+The table below compares building an autonomous platform yourself using cloud-native technologies vs. using Autonomy. Each row represents a capability you would have to design, deploy, secure, and operate in production. The goal of this chart is not to argue that DIY is impossible. It is to make the tradeoffs explicit, and to show you the details of how Autonomous-Native primitives fundamentally change the shape of the problem.
+
 <div id="force-wide-mode" />
 
 | Feature                                       | Cloud-Native (DIY)                                                     | Autonomy                                                 | Completeness | DIY Pain                                                                                                                                                                                                                                                                             | Autonomy Advantage                                                                                                                                                                                                                                                                                                             |
