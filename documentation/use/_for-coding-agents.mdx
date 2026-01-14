@@ -104,6 +104,9 @@ code templates, and best practices:
 curl -sSfL autonomy.computer/install | bash && . "$HOME/.autonomy/env"
 
 # Enroll and get cluster
+# IMPORTANT: The `autonomy cluster enroll --no-input` command prints an
+# authentication code and url needed to authorize access.
+# Always run it with --no-input and in the background to capture the authorization code.
 autonomy cluster enroll --no-input
 autonomy cluster show
 

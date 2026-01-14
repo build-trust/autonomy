@@ -52,6 +52,41 @@ Your coding agent will:
 
 ---
 
+## Using Docker in Claude Cowork
+
+Claude Cowork runs in a VZVirtualMachine (Apple's Virtualization framework). To use Docker inside Claude Cowork, you need to expose your Docker daemon to the macOS VM.
+
+If you use Docker Desktop, enable "Expose daemon on tcp://localhost:2375 without TLS" in Docker Desktop settings, then create an SSH tunnel to expose it to the VM that Claude Cowork runs in.
+
+If you use Podman as your Docker daemon on macOS, you can expose it to Claude Cowork by setting up an SSH tunnel:
+
+**On your Mac host (run this before starting Claude Cowork):**
+
+```bash
+# Start the Podman TCP service inside the Podman machine
+podman machine ssh \
+    "nohup podman system service --time=0 tcp://0.0.0.0:2375 > /dev/null 2>&1 &"
+
+# Create an SSH tunnel to expose Podman to the host network
+ssh -L 192.168.64.1:2375:localhost:2375 \
+    -N \
+    -p $(podman machine inspect --format '{{.SSHConfig.Port}}') \
+    -i ~/.local/share/containers/podman/machine/machine \
+    core@localhost &
+```
+
+**Add the following to your prompt for Claude Cowork:**
+
+```text
+Set the Docker host environment variable before running any Docker commands:
+export DOCKER_HOST=tcp://192.168.64.1:2375
+
+Install the Docker CLI binary if needed.
+Verify Docker is accessible by running: docker ps
+```
+
+---
+
 ## Learn More
 
 <CardGroup cols={2}>
