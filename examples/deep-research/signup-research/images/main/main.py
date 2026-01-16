@@ -1,8 +1,10 @@
 import os
 import json
+import secrets
+from datetime import datetime
 from typing import Optional
 
-from autonomy import Agent, HttpServer, Model, Node, NodeDep, Tool
+from autonomy import Agent, FilesystemTools, HttpServer, Model, Node, NodeDep, Tool
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
@@ -16,29 +18,27 @@ from linkup import LinkupClient
 # Initialize Linkup client
 linkup_client = LinkupClient(api_key=os.getenv("LINKUP_API_KEY"))
 
-# Maximum characters for search results to prevent context overflow
-MAX_ANSWER_LENGTH = 1500
-MAX_SNIPPET_LENGTH = 200
+# Relaxed limits for deep research - allow much more content
+MAX_ANSWER_LENGTH = 10000
+MAX_SNIPPET_LENGTH = 2000
 
 
 # === Linkup Tools ===
 
 def linkup_search(
     query: str,
-    depth: str = "standard",
     output_type: str = "sourcedAnswer",
-    max_results: int = 3
+    max_results: int = 5
 ) -> str:
     """
     Search the web using Linkup API for fresh, trusted information.
 
-    IMPORTANT: Use this tool sparingly - make ONE comprehensive search rather than many small ones.
+    Use this tool multiple times for thorough research - one search per topic/step.
 
     Args:
-        query: The search query string. Be specific and include all relevant context in a single query.
-        depth: Search depth - always use "standard" (fast). Never use "deep".
+        query: The search query string. Be specific and focused on one aspect per search.
         output_type: "sourcedAnswer" for natural language answer with citations (recommended).
-        max_results: Maximum number of results (default 3, keep low for efficiency).
+        max_results: Maximum number of results (default 5).
 
     Returns:
         JSON string with search results or sourced answer with citations.
@@ -46,29 +46,28 @@ def linkup_search(
     try:
         kwargs = {
             "query": query,
-            "depth": "standard",  # Force standard depth to avoid slow queries
+            "depth": "standard",  # Always use standard - deep causes timeouts and errors
             "output_type": output_type,
-            "max_results": min(max_results, 3),  # Cap at 3 results
+            "max_results": max_results,
         }
 
         response = linkup_client.search(**kwargs)
 
         # Convert response to dict for JSON serialization
         if hasattr(response, 'answer'):
-            # sourcedAnswer response - truncate answer if too long
+            # sourcedAnswer response
             answer = response.answer
             if len(answer) > MAX_ANSWER_LENGTH:
                 answer = answer[:MAX_ANSWER_LENGTH] + "..."
 
-            # Limit sources and truncate snippets
             sources = []
             if hasattr(response, 'sources') and response.sources:
-                for s in response.sources[:3]:  # Max 3 sources
+                for s in response.sources[:5]:
                     snippet = getattr(s, 'snippet', '')
                     if len(snippet) > MAX_SNIPPET_LENGTH:
                         snippet = snippet[:MAX_SNIPPET_LENGTH] + "..."
                     sources.append({
-                        "name": s.name[:100] if s.name else "",
+                        "name": s.name[:200] if s.name else "",
                         "url": s.url,
                         "snippet": snippet
                     })
@@ -78,21 +77,21 @@ def linkup_search(
                 "sources": sources
             }
         elif hasattr(response, 'results'):
-            # searchResults response - limit and truncate
+            # searchResults response
             results = []
-            for r in response.results[:3]:  # Max 3 results
+            for r in response.results[:5]:
                 content = getattr(r, 'content', getattr(r, 'snippet', ''))
                 if len(content) > MAX_SNIPPET_LENGTH:
                     content = content[:MAX_SNIPPET_LENGTH] + "..."
                 results.append({
                     "type": getattr(r, 'type', 'text'),
-                    "name": getattr(r, 'name', '')[:100],
+                    "name": getattr(r, 'name', '')[:200],
                     "url": getattr(r, 'url', ''),
                     "content": content
                 })
             result = {"results": results}
         else:
-            result = {"raw": str(response)[:500]}
+            result = {"raw": str(response)[:2000]}
 
         return json.dumps(result, indent=2)
     except Exception as e:
@@ -102,21 +101,21 @@ def linkup_search(
 def linkup_fetch(url: str) -> str:
     """
     Fetch and extract content from a web page URL using Linkup API.
-    Only use this if you absolutely need detailed content from a specific page.
+    Use this to get detailed content from specific pages like company websites or LinkedIn profiles.
 
     Args:
         url: The fully qualified URL to fetch (including http:// or https://).
 
     Returns:
-        JSON string with the extracted markdown content from the page (truncated).
+        JSON string with the extracted markdown content from the page.
     """
     try:
         response = linkup_client.fetch(url=url)
 
         content = getattr(response, 'content', str(response))
-        # Truncate content to prevent context overflow
-        if len(content) > 2000:
-            content = content[:2000] + "\n\n[Content truncated...]"
+        # Allow longer content for deep research
+        if len(content) > 8000:
+            content = content[:8000] + "\n\n[Content truncated...]"
 
         result = {
             "url": url,
@@ -130,7 +129,7 @@ def linkup_fetch(url: str) -> str:
 
 # === FastAPI App ===
 
-app = FastAPI(title="Signup Research API")
+app = FastAPI(title="Deep Research API")
 
 
 def json_serializer(obj):
@@ -147,80 +146,112 @@ class ResearchRequest(BaseModel):
     name: str
     email: str
     organization: str
+    business_description: str
 
 
-# Global agent reference
-agent = None
 
 
-AGENT_INSTRUCTIONS = """You are a research analyst who helps sales teams understand new signups.
 
-When given a person's name, email, and organization, research them and provide a brief report.
+AGENT_INSTRUCTIONS_TEMPLATE = """You are a research analyst who helps sales teams understand new signups.
 
-## CRITICAL RULES - FOLLOW EXACTLY
+When given a person's name, email, and organization, research them and provide a detailed report.
 
-1. **Make exactly 1 search call** - ONE comprehensive search combining company and person info
-2. **Never use linkup_fetch** - the search results contain enough information
-3. **Keep your response concise** - 2-3 sentences per section maximum
+## YOUR CLIENT'S BUSINESS
 
-## Search Strategy
+You are researching on behalf of a business with the following description:
+{business_description}
 
-Make ONE search query combining everything:
-- Example: "Acme Corp company products services [Person Name] role"
+## RESEARCH PROCESS
 
-DO NOT make multiple searches. ONE search only.
+1. Search for company info (1-2 searches)
+2. Search for the person's role and LinkedIn (1-2 searches)
+3. Write the final report DIRECTLY as your response
 
-## Output Format
+## CRITICAL INSTRUCTION
 
-After your single search, provide this brief report:
+After completing your searches, you MUST write out the complete research report as plain text in your response. Do NOT just save to files - the user needs to see the report directly in the chat.
 
-1. **Person Overview** - Their role (1 sentence, skip if not found)
-2. **Company Overview** - What they do (2 sentences max)
-3. **Products & Services** - Key offerings (2 sentences max)
-4. **Recent News** - One notable item if found
-5. **How Linkup Can Help** - One specific use case for their business:
-   - Linkup is a web search API for AI applications
-   - Examples: AI assistants, research automation, content generation, competitive intelligence
+## REPORT FORMAT
 
-Total response should be under 300 words."""
+Write this report directly in your response:
+
+# Research Report: [Person Name] at [Company]
+
+## Executive Summary
+2-3 sentence overview of who this person is and what their company does.
+
+## Company Profile
+- **Company**: Name and website
+- **Industry**: What they do
+- **Products/Services**: Key offerings
+- **Size/Funding**: If known
+
+## Person Profile
+- **Name**: Full name
+- **Role**: Current position
+- **Background**: Professional experience
+- **LinkedIn**: URL if found
+
+## Recommendations for Outreach
+- How the client's business (described above) could help them
+- Specific use cases based on their industry
+- Personalization hooks from research
+
+## Sources
+- List URLs consulted
+
+IMPORTANT: Write the entire report as text output. Do not just save to files."""
 
 
 @app.post("/api/research")
 async def research(request: ResearchRequest, node: NodeDep):
-    global agent
+    # Create timestamp for this research session
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Initialize agent once and reuse
-    if not agent:
-        try:
-            agent = await Agent.start(
-                node=node,
-                name="researcher",
-                instructions=AGENT_INSTRUCTIONS,
-                model=Model("claude-sonnet-4-5"),
-                tools=[
-                    Tool(linkup_search),
-                    Tool(linkup_fetch),
-                ],
-            )
-        except Exception as e:
-            if "AlreadyExists" not in str(e):
-                raise e
+    # Create unique agent name for this request to avoid AlreadyExists issues
+    agent_name = f"researcher_{secrets.token_hex(4)}"
+
+    # Format instructions with the business description
+    instructions = AGENT_INSTRUCTIONS_TEMPLATE.format(
+        business_description=request.business_description
+    )
+
+    # Initialize a fresh agent for this request
+    agent = await Agent.start(
+        node=node,
+        name=agent_name,
+        instructions=instructions,
+        model=Model("claude-sonnet-4-5"),
+        tools=[
+            Tool(linkup_search),
+            Tool(linkup_fetch),
+            FilesystemTools(visibility="conversation"),
+        ],
+    )
 
     # Construct the research message
-    message = f"""Research this signup with exactly ONE search call:
+    message = f"""Research this new signup and write a report:
 
-- Name: {request.name}
-- Email: {request.email}
-- Organization: {request.organization}
+- **Name**: {request.name}
+- **Email**: {request.email}
+- **Organization**: {request.organization}
 
-Make one search, then write a brief report (under 300 words)."""
+Do 2-4 web searches to gather information, then write the complete research report directly in your response.
+
+CRITICAL: After your searches, write out the full formatted report as text. The user is reading your response directly - they cannot see files you save. Your text output IS the deliverable."""
 
     async def stream_response():
         try:
-            async for response in agent.send_stream(message, timeout=120):
+            async for response in agent.send_stream(message, timeout=300):
                 yield json.dumps(response.snippet, default=json_serializer) + "\n"
         except Exception as e:
             yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+        finally:
+            # Clean up agent after request completes
+            try:
+                await Agent.stop(node, agent_name)
+            except Exception:
+                pass  # Ignore cleanup errors
 
     return StreamingResponse(stream_response(), media_type="application/json")
 

@@ -75,6 +75,7 @@ export default function Home() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [organization, setOrganization] = useState("");
+  const [businessDescription, setBusinessDescription] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState("");
   const [status, setStatus] = useState("");
@@ -98,7 +99,7 @@ export default function Home() {
       const response = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, organization }),
+        body: JSON.stringify({ name, email, organization, business_description: businessDescription }),
       });
 
       if (!response.ok) {
@@ -142,12 +143,43 @@ export default function Home() {
 
                   // Skip messages that are just tool calls (no text content)
                   if (message.tool_calls && message.tool_calls.length > 0) {
-                    // Check if this is a search tool call
+                    // Check tool call type for status updates
                     const toolCall = message.tool_calls[0];
                     if (toolCall?.function?.name === "linkup_search") {
-                      setStatus("Searching the web...");
+                      // Try to extract context from arguments
+                      try {
+                        const args = JSON.parse(toolCall.function.arguments || "{}");
+                        if (args.query?.toLowerCase().includes("linkedin")) {
+                          setStatus("Searching LinkedIn...");
+                        } else if (
+                          args.query?.toLowerCase().includes("news") ||
+                          args.query?.toLowerCase().includes("recent")
+                        ) {
+                          setStatus("Finding recent news & activity...");
+                        } else {
+                          setStatus("Searching the web...");
+                        }
+                      } catch {
+                        setStatus("Searching the web...");
+                      }
                     } else if (toolCall?.function?.name === "linkup_fetch") {
-                      setStatus("Fetching page content...");
+                      try {
+                        const args = JSON.parse(toolCall.function.arguments || "{}");
+                        if (args.url?.includes("linkedin")) {
+                          setStatus("Fetching LinkedIn profile...");
+                        } else {
+                          setStatus("Fetching page content...");
+                        }
+                      } catch {
+                        setStatus("Fetching page content...");
+                      }
+                    } else if (
+                      toolCall?.function?.name?.includes("write") ||
+                      toolCall?.function?.name?.includes("file")
+                    ) {
+                      setStatus("Saving research findings...");
+                    } else if (toolCall?.function?.name?.includes("read")) {
+                      setStatus("Compiling final report...");
                     }
                     continue;
                   }
@@ -207,6 +239,7 @@ export default function Home() {
     setName("");
     setEmail("");
     setOrganization("");
+    setBusinessDescription("");
     setResult("");
     setError("");
     setStatus("");
@@ -225,7 +258,7 @@ export default function Home() {
               Signup Research
             </h1>
           </div>
-          <p className="text-lg text-slate-600">AI-powered intelligence for new user signups</p>
+          <p className="text-lg text-slate-600">Deep AI-powered research for new user signups</p>
         </div>
 
         {/* Input Form */}
@@ -289,21 +322,41 @@ export default function Home() {
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="businessDescription" className="flex items-center gap-2 text-slate-700">
+                  <Building2 className="h-4 w-4 text-blue-500" />
+                  Your Business & Product
+                </Label>
+                <textarea
+                  id="businessDescription"
+                  placeholder="Describe your business and product. For example: 'We provide cloud-based project management software that helps teams collaborate and track their work efficiently.'"
+                  value={businessDescription}
+                  onChange={(e) => setBusinessDescription(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:border-blue-500 focus:ring-blue-500 focus:outline-none focus:ring-1 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+                />
+                <p className="text-sm text-slate-500">
+                  This will be used to generate personalized recommendations for how your business could help this
+                  prospect.
+                </p>
+              </div>
               <div className="flex gap-3">
                 <Button
                   type="submit"
                   className="bg-blue-600 hover:bg-blue-700 text-white"
-                  disabled={isLoading || !name || !email || !organization}
+                  disabled={isLoading || !name || !email || !organization || !businessDescription}
                 >
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Researching...
+                      Deep Research in Progress...
                     </>
                   ) : (
                     <>
                       <Search className="mr-2 h-4 w-4" />
-                      Research User
+                      Start Deep Research
                     </>
                   )}
                 </Button>
@@ -319,13 +372,20 @@ export default function Home() {
 
         {/* Status Indicator */}
         {isLoading && status && (
-          <div className="flex items-center justify-center gap-3 py-4">
-            <div className="relative">
-              <div className="w-3 h-3 bg-blue-600 rounded-full animate-ping absolute"></div>
-              <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
-            </div>
-            <span className="text-slate-600 font-medium">{status}</span>
-          </div>
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-center gap-3">
+                <div className="relative">
+                  <div className="w-3 h-3 bg-blue-600 rounded-full animate-ping absolute"></div>
+                  <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
+                </div>
+                <span className="text-blue-700 font-medium">{status}</span>
+              </div>
+              <p className="text-center text-sm text-blue-600/70 mt-2">
+                Deep research may take 2-3 minutes for comprehensive results
+              </p>
+            </CardContent>
+          </Card>
         )}
 
         {/* Results */}
@@ -351,7 +411,7 @@ export default function Home() {
                   <strong>Error:</strong> {error}
                 </div>
               )}
-              <div ref={resultRef} className="p-6 min-h-[300px] max-h-[600px] overflow-y-auto bg-white">
+              <div ref={resultRef} className="p-6 min-h-[400px] max-h-[800px] overflow-y-auto bg-white">
                 {result ? (
                   <MarkdownRenderer content={result} />
                 ) : (
@@ -366,22 +426,22 @@ export default function Home() {
         <div className="text-center text-sm text-slate-500 py-4 flex items-center justify-center gap-1">
           Powered by{" "}
           <a
-            href="https://linkup.so"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:underline inline-flex items-center gap-1 font-medium"
-          >
-            Linkup
-            <ExternalLink className="h-3 w-3" />
-          </a>{" "}
-          web search API &{" "}
-          <a
             href="https://autonomy.computer"
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:underline inline-flex items-center gap-1 font-medium"
           >
             Autonomy
+            <ExternalLink className="h-3 w-3" />
+          </a>{" "}
+          and{" "}
+          <a
+            href="https://linkup.so"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:underline inline-flex items-center gap-1 font-medium"
+          >
+            Linkup
             <ExternalLink className="h-3 w-3" />
           </a>
         </div>
