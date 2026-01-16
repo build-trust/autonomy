@@ -15,6 +15,21 @@ This guide shows you how to build a signup research application that:
 - Generates a detailed research report with personalized recommendations
 - Streams results in real-time through a modern web UI
 
+```text
++----------------+       +----------------+       +----------------+
+|  User enters   |------>|   Next.js UI   |------>|    FastAPI     |
+|  signup info   |       |   (Browser)    |       | /api/research  |
++----------------+       +----------------+       +-------+--------+
+                                                         |
+         +-----------------------------------------------+
+         |
+         v
++----------------+       +----------------+       +----------------+
+|    Research    |------>|  Linkup Search |------>|    Research    |
+|     Agent      |       |   API Tools    |       |     Report     |
++----------------+       +----------------+       +----------------+
+```
+
 <Frame>
   <img src="/guides/images/signup-research/signup-research.png"
       alt="Signup Research UI" />
