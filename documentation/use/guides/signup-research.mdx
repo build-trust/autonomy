@@ -131,9 +131,7 @@ Your coding agent will create the complete application including the research ag
 
 The application uses a research agent powered by Claude with access to web search tools via the Linkup API.
 
-### Linkup search tools
-
-The agent has two tools to gather information:
+The agent has two tools to gather information using the Linkup API:
 
 ```python images/main/main.py
 def linkup_search(
@@ -176,8 +174,6 @@ def linkup_fetch(url: str) -> str:
     response = linkup_client.fetch(url=url)
     # Process and return content...
 ```
-
-### Research agent
 
 The agent receives instructions that include the user's business description, allowing it to generate personalized recommendations:
 
@@ -224,8 +220,6 @@ You are researching on behalf of a business with the following description:
 """
 ```
 
-### Streaming API endpoint
-
 The FastAPI endpoint creates a fresh agent for each research request and streams the response:
 
 ```python images/main/main.py
@@ -267,8 +261,6 @@ async def research(request: ResearchRequest, node: NodeDep):
 
 ## Customize the agent
 
-### Change the research focus
-
 Edit the agent instructions in `images/main/main.py` to focus on different aspects:
 
 ```python images/main/main.py
@@ -289,8 +281,6 @@ Focus on:
 - Technical pain points your product solves
 """
 ```
-
-### Add more tools
 
 Give the agent additional capabilities by adding more tools:
 
@@ -313,8 +303,6 @@ agent = await Agent.start(
 )
 ```
 
-### Use a different model
-
 Change the model for different performance characteristics:
 
 ```python images/main/main.py
@@ -329,9 +317,7 @@ model=Model("claude-sonnet-4-5")
 
 ## API reference
 
-### POST /api/research
-
-Research a new signup and stream the results.
+Research a new signup and stream the results via `POST /api/research`.
 
 **Request:**
 
@@ -355,8 +341,6 @@ Research a new signup and stream the results.
 ## Integrate into your product
 
 The `/api/research` endpoint is a standard HTTP API that you can call from anywhere, not just the included web UI. This makes it easy to integrate signup research into your existing workflows and products.
-
-### Call from your backend
 
 Trigger research automatically when a new user signs up:
 
@@ -388,13 +372,7 @@ def on_user_signup(user):
     save_research_report(user.id, report)
 ```
 
-### Integrate with automation tools
-
-Call the API from Zapier, Make, n8n, or any workflow automation tool that supports HTTP requests. Use the endpoint URL and JSON payload format shown in the [API reference](#api-reference).
-
-### Embed in your product
-
-Add a research button to your admin dashboard that fetches insights about any user on demand, or automatically enrich user profiles in the background when they sign up.
+Call the API from Zapier, Make, n8n, or any workflow automation tool that supports HTTP requests. Add a research button to your admin dashboard that fetches insights about any user on demand, or automatically enrich user profiles in the background when they sign up.
 
 ---
 
