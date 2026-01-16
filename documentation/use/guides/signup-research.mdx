@@ -15,20 +15,6 @@ This guide shows you how to build a signup research application that:
 - Generates a detailed research report with personalized recommendations
 - Streams results in real-time through a modern web UI
 
-```mermaid
-flowchart TB
-    A[User enters signup info] --> B[Next.js Browser]
-    B --> C[FastAPI /api/research]
-    C --> D[Research Agent]
-    D --> E[Agent Research Process]
-    
-    subgraph E[Agent Research Process]
-        E1[1. Search for company information]
-        E2[2. Search for person's role and LinkedIn]
-        E3[3. Generate report with recommendations]
-    end
-```
-
 <Frame>
   <img src="/guides/images/signup-research/signup-research.png"
       alt="Signup Research UI" />
