@@ -1,0 +1,1783 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dependency Review Swarm</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+        background: #0a0a0f;
+        color: #e0e0e0;
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+      }
+
+      #graph-container {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
+
+      #controls {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        z-index: 100;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      #controls-expanded {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      #controls.collapsed #controls-expanded {
+        display: none;
+      }
+
+      input[type="text"],
+      select {
+        padding: 10px 16px;
+        font-size: 14px;
+        border: 1px solid #333;
+        border-radius: 8px;
+        background: #1a1a24;
+        color: #e0e0e0;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      input[type="text"] {
+        width: 160px;
+      }
+
+      #deps-inputs,
+      #repo-inputs {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      select {
+        cursor: pointer;
+      }
+
+      input[type="text"]:focus,
+      select:focus {
+        border-color: #4a9eff;
+      }
+
+      button {
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      #analyze-btn {
+        background: linear-gradient(135deg, #4a9eff, #7b61ff);
+        color: white;
+      }
+
+      #analyze-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 20px rgba(74, 158, 255, 0.4);
+      }
+
+      #analyze-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      #reset-btn {
+        background: #2a2a34;
+        color: #e0e0e0;
+        border: 1px solid #333;
+      }
+
+      #reset-btn:hover {
+        background: #3a3a44;
+      }
+
+      #status {
+        padding: 8px 16px;
+        background: #1a1a24;
+        border: 1px solid #333;
+        border-radius: 8px;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: 10px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #666;
+      }
+
+      .status-dot.running {
+        background: #4a9eff;
+        animation: pulse 1.5s infinite;
+      }
+
+      .status-dot.completed {
+        background: #4ade80;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      #stats {
+        padding: 8px 12px;
+        background: #1a1a24;
+        border: 1px solid #333;
+        border-radius: 8px;
+        font-size: 12px;
+        display: flex;
+        gap: 16px;
+      }
+
+      .stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .stat-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #4a9eff;
+      }
+
+      .stat-label {
+        color: #888;
+        text-transform: uppercase;
+        font-size: 10px;
+        letter-spacing: 1px;
+      }
+
+      svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      /* Activity Feed */
+      #activity-feed {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        width: 400px;
+        max-height: 300px;
+        background: #12121a;
+        border: 1px solid #2a2a34;
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .activity-header {
+        padding: 10px 14px;
+        background: #1a1a24;
+        border-bottom: 1px solid #2a2a34;
+        font-size: 12px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .activity-toggle {
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+      }
+
+      .activity-toggle:hover {
+        color: #e0e0e0;
+      }
+
+      .activity-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+        max-height: 250px;
+      }
+
+      .activity-item {
+        padding: 8px 10px;
+        margin-bottom: 4px;
+        background: #1a1a24;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.4;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .activity-item:hover {
+        background: #252530;
+      }
+
+      .activity-item .node-name {
+        font-weight: 600;
+        color: #4a9eff;
+        margin-right: 6px;
+      }
+
+      .activity-item .role {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-right: 6px;
+      }
+
+      .activity-item .role.system {
+        background: rgba(107, 114, 128, 0.3);
+        color: #9ca3af;
+      }
+
+      .activity-item .role.agent {
+        background: rgba(74, 158, 255, 0.2);
+        color: #4a9eff;
+      }
+
+      .activity-item .role.model {
+        background: rgba(139, 92, 246, 0.2);
+        color: #a78bfa;
+      }
+
+      .activity-item .role.error {
+        background: rgba(248, 113, 113, 0.2);
+        color: #f87171;
+      }
+
+      .activity-item .content {
+        color: #ccc;
+        display: block;
+        margin-top: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .activity-item .timestamp {
+        color: #666;
+        font-size: 10px;
+        margin-top: 4px;
+      }
+
+      #activity-feed.collapsed .activity-list {
+        display: none;
+      }
+
+      /* Report Panel */
+      #report-panel {
+        width: 400px;
+        background: #12121a;
+        border-left: 1px solid #2a2a34;
+        overflow-y: auto;
+        transition: transform 0.3s ease;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #report-panel.hidden {
+        transform: translateX(100%);
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+      }
+
+      .panel-header {
+        padding: 20px;
+        border-bottom: 1px solid #2a2a34;
+        position: sticky;
+        top: 0;
+        background: #12121a;
+        z-index: 10;
+      }
+
+      .panel-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        word-break: break-word;
+      }
+
+      .panel-header .node-type {
+        font-size: 12px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .panel-close {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: none;
+        border: none;
+        color: #888;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 4px;
+        line-height: 1;
+      }
+
+      .panel-close:hover {
+        color: #e0e0e0;
+      }
+
+      /* Panel Tabs */
+      .panel-tabs {
+        display: flex;
+        border-bottom: 1px solid #2a2a34;
+        background: #1a1a24;
+      }
+
+      .panel-tab {
+        flex: 1;
+        padding: 12px 16px;
+        background: none;
+        border: none;
+        color: #888;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border-bottom: 2px solid transparent;
+      }
+
+      .panel-tab:hover {
+        color: #e0e0e0;
+        background: #252530;
+      }
+
+      .panel-tab.active {
+        color: #4a9eff;
+        border-bottom-color: #4a9eff;
+      }
+
+      .panel-content {
+        padding: 20px;
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .tab-content {
+        display: none;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      /* Transcript Styles */
+      .transcript-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .transcript-entry {
+        padding: 12px;
+        background: #1a1a24;
+        border-radius: 8px;
+        border-left: 3px solid #333;
+      }
+
+      .transcript-entry.system {
+        border-left-color: #6b7280;
+      }
+
+      .transcript-entry.agent {
+        border-left-color: #4a9eff;
+      }
+
+      .transcript-entry.model {
+        border-left-color: #a78bfa;
+      }
+
+      .transcript-entry.error {
+        border-left-color: #f87171;
+        background: rgba(248, 113, 113, 0.1);
+      }
+
+      .transcript-entry .entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+
+      .transcript-entry .entry-role {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .transcript-entry.system .entry-role {
+        color: #9ca3af;
+      }
+
+      .transcript-entry.agent .entry-role {
+        color: #4a9eff;
+      }
+
+      .transcript-entry.model .entry-role {
+        color: #a78bfa;
+      }
+
+      .transcript-entry.error .entry-role {
+        color: #f87171;
+      }
+
+      .transcript-entry .entry-time {
+        font-size: 10px;
+        color: #666;
+      }
+
+      .transcript-entry .entry-content {
+        font-size: 13px;
+        line-height: 1.5;
+        color: #ccc;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .transcript-entry.model .entry-content {
+        font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+        font-size: 12px;
+        background: #0a0a0f;
+        padding: 10px;
+        border-radius: 6px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .report-section {
+        margin-bottom: 20px;
+      }
+
+      .report-section h3 {
+        font-size: 13px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .report-section h3 .icon {
+        font-size: 16px;
+      }
+
+      .risk-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .risk-badge.low,
+      .risk-badge.healthy,
+      .risk-badge.permissive,
+      .risk-badge.high-trust {
+        background: rgba(74, 222, 128, 0.2);
+        color: #4ade80;
+      }
+
+      .risk-badge.medium,
+      .risk-badge.moderate,
+      .risk-badge.cautious,
+      .risk-badge.medium-trust {
+        background: rgba(250, 204, 21, 0.2);
+        color: #facc15;
+      }
+
+      .risk-badge.high,
+      .risk-badge.concerning,
+      .risk-badge.restricted,
+      .risk-badge.low-trust {
+        background: rgba(251, 146, 60, 0.2);
+        color: #fb923c;
+      }
+
+      .risk-badge.critical,
+      .risk-badge.abandoned,
+      .risk-badge.unknown,
+      .risk-badge.suspicious {
+        background: rgba(248, 113, 113, 0.2);
+        color: #f87171;
+      }
+
+      .concerns-list,
+      .signals-list {
+        list-style: none;
+        padding: 0;
+      }
+
+      .concerns-list li,
+      .signals-list li {
+        padding: 8px 12px;
+        background: #1a1a24;
+        border-radius: 6px;
+        margin-bottom: 6px;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .recommendation {
+        padding: 12px;
+        background: #1a1a24;
+        border-radius: 8px;
+        border-left: 3px solid #4a9eff;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .no-report {
+        text-align: center;
+        padding: 40px 20px;
+        color: #666;
+      }
+
+      .no-report .icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+      }
+
+      /* Legend */
+      #legend {
+        position: absolute;
+        bottom: 80px;
+        right: 20px;
+        padding: 12px 16px;
+        background: #1a1a24;
+        border: 1px solid #333;
+        border-radius: 8px;
+        font-size: 11px;
+        display: none; /* Hidden by default */
+      }
+
+      #legend.visible {
+        display: block;
+      }
+
+      .legend-title {
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .legend-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+
+      /* Node styles via D3 */
+      .node {
+        cursor: pointer;
+      }
+
+      .node circle {
+        transition:
+          r 0.2s ease-out,
+          stroke-width 0.2s;
+      }
+
+      .node:hover circle {
+        stroke-width: 4px !important;
+      }
+
+      /* Simple running indicator - just a subtle stroke */
+      .node.running circle {
+        stroke-width: 3px;
+      }
+
+      .link {
+        stroke-opacity: 0.7;
+      }
+
+      .node-label {
+        font-size: 10px;
+        fill: #888;
+        pointer-events: none;
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: #1a1a24;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #444;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="graph-container">
+      <div id="controls">
+        <button
+          id="collapse-controls-btn"
+          title="Toggle controls"
+          style="background: #2a2a34; border: 1px solid #333; padding: 8px 12px; font-size: 14px"
+        >
+          ⚙️
+        </button>
+        <div id="stats">
+          <div class="stat">
+            <span class="stat-value" id="total-nodes">0</span>
+            <span class="stat-label">Agents</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="completed-nodes">0</span>
+            <span class="stat-label">Completed</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="running-nodes">0</span>
+            <span class="stat-label">Running</span>
+          </div>
+        </div>
+        <div id="controls-expanded">
+          <select id="mode-select" title="Analysis mode">
+            <option value="deps" selected>📦 Dependencies</option>
+            <option value="repo">📁 GitHub Repo</option>
+          </select>
+
+          <!-- Dependency mode inputs -->
+          <div id="deps-inputs">
+            <input type="text" id="package-input" placeholder="Package (e.g., flask)" value="flask" />
+            <select id="depth-select" title="Recursion depth">
+              <option value="0">Direct only</option>
+              <option value="1" selected>Depth 1</option>
+              <option value="2">Depth 2</option>
+            </select>
+          </div>
+
+          <!-- Repo mode inputs -->
+          <div id="repo-inputs" style="display: none">
+            <input
+              type="text"
+              id="repo-input"
+              placeholder="org/repo (e.g., pallets/flask)"
+              value="pallets/click"
+              style="width: 180px"
+            />
+            <select id="analysis-mode-select" title="Analysis mode">
+              <option value="standard" selected>Standard</option>
+              <option value="multiphase">Multi-Phase</option>
+              <option value="full">Full + Cross-File</option>
+            </select>
+            <select id="files-select" title="Max files to analyze">
+              <option value="10">10 files</option>
+              <option value="20">20 files</option>
+              <option value="30" selected>30 files</option>
+              <option value="50">50 files</option>
+              <option value="0">All files</option>
+            </select>
+            <select id="reviewers-select" title="Reviewers per file">
+              <option value="2" selected>2 reviewers</option>
+              <option value="3">3 reviewers</option>
+              <option value="4">4 reviewers</option>
+            </select>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px">
+              <input type="checkbox" id="analyze-deps-checkbox" checked style="cursor: pointer" />
+              <span>Analyze imports</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px">
+              <input type="checkbox" id="auto-focus-checkbox" checked style="cursor: pointer" />
+              <span>Auto-zoom</span>
+            </label>
+          </div>
+
+          <button id="analyze-btn">Analyze</button>
+          <button id="reset-btn">Reset</button>
+          <div id="status">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Feed -->
+      <div id="activity-feed">
+        <div class="activity-header">
+          <span>🔴 Live Activity</span>
+          <button class="activity-toggle" onclick="toggleActivityFeed()">−</button>
+        </div>
+        <div class="activity-list" id="activity-list">
+          <div class="activity-item" style="color: #666; text-align: center">Waiting for activity...</div>
+        </div>
+      </div>
+
+      <div id="legend">
+        <div class="legend-title">Node Types</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #a78bfa"></div>
+            <span>Root</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #60a5fa"></div>
+            <span>Dependency</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #38bdf8"></div>
+            <span>Directory</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #06b6d4"></div>
+            <span>Runner</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #f472b6"></div>
+            <span>File</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #4ade80"></div>
+            <span>Reviewer</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #c084fc"></div>
+            <span>Sub-reviewer</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #fbbf24"></div>
+            <span>Specialized</span>
+          </div>
+        </div>
+        <div class="legend-title" style="margin-top: 12px">Status</div>
+        <div class="legend-items">
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #facc15; box-shadow: 0 0 8px #facc15"></div>
+            <span>Running</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #4ade80"></div>
+            <span>Completed</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #f87171"></div>
+            <span>Error</span>
+          </div>
+        </div>
+      </div>
+
+      <svg id="graph">
+        <defs>
+          <!-- Glow filters for different node types -->
+          <filter id="glow-purple" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="glow-blue" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="glow-green" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="glow-completion" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="8" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+      </svg>
+    </div>
+
+    <div id="report-panel" class="hidden">
+      <div class="panel-header">
+        <button class="panel-close" onclick="closePanel()">&times;</button>
+        <h2 id="panel-title">Node Name</h2>
+        <div class="node-type" id="panel-type">Type</div>
+      </div>
+      <div class="panel-tabs">
+        <button class="panel-tab active" onclick="switchTab('report')">📋 Report</button>
+        <button class="panel-tab" onclick="switchTab('transcript')">💬 Transcript</button>
+      </div>
+      <div class="panel-content">
+        <div id="report-tab" class="tab-content active">
+          <div class="no-report">
+            <div class="icon">📋</div>
+            <p>Select a node to view its report</p>
+          </div>
+        </div>
+        <div id="transcript-tab" class="tab-content">
+          <div class="no-report">
+            <div class="icon">💬</div>
+            <p>No transcript available</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // State
+      let nodes = [];
+      let edges = [];
+      let simulation = null;
+      let selectedNode = null;
+      let currentTab = "report";
+      let activityCollapsed = false;
+      let isDragging = false;
+
+      // State for tracking known nodes/edges
+      let knownNodeIds = new Set();
+      let knownEdgeIds = new Set();
+
+      // D3 selections
+      const svg = d3.select("#graph");
+      const container = svg.append("g");
+
+      // Add zoom behavior
+      const zoom = d3
+        .zoom()
+        .scaleExtent([0.1, 4])
+        .on("zoom", (event) => {
+          container.attr("transform", event.transform);
+        });
+
+      svg.call(zoom);
+
+      // Set initial zoom to 0.6 so graph fits better
+      const initialScale = 0.6;
+      const width = document.getElementById("graph-container").clientWidth;
+      const height = document.getElementById("graph-container").clientHeight;
+      svg.call(
+        zoom.transform,
+        d3.zoomIdentity
+          .translate((width * (1 - initialScale)) / 2, (height * (1 - initialScale)) / 2)
+          .scale(initialScale),
+      );
+
+      // Create groups for links and nodes
+      const linksGroup = container.append("g").attr("class", "links");
+      const nodesGroup = container.append("g").attr("class", "nodes");
+
+      // Color scales
+      const typeColors = {
+        root: "#a78bfa",
+        dependency: "#60a5fa",
+        directory: "#38bdf8",
+        file: "#f472b6",
+        reviewer: "#4ade80",
+        "sub-reviewer": "#c084fc",
+        specialized: "#fbbf24", // Amber/gold for specialized reviewers
+        phase: "#ec4899", // Pink for phase nodes
+        scanner: "#22d3ee", // Cyan for quick scan nodes
+        "cross-file": "#f97316", // Orange for cross-file analysis
+        analyzer: "#14b8a6", // Teal for analyzers
+        "risk-cluster": "#ef4444", // Red for risk clusters
+        runner: "#06b6d4", // Cyan for distributed runners
+      };
+
+      // Gradient colors for links based on source node type
+      const linkColors = {
+        root: "#a78bfa",
+        dependency: "#60a5fa",
+        directory: "#38bdf8",
+        file: "#f472b6",
+        reviewer: "#4ade80",
+        "sub-reviewer": "#c084fc",
+        specialized: "#fbbf24",
+        phase: "#ec4899",
+        scanner: "#22d3ee",
+        "cross-file": "#f97316",
+        analyzer: "#14b8a6",
+        "risk-cluster": "#ef4444",
+        runner: "#06b6d4",
+        default: "#4a5568",
+      };
+
+      const statusColors = {
+        pending: "#666",
+        running: "#facc15",
+        completed: "#4ade80",
+        error: "#f87171",
+      };
+
+      function getNodeColor(node) {
+        return typeColors[node.type] || "#666";
+      }
+
+      function getNodeRadius(node) {
+        switch (node.type) {
+          case "root":
+            return 28;
+          case "dependency":
+          case "directory":
+            return 18;
+          case "runner":
+            return 20; // Slightly larger to show runners prominently
+          case "file":
+            return 14;
+          case "reviewer":
+            return 10;
+          case "sub-reviewer":
+            return 8;
+          case "specialized":
+            return 9;
+          case "phase":
+            return 22;
+          case "scanner":
+            return 8;
+          case "cross-file":
+            return 20;
+          case "risk-cluster":
+            return 16;
+          case "analyzer":
+            return 11;
+          default:
+            return 10;
+        }
+      }
+
+      function getLinkColor(sourceNode) {
+        if (!sourceNode) return linkColors.default;
+        return linkColors[sourceNode.type] || linkColors.default;
+      }
+
+      function getStrokeColor(node) {
+        return statusColors[node.status] || "#666";
+      }
+
+      // Viewport auto-zoom state
+      let autoZoomEnabled = true;
+      let lastNodeCount = 0;
+
+      // Calculate bounding box of all nodes
+      function getAllNodesBoundingBox() {
+        if (nodes.length === 0) return null;
+
+        let minX = Infinity,
+          minY = Infinity,
+          maxX = -Infinity,
+          maxY = -Infinity;
+
+        nodes.forEach((n) => {
+          if (n.x !== undefined && n.y !== undefined) {
+            const r = getNodeRadius(n);
+            minX = Math.min(minX, n.x - r);
+            maxX = Math.max(maxX, n.x + r);
+            minY = Math.min(minY, n.y - r);
+            maxY = Math.max(maxY, n.y + r);
+          }
+        });
+
+        if (minX === Infinity) return null;
+
+        return {
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+          centerX: (minX + maxX) / 2,
+          centerY: (minY + maxY) / 2,
+        };
+      }
+
+      // Auto-zoom to fit all nodes as graph grows
+      function autoZoomToFitAll() {
+        if (!autoZoomEnabled) return;
+        if (nodes.length === 0) return;
+
+        // Only zoom when new nodes are added
+        if (nodes.length === lastNodeCount) return;
+        lastNodeCount = nodes.length;
+
+        const bbox = getAllNodesBoundingBox();
+        if (!bbox) return;
+
+        const width = document.getElementById("graph-container").clientWidth;
+        const height = document.getElementById("graph-container").clientHeight;
+
+        // Add padding around the bounding box for buffer space
+        const padding = 150;
+        const bboxWidth = bbox.width + padding * 2;
+        const bboxHeight = bbox.height + padding * 2;
+
+        // Calculate scale to fit all nodes
+        const scaleX = width / bboxWidth;
+        const scaleY = height / bboxHeight;
+        let scale = Math.min(scaleX, scaleY);
+
+        // Don't zoom in too much for small graphs, but allow zooming out as needed
+        scale = Math.min(scale, 1.0);
+        scale = Math.max(scale, 0.05); // Allow very small zoom for huge graphs
+
+        // Calculate translation to center the bounding box
+        const translateX = width / 2 - bbox.centerX * scale;
+        const translateY = height / 2 - bbox.centerY * scale;
+
+        // Smoothly transition to the new view
+        svg
+          .transition()
+          .duration(500)
+          .ease(d3.easeQuadOut)
+          .call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale));
+      }
+
+      // Initialize simulation
+      function initSimulation() {
+        const width = document.getElementById("graph-container").clientWidth;
+        const height = document.getElementById("graph-container").clientHeight;
+
+        simulation = d3
+          .forceSimulation()
+          .force(
+            "link",
+            d3
+              .forceLink()
+              .id((d) => d.id)
+              .distance((d) => {
+                // Dynamic link distance based on node types
+                const sourceType = d.source.type || d.source;
+                const targetType = d.target.type || d.target;
+                if (sourceType === "root" || targetType === "root") return 150;
+                if (sourceType === "runner" || targetType === "runner") return 100;
+                if (sourceType === "file" || targetType === "file") return 60;
+                return 40;
+              })
+              .strength(0.5),
+          )
+          .force("charge", d3.forceManyBody().strength(-200).distanceMax(500))
+          .force("center", d3.forceCenter(width / 2, height / 2))
+          .force(
+            "collision",
+            d3.forceCollide().radius((d) => getNodeRadius(d) + 15),
+          )
+          .on("tick", ticked);
+      }
+
+      function ticked() {
+        linksGroup
+          .selectAll(".link")
+          .attr("x1", (d) => d.source.x)
+          .attr("y1", (d) => d.source.y)
+          .attr("x2", (d) => d.target.x)
+          .attr("y2", (d) => d.target.y);
+
+        nodesGroup.selectAll(".node").attr("transform", (d) => `translate(${d.x}, ${d.y})`);
+      }
+
+      function updateGraph(newNodes, newEdges) {
+        const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+        const width = document.getElementById("graph-container").clientWidth;
+        const height = document.getElementById("graph-container").clientHeight;
+
+        // Add/update nodes
+        newNodes.forEach((newNode) => {
+          const existing = nodeMap.get(newNode.id);
+          if (existing) {
+            Object.assign(existing, newNode);
+          } else if (!knownNodeIds.has(newNode.id)) {
+            knownNodeIds.add(newNode.id);
+
+            // Set initial position near parent or center
+            const parent = nodes.find((n) => n.id === newNode.parent);
+            if (parent && parent.x !== undefined && parent.y !== undefined) {
+              newNode.x = parent.x + (Math.random() - 0.5) * 50;
+              newNode.y = parent.y + (Math.random() - 0.5) * 50;
+            } else {
+              newNode.x = width / 2 + (Math.random() - 0.5) * 200;
+              newNode.y = height / 2 + (Math.random() - 0.5) * 200;
+            }
+            nodes.push(newNode);
+          }
+        });
+
+        // Process edges
+        edges = newEdges.map((e) => {
+          const edgeId = `${e.source}-${e.target}`;
+          knownEdgeIds.add(edgeId);
+          return { source: e.source, target: e.target };
+        });
+
+        renderGraph();
+      }
+
+      function renderGraph() {
+        // Render links with colors based on source node
+        const links = linksGroup
+          .selectAll(".link")
+          .data(edges, (d) => `${d.source.id || d.source}-${d.target.id || d.target}`);
+
+        links.exit().remove();
+
+        const linksEnter = links
+          .enter()
+          .append("line")
+          .attr("class", "link")
+          .attr("stroke-width", 2)
+          .attr("stroke", (d) => {
+            const sourceId = d.source.id || d.source;
+            const sourceNode = nodes.find((n) => n.id === sourceId);
+            return getLinkColor(sourceNode);
+          })
+          .attr("stroke-linecap", "round");
+
+        // Update existing links colors
+        links.attr("stroke", (d) => {
+          const sourceId = d.source.id || d.source;
+          const sourceNode = nodes.find((n) => n.id === sourceId);
+          return getLinkColor(sourceNode);
+        });
+
+        const nodeSelection = nodesGroup.selectAll(".node").data(nodes, (d) => d.id);
+        nodeSelection.exit().remove();
+
+        const nodeEnter = nodeSelection
+          .enter()
+          .append("g")
+          .attr("class", (d) => "node" + (d.status === "running" ? " running" : ""))
+          .attr("data-id", (d) => d.id)
+          .call(d3.drag().on("start", dragStarted).on("drag", dragged).on("end", dragEnded))
+          .on("click", (event, d) => {
+            if (!isDragging) {
+              event.stopPropagation();
+              showReport(d);
+            }
+          })
+          .on("mouseenter", () => {
+            simulation.stop();
+          });
+
+        nodeEnter
+          .append("circle")
+          .attr("r", (d) => getNodeRadius(d))
+          .attr("fill", (d) => getNodeColor(d))
+          .attr("stroke", (d) => getStrokeColor(d))
+          .attr("stroke-width", 2);
+
+        nodeEnter
+          .append("text")
+          .attr("class", "node-label")
+          .attr("dy", (d) => getNodeRadius(d) + 14)
+          .attr("text-anchor", "middle")
+          .text((d) => d.name);
+
+        const allNodes = nodeSelection.merge(nodeEnter);
+
+        // Update node classes for status
+        allNodes.attr("class", (d) => "node" + (d.status === "running" ? " running" : "")).attr("data-id", (d) => d.id);
+
+        allNodes
+          .select("circle")
+          .attr("fill", (d) => getNodeColor(d))
+          .attr("stroke", (d) => getStrokeColor(d))
+          .attr("stroke-width", (d) => (d.status === "running" ? 3 : 2))
+          .attr("r", (d) => getNodeRadius(d));
+
+        simulation.nodes(nodes);
+        simulation.force("link").links(edges);
+        simulation.alpha(0.3).restart();
+
+        updateStats();
+
+        // Auto-zoom to fit all nodes as graph grows
+        autoZoomToFitAll();
+      }
+
+      function dragStarted(event, d) {
+        isDragging = false;
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        isDragging = true;
+        d.fx = event.x;
+        d.fy = event.y;
+        simulation.alpha(0.1).restart();
+      }
+
+      function dragEnded(event, d) {
+        d.fx = null;
+        d.fy = null;
+        simulation.alpha(0.1).restart();
+        // Reset isDragging after a short delay to allow click to fire first
+        setTimeout(() => {
+          isDragging = false;
+        }, 50);
+      }
+
+      function updateStats() {
+        const total = nodes.length;
+        const completed = nodes.filter((n) => n.status === "completed").length;
+        const running = nodes.filter((n) => n.status === "running").length;
+
+        document.getElementById("total-nodes").textContent = total;
+        document.getElementById("completed-nodes").textContent = completed;
+        document.getElementById("running-nodes").textContent = running;
+      }
+
+      // Activity Feed
+      function toggleActivityFeed() {
+        const feed = document.getElementById("activity-feed");
+        const btn = feed.querySelector(".activity-toggle");
+        activityCollapsed = !activityCollapsed;
+        feed.classList.toggle("collapsed", activityCollapsed);
+        btn.textContent = activityCollapsed ? "+" : "−";
+      }
+
+      function updateActivityFeed(activity) {
+        const list = document.getElementById("activity-list");
+
+        if (!activity || activity.length === 0) {
+          list.innerHTML =
+            '<div class="activity-item" style="color: #666; text-align: center;">Waiting for activity...</div>';
+          return;
+        }
+
+        list.innerHTML = activity
+          .slice(0, 20)
+          .map(
+            (item) => `
+          <div class="activity-item" onclick="showNodeByActivity('${item.node_id}')">
+            <span class="node-name">${escapeHtml(item.node_name)}</span>
+            <span class="role ${item.role}">${item.role}</span>
+            <span class="content">${escapeHtml(item.content)}</span>
+            <div class="timestamp">${formatTime(item.timestamp)}</div>
+          </div>
+        `,
+          )
+          .join("");
+      }
+
+      function showNodeByActivity(nodeId) {
+        const node = nodes.find((n) => n.id === nodeId);
+        if (node) {
+          showReport(node);
+        }
+      }
+
+      // Panel Tabs
+      function switchTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll(".panel-tab").forEach((t) => t.classList.remove("active"));
+        document.querySelectorAll(".tab-content").forEach((t) => t.classList.remove("active"));
+
+        document.querySelector(`.panel-tab[onclick="switchTab('${tab}')"]`).classList.add("active");
+        document.getElementById(`${tab}-tab`).classList.add("active");
+      }
+
+      // Report Panel
+      async function showReport(node) {
+        selectedNode = node;
+
+        document.getElementById("report-panel").classList.remove("hidden");
+        document.getElementById("panel-title").textContent = node.name;
+        document.getElementById("panel-type").textContent = node.type + (node.status ? ` • ${node.status}` : "");
+
+        document.getElementById("report-tab").innerHTML =
+          '<div class="no-report"><div class="icon">⏳</div><p>Loading report...</p></div>';
+        document.getElementById("transcript-tab").innerHTML =
+          '<div class="no-report"><div class="icon">⏳</div><p>Loading transcript...</p></div>';
+
+        try {
+          const response = await fetch(`/report/${encodeURIComponent(node.id)}`);
+
+          // Check if response is JSON
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+            const text = await response.text();
+            document.getElementById("report-tab").innerHTML =
+              `<div class="no-report"><div class="icon">❌</div><p>Server returned non-JSON response</p><pre style="font-size: 10px; max-height: 200px; overflow: auto;">${escapeHtml(text.substring(0, 500))}</pre></div>`;
+            document.getElementById("transcript-tab").innerHTML =
+              '<div class="no-report"><div class="icon">❌</div><p>Could not load transcript</p></div>';
+            return;
+          }
+
+          const data = await response.json();
+
+          if (data.error) {
+            document.getElementById("report-tab").innerHTML =
+              `<div class="no-report"><div class="icon">❌</div><p>${escapeHtml(data.error)}</p></div>`;
+            document.getElementById("transcript-tab").innerHTML =
+              `<div class="no-report"><div class="icon">❌</div><p>${escapeHtml(data.error)}</p></div>`;
+            return;
+          }
+
+          // Render report
+          if (data.report) {
+            document.getElementById("report-tab").innerHTML = renderReport(node, data.report);
+          } else {
+            document.getElementById("report-tab").innerHTML =
+              `<div class="no-report"><div class="icon">⏳</div><p>${data.message || "Report not yet available"}</p></div>`;
+          }
+
+          // Render transcript
+          if (data.transcript && data.transcript.length > 0) {
+            document.getElementById("transcript-tab").innerHTML = renderTranscript(data.transcript);
+          } else {
+            document.getElementById("transcript-tab").innerHTML =
+              '<div class="no-report"><div class="icon">💬</div><p>No transcript entries yet</p></div>';
+          }
+        } catch (err) {
+          document.getElementById("report-tab").innerHTML =
+            `<div class="no-report"><div class="icon">❌</div><p>Error: ${err.message}</p></div>`;
+        }
+      }
+
+      function renderTranscript(transcript) {
+        return `
+          <div class="transcript-list">
+            ${transcript
+              .map(
+                (entry) => `
+              <div class="transcript-entry ${entry.role}">
+                <div class="entry-header">
+                  <span class="entry-role">${entry.role}</span>
+                  <span class="entry-time">${formatTime(entry.timestamp)}</span>
+                </div>
+                <div class="entry-content">${escapeHtml(entry.content)}</div>
+              </div>
+            `,
+              )
+              .join("")}
+          </div>
+        `;
+      }
+
+      function renderReport(node, report) {
+        // Check if report has an error field
+        if (report && report.error) {
+          return `
+            <div class="report-section">
+              <h3><span class="icon">❌</span> Error</h3>
+              <div class="recommendation" style="border-color: #f87171;">${escapeHtml(String(report.error))}</div>
+            </div>
+          `;
+        }
+
+        if (node.type === "root") {
+          return renderRootReport(report);
+        } else if (node.type === "dependency") {
+          return renderDependencyReport(report);
+        } else if (node.type === "reviewer") {
+          return renderReviewerReport(report);
+        }
+
+        // Safe stringify with error handling
+        try {
+          return `<pre style="font-size: 11px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(JSON.stringify(report, null, 2))}</pre>`;
+        } catch (e) {
+          return `<pre style="font-size: 11px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(String(report))}</pre>`;
+        }
+      }
+
+      function renderRootReport(report) {
+        return `
+          <div class="report-section">
+            <h3><span class="icon">📦</span> Package</h3>
+            <p style="font-size: 15px; font-weight: 600;">${escapeHtml(report.package || "Unknown")}</p>
+          </div>
+          <div class="report-section">
+            <h3><span class="icon">🔗</span> Dependencies</h3>
+            <p style="margin-bottom: 10px;">Found <strong>${report.total_dependencies || 0}</strong> direct dependencies</p>
+            <ul class="signals-list">
+              ${(report.direct_dependencies || []).map((dep) => `<li>${escapeHtml(dep)}</li>`).join("")}
+            </ul>
+          </div>
+        `;
+      }
+
+      function renderDependencyReport(report) {
+        const reviews = report.reviews || {};
+        let html = `
+          <div class="report-section">
+            <h3><span class="icon">📦</span> Package Info</h3>
+            <p style="font-size: 15px; font-weight: 600;">${escapeHtml(report.package || "Unknown")} v${escapeHtml(report.version || "?")}</p>
+            <p style="color: #888; font-size: 13px; margin-top: 4px;">${escapeHtml(report.summary || "")}</p>
+          </div>
+          <div class="report-section">
+            <h3><span class="icon">⚠️</span> Overall Risk</h3>
+            <span class="risk-badge ${(report.overall_risk || "unknown").toLowerCase()}">${escapeHtml(report.overall_risk || "Unknown")}</span>
+          </div>
+        `;
+
+        if (reviews.security) html += renderReviewSection("🔒", "Security", reviews.security, "risk_level");
+        if (reviews.maintenance) html += renderReviewSection("🔧", "Maintenance", reviews.maintenance, "health_level");
+        if (reviews.license) html += renderReviewSection("📜", "License", reviews.license, "compliance_level");
+        if (reviews.trust) html += renderReviewSection("⭐", "Trust", reviews.trust, "trust_level");
+
+        return html;
+      }
+
+      function renderReviewSection(icon, title, review, levelKey) {
+        const level = review[levelKey] || review.raw_response?.substring(0, 20) || "Unknown";
+        const concerns = review.concerns || [];
+        const signals = review.signals || review.observations || [];
+        const recommendation = review.recommendation || "";
+
+        let badgeClass = level.toLowerCase().replace(/[^a-z]/g, "-");
+        if (badgeClass.includes("high") && title === "Trust") badgeClass = "high-trust";
+        if (badgeClass.includes("medium") && title === "Trust") badgeClass = "medium-trust";
+        if (badgeClass.includes("low") && title === "Trust") badgeClass = "low-trust";
+
+        let html = `
+          <div class="report-section">
+            <h3><span class="icon">${icon}</span> ${title}</h3>
+            <span class="risk-badge ${badgeClass}">${escapeHtml(level)}</span>
+        `;
+
+        if (signals.length > 0) {
+          html += `<ul class="signals-list" style="margin-top: 12px;">${signals.map((s) => `<li>✓ ${escapeHtml(s)}</li>`).join("")}</ul>`;
+        }
+
+        if (concerns.length > 0) {
+          html += `<ul class="concerns-list" style="margin-top: 12px;">${concerns.map((c) => `<li>⚠ ${escapeHtml(c)}</li>`).join("")}</ul>`;
+        }
+
+        if (recommendation) {
+          html += `<div class="recommendation" style="margin-top: 12px;">${escapeHtml(recommendation)}</div>`;
+        }
+
+        html += "</div>";
+        return html;
+      }
+
+      function renderReviewerReport(report) {
+        const level =
+          report.risk_level ||
+          report.health_level ||
+          report.compliance_level ||
+          report.trust_level ||
+          report.risk ||
+          report.quality ||
+          report.complexity ||
+          report.doc_quality ||
+          "Unknown";
+        const concerns = report.concerns || report.issues || [];
+        const signals = report.signals || report.observations || report.metrics || report.missing || [];
+        const recommendation = report.recommendation || "";
+
+        // Determine if this is a file review or package review
+        const targetLabel = report.file ? "File" : "Package";
+        const targetValue = report.file || report.package || "Unknown";
+
+        let html = `
+          <div class="report-section">
+            <h3><span class="icon">📋</span> ${escapeHtml((report.reviewer_type || "Review").toUpperCase())}</h3>
+            <p style="color: #888; font-size: 13px;">${targetLabel}: ${escapeHtml(targetValue)}</p>
+          </div>
+          <div class="report-section">
+            <h3><span class="icon">📊</span> Assessment</h3>
+            <span class="risk-badge ${level.toLowerCase().replace(/[^a-z]/g, "-")}">${escapeHtml(level)}</span>
+          </div>
+        `;
+
+        if (signals.length > 0) {
+          html += `
+            <div class="report-section">
+              <h3><span class="icon">✓</span> Observations</h3>
+              <ul class="signals-list">${signals.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>
+            </div>
+          `;
+        }
+
+        if (concerns.length > 0) {
+          html += `
+            <div class="report-section">
+              <h3><span class="icon">⚠️</span> Concerns</h3>
+              <ul class="concerns-list">${concerns.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
+            </div>
+          `;
+        }
+
+        if (recommendation) {
+          html += `
+            <div class="report-section">
+              <h3><span class="icon">💡</span> Recommendation</h3>
+              <div class="recommendation">${escapeHtml(recommendation)}</div>
+            </div>
+          `;
+        }
+
+        if (report.raw_response) {
+          html += `
+            <div class="report-section">
+              <h3><span class="icon">📝</span> Raw Response</h3>
+              <pre style="font-size: 11px; background: #1a1a24; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(report.raw_response)}</pre>
+            </div>
+          `;
+        }
+
+        if (report.error) {
+          html += `
+            <div class="report-section">
+              <h3><span class="icon">❌</span> Error</h3>
+              <div class="recommendation" style="border-color: #f87171;">${escapeHtml(report.error)}</div>
+            </div>
+          `;
+        }
+
+        return html;
+      }
+
+      function closePanel() {
+        document.getElementById("report-panel").classList.add("hidden");
+        selectedNode = null;
+      }
+
+      // Utility functions
+      function escapeHtml(text) {
+        if (!text) return "";
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function formatTime(isoString) {
+        if (!isoString) return "";
+        const date = new Date(isoString);
+        return date.toLocaleTimeString();
+      }
+
+      // API calls
+      async function fetchGraph() {
+        try {
+          const response = await fetch("/graph");
+          const data = await response.json();
+
+          updateGraph(data.nodes, data.edges);
+
+          const statusDot = document.getElementById("status-dot");
+          const statusText = document.getElementById("status-text");
+          const analyzeBtn = document.getElementById("analyze-btn");
+
+          statusDot.className = `status-dot ${data.status}`;
+
+          switch (data.status) {
+            case "running":
+              statusText.textContent = "Analyzing...";
+              analyzeBtn.disabled = true;
+              break;
+            case "completed":
+              statusText.textContent = "Completed";
+              analyzeBtn.disabled = false;
+              break;
+            default:
+              statusText.textContent = "Ready";
+              analyzeBtn.disabled = false;
+          }
+
+          // Auto-refresh selected node
+          if (selectedNode && !document.getElementById("report-panel").classList.contains("hidden")) {
+            const updatedNode = nodes.find((n) => n.id === selectedNode.id);
+            if (updatedNode && updatedNode.status !== selectedNode.status) {
+              showReport(updatedNode);
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching graph:", err);
+        }
+      }
+
+      async function fetchActivity() {
+        try {
+          const response = await fetch("/activity?limit=20");
+          const data = await response.json();
+          updateActivityFeed(data.activity);
+        } catch (err) {
+          console.error("Error fetching activity:", err);
+        }
+      }
+
+      // Mode switching
+      document.getElementById("mode-select").addEventListener("change", (e) => {
+        const mode = e.target.value;
+        document.getElementById("deps-inputs").style.display = mode === "deps" ? "flex" : "none";
+        document.getElementById("repo-inputs").style.display = mode === "repo" ? "flex" : "none";
+      });
+
+      async function startAnalysis() {
+        const mode = document.getElementById("mode-select").value;
+
+        try {
+          let response;
+          if (mode === "deps") {
+            const packageName = document.getElementById("package-input").value.trim() || "flask";
+            const maxDepth = document.getElementById("depth-select").value;
+            response = await fetch(`/analyze?package=${encodeURIComponent(packageName)}&max_depth=${maxDepth}`, {
+              method: "POST",
+            });
+          } else {
+            const repoInput = document.getElementById("repo-input").value.trim() || "pallets/click";
+            const [org, repo] = repoInput.includes("/") ? repoInput.split("/") : ["pallets", repoInput];
+            const maxFiles = document.getElementById("files-select").value;
+            const reviewers = document.getElementById("reviewers-select").value;
+            const analyzeDeps = document.getElementById("analyze-deps-checkbox").checked;
+            const analysisMode = document.getElementById("analysis-mode-select").value;
+
+            let endpoint;
+            if (analysisMode === "multiphase") {
+              endpoint = `/analyze-repo-multiphase?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&max_files=${maxFiles}&analyze_deps=${analyzeDeps}`;
+            } else if (analysisMode === "full") {
+              endpoint = `/analyze-repo-full?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&max_files=${maxFiles}&analyze_deps=${analyzeDeps}&cross_file=true`;
+            } else {
+              endpoint = `/analyze-repo?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&max_files=${maxFiles}&reviewers=${reviewers}&analyze_deps=${analyzeDeps}`;
+            }
+
+            response = await fetch(endpoint, { method: "POST" });
+          }
+
+          const data = await response.json();
+          if (data.error) {
+            alert(data.error);
+          }
+        } catch (err) {
+          console.error("Error starting analysis:", err);
+          alert("Error starting analysis: " + err.message);
+        }
+      }
+
+      async function resetGraph() {
+        try {
+          await fetch("/reset", { method: "POST" });
+          nodes = [];
+          edges = [];
+          knownNodeIds.clear();
+          knownEdgeIds.clear();
+          nodeStatusMap.clear();
+          renderGraph();
+          closePanel();
+          updateActivityFeed([]);
+        } catch (err) {
+          console.error("Error resetting:", err);
+        }
+      }
+
+      // Toggle controls collapse
+      function toggleControls() {
+        const controls = document.getElementById("controls");
+        controls.classList.toggle("collapsed");
+      }
+
+      // Toggle legend visibility
+      function toggleLegend() {
+        const legend = document.getElementById("legend");
+        legend.classList.toggle("visible");
+      }
+
+      // Event listeners
+      document.getElementById("collapse-controls-btn").addEventListener("click", toggleControls);
+      document.getElementById("analyze-btn").addEventListener("click", startAnalysis);
+      document.getElementById("reset-btn").addEventListener("click", resetGraph);
+      document.getElementById("package-input").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") startAnalysis();
+      });
+      document.getElementById("auto-focus-checkbox").addEventListener("change", (e) => {
+        autoZoomEnabled = e.target.checked;
+        if (autoZoomEnabled) {
+          lastNodeCount = 0; // Reset so it will zoom to fit
+          autoZoomToFitAll();
+        }
+      });
+
+      svg.on("click", () => {
+        closePanel();
+      });
+
+      // Initialize
+      initSimulation();
+
+      // Poll for updates
+      setInterval(fetchGraph, 1000);
+      setInterval(fetchActivity, 1000);
+
+      // Handle window resize
+      window.addEventListener("resize", () => {
+        const width = document.getElementById("graph-container").clientWidth;
+        const height = document.getElementById("graph-container").clientHeight;
+        simulation.force("center", d3.forceCenter(width / 2, height / 2));
+        simulation.alpha(0.1).restart();
+      });
+    </script>
+  </body>
+</html>
