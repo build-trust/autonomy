@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dependency Review Swarm</title>
+    <title>Code Review Swarm</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
       * {
@@ -60,14 +60,7 @@
       }
 
       input[type="text"] {
-        width: 160px;
-      }
-
-      #deps-inputs,
-      #repo-inputs {
-        display: flex;
-        gap: 10px;
-        align-items: center;
+        width: 200px;
       }
 
       select {
@@ -527,7 +520,8 @@
       .risk-badge.low,
       .risk-badge.healthy,
       .risk-badge.permissive,
-      .risk-badge.high-trust {
+      .risk-badge.high-trust,
+      .risk-badge.good {
         background: rgba(74, 222, 128, 0.2);
         color: #4ade80;
       }
@@ -535,7 +529,8 @@
       .risk-badge.medium,
       .risk-badge.moderate,
       .risk-badge.cautious,
-      .risk-badge.medium-trust {
+      .risk-badge.medium-trust,
+      .risk-badge.fair {
         background: rgba(250, 204, 21, 0.2);
         color: #facc15;
       }
@@ -543,7 +538,8 @@
       .risk-badge.high,
       .risk-badge.concerning,
       .risk-badge.restricted,
-      .risk-badge.low-trust {
+      .risk-badge.low-trust,
+      .risk-badge.poor {
         background: rgba(251, 146, 60, 0.2);
         color: #fb923c;
       }
@@ -592,50 +588,12 @@
         margin-bottom: 16px;
       }
 
-      /* Legend */
-      #legend {
-        position: absolute;
-        bottom: 80px;
-        right: 20px;
-        padding: 12px 16px;
-        background: #1a1a24;
-        border: 1px solid #333;
-        border-radius: 8px;
-        font-size: 11px;
-        display: none; /* Hidden by default */
-      }
-
-      #legend.visible {
+      svg {
+        width: 100%;
+        height: 100%;
         display: block;
       }
 
-      .legend-title {
-        font-weight: 600;
-        margin-bottom: 8px;
-        color: #888;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-
-      .legend-items {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .legend-item {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .legend-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-      }
-
-      /* Node styles via D3 */
       .node {
         cursor: pointer;
       }
@@ -650,7 +608,6 @@
         stroke-width: 4px !important;
       }
 
-      /* Simple running indicator - just a subtle stroke */
       .node.running circle {
         stroke-width: 3px;
       }
@@ -693,7 +650,7 @@
           title="Toggle controls"
           style="background: #2a2a34; border: 1px solid #333; padding: 8px 12px; font-size: 14px"
         >
-          ⚙️
+          &#9881;
         </button>
         <div id="stats">
           <div class="stat">
@@ -710,56 +667,22 @@
           </div>
         </div>
         <div id="controls-expanded">
-          <select id="mode-select" title="Analysis mode">
-            <option value="deps" selected>📦 Dependencies</option>
-            <option value="repo">📁 GitHub Repo</option>
+          <input type="text" id="repo-input" placeholder="org/repo (e.g., vuejs/core)" value="vuejs/core" />
+          <select id="files-select" title="Max files to analyze">
+            <option value="10">10 files</option>
+            <option value="20">20 files</option>
+            <option value="30">30 files</option>
+            <option value="50" selected>50 files</option>
+            <option value="0">All files</option>
           </select>
-
-          <!-- Dependency mode inputs -->
-          <div id="deps-inputs">
-            <input type="text" id="package-input" placeholder="Package (e.g., flask)" value="flask" />
-            <select id="depth-select" title="Recursion depth">
-              <option value="0">Direct only</option>
-              <option value="1" selected>Depth 1</option>
-              <option value="2">Depth 2</option>
-            </select>
-          </div>
-
-          <!-- Repo mode inputs -->
-          <div id="repo-inputs" style="display: none">
-            <input
-              type="text"
-              id="repo-input"
-              placeholder="org/repo (e.g., pallets/flask)"
-              value="pallets/click"
-              style="width: 180px"
-            />
-            <select id="analysis-mode-select" title="Analysis mode">
-              <option value="standard" selected>Standard</option>
-              <option value="multiphase">Multi-Phase</option>
-              <option value="full">Full + Cross-File</option>
-            </select>
-            <select id="files-select" title="Max files to analyze">
-              <option value="10">10 files</option>
-              <option value="20">20 files</option>
-              <option value="30" selected>30 files</option>
-              <option value="50">50 files</option>
-              <option value="0">All files</option>
-            </select>
-            <select id="reviewers-select" title="Reviewers per file">
-              <option value="2" selected>2 reviewers</option>
-              <option value="3">3 reviewers</option>
-              <option value="4">4 reviewers</option>
-            </select>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px">
-              <input type="checkbox" id="analyze-deps-checkbox" checked style="cursor: pointer" />
-              <span>Analyze imports</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px">
-              <input type="checkbox" id="auto-focus-checkbox" checked style="cursor: pointer" />
-              <span>Auto-zoom</span>
-            </label>
-          </div>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px">
+            <input type="checkbox" id="analyze-deps-checkbox" checked style="cursor: pointer" />
+            <span>Analyze imports</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px">
+            <input type="checkbox" id="auto-focus-checkbox" checked style="cursor: pointer" />
+            <span>Auto-zoom</span>
+          </label>
 
           <button id="analyze-btn">Analyze</button>
           <button id="reset-btn">Reset</button>
@@ -773,70 +696,16 @@
       <!-- Activity Feed -->
       <div id="activity-feed">
         <div class="activity-header">
-          <span>🔴 Live Activity</span>
-          <button class="activity-toggle" onclick="toggleActivityFeed()">−</button>
+          <span>Live Activity</span>
+          <button class="activity-toggle" onclick="toggleActivityFeed()">&#8722;</button>
         </div>
         <div class="activity-list" id="activity-list">
           <div class="activity-item" style="color: #666; text-align: center">Waiting for activity...</div>
         </div>
       </div>
 
-      <div id="legend">
-        <div class="legend-title">Node Types</div>
-        <div class="legend-items">
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #a78bfa"></div>
-            <span>Root</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #60a5fa"></div>
-            <span>Dependency</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #38bdf8"></div>
-            <span>Directory</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #06b6d4"></div>
-            <span>Runner</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #f472b6"></div>
-            <span>File</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #4ade80"></div>
-            <span>Reviewer</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #c084fc"></div>
-            <span>Sub-reviewer</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #fbbf24"></div>
-            <span>Specialized</span>
-          </div>
-        </div>
-        <div class="legend-title" style="margin-top: 12px">Status</div>
-        <div class="legend-items">
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #facc15; box-shadow: 0 0 8px #facc15"></div>
-            <span>Running</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #4ade80"></div>
-            <span>Completed</span>
-          </div>
-          <div class="legend-item">
-            <div class="legend-dot" style="background: #f87171"></div>
-            <span>Error</span>
-          </div>
-        </div>
-      </div>
-
       <svg id="graph">
         <defs>
-          <!-- Glow filters for different node types -->
           <filter id="glow-purple" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="4" result="coloredBlur" />
             <feMerge>
@@ -877,19 +746,19 @@
         <div class="node-type" id="panel-type">Type</div>
       </div>
       <div class="panel-tabs">
-        <button class="panel-tab active" onclick="switchTab('report')">📋 Report</button>
-        <button class="panel-tab" onclick="switchTab('transcript')">💬 Transcript</button>
+        <button class="panel-tab active" onclick="switchTab('report')">Report</button>
+        <button class="panel-tab" onclick="switchTab('transcript')">Transcript</button>
       </div>
       <div class="panel-content">
         <div id="report-tab" class="tab-content active">
           <div class="no-report">
-            <div class="icon">📋</div>
+            <div class="icon">&#128203;</div>
             <p>Select a node to view its report</p>
           </div>
         </div>
         <div id="transcript-tab" class="tab-content">
           <div class="no-report">
-            <div class="icon">💬</div>
+            <div class="icon">&#128172;</div>
             <p>No transcript available</p>
           </div>
         </div>
@@ -906,7 +775,6 @@
       let activityCollapsed = false;
       let isDragging = false;
 
-      // State for tracking known nodes/edges
       let knownNodeIds = new Set();
       let knownEdgeIds = new Set();
 
@@ -914,7 +782,6 @@
       const svg = d3.select("#graph");
       const container = svg.append("g");
 
-      // Add zoom behavior
       const zoom = d3
         .zoom()
         .scaleExtent([0.1, 4])
@@ -924,7 +791,6 @@
 
       svg.call(zoom);
 
-      // Set initial zoom to 0.6 so graph fits better
       const initialScale = 0.6;
       const width = document.getElementById("graph-container").clientWidth;
       const height = document.getElementById("graph-container").clientHeight;
@@ -935,7 +801,6 @@
           .scale(initialScale),
       );
 
-      // Create groups for links and nodes
       const linksGroup = container.append("g").attr("class", "links");
       const nodesGroup = container.append("g").attr("class", "nodes");
 
@@ -947,16 +812,13 @@
         file: "#f472b6",
         reviewer: "#4ade80",
         "sub-reviewer": "#c084fc",
-        specialized: "#fbbf24", // Amber/gold for specialized reviewers
-        phase: "#ec4899", // Pink for phase nodes
-        scanner: "#22d3ee", // Cyan for quick scan nodes
-        "cross-file": "#f97316", // Orange for cross-file analysis
-        analyzer: "#14b8a6", // Teal for analyzers
-        "risk-cluster": "#ef4444", // Red for risk clusters
-        runner: "#06b6d4", // Cyan for distributed runners
+        specialized: "#fbbf24",
+        phase: "#ec4899",
+        scanner: "#22d3ee",
+        "risk-cluster": "#ef4444",
+        runner: "#06b6d4",
       };
 
-      // Gradient colors for links based on source node type
       const linkColors = {
         root: "#a78bfa",
         dependency: "#60a5fa",
@@ -967,8 +829,6 @@
         specialized: "#fbbf24",
         phase: "#ec4899",
         scanner: "#22d3ee",
-        "cross-file": "#f97316",
-        analyzer: "#14b8a6",
         "risk-cluster": "#ef4444",
         runner: "#06b6d4",
         default: "#4a5568",
@@ -993,7 +853,7 @@
           case "directory":
             return 18;
           case "runner":
-            return 20; // Slightly larger to show runners prominently
+            return 20;
           case "file":
             return 14;
           case "reviewer":
@@ -1006,12 +866,8 @@
             return 22;
           case "scanner":
             return 8;
-          case "cross-file":
-            return 20;
           case "risk-cluster":
             return 16;
-          case "analyzer":
-            return 11;
           default:
             return 10;
         }
@@ -1026,11 +882,10 @@
         return statusColors[node.status] || "#666";
       }
 
-      // Viewport auto-zoom state
+      // Viewport auto-zoom
       let autoZoomEnabled = true;
       let lastNodeCount = 0;
 
-      // Calculate bounding box of all nodes
       function getAllNodesBoundingBox() {
         if (nodes.length === 0) return null;
 
@@ -1061,12 +916,9 @@
         };
       }
 
-      // Auto-zoom to fit all nodes as graph grows
       function autoZoomToFitAll() {
         if (!autoZoomEnabled) return;
         if (nodes.length === 0) return;
-
-        // Only zoom when new nodes are added
         if (nodes.length === lastNodeCount) return;
         lastNodeCount = nodes.length;
 
@@ -1076,25 +928,19 @@
         const width = document.getElementById("graph-container").clientWidth;
         const height = document.getElementById("graph-container").clientHeight;
 
-        // Add padding around the bounding box for buffer space
         const padding = 150;
         const bboxWidth = bbox.width + padding * 2;
         const bboxHeight = bbox.height + padding * 2;
 
-        // Calculate scale to fit all nodes
         const scaleX = width / bboxWidth;
         const scaleY = height / bboxHeight;
         let scale = Math.min(scaleX, scaleY);
-
-        // Don't zoom in too much for small graphs, but allow zooming out as needed
         scale = Math.min(scale, 1.0);
-        scale = Math.max(scale, 0.05); // Allow very small zoom for huge graphs
+        scale = Math.max(scale, 0.05);
 
-        // Calculate translation to center the bounding box
         const translateX = width / 2 - bbox.centerX * scale;
         const translateY = height / 2 - bbox.centerY * scale;
 
-        // Smoothly transition to the new view
         svg
           .transition()
           .duration(500)
@@ -1102,7 +948,6 @@
           .call(zoom.transform, d3.zoomIdentity.translate(translateX, translateY).scale(scale));
       }
 
-      // Initialize simulation
       function initSimulation() {
         const width = document.getElementById("graph-container").clientWidth;
         const height = document.getElementById("graph-container").clientHeight;
@@ -1115,7 +960,6 @@
               .forceLink()
               .id((d) => d.id)
               .distance((d) => {
-                // Dynamic link distance based on node types
                 const sourceType = d.source.type || d.source;
                 const targetType = d.target.type || d.target;
                 if (sourceType === "root" || targetType === "root") return 150;
@@ -1150,7 +994,6 @@
         const width = document.getElementById("graph-container").clientWidth;
         const height = document.getElementById("graph-container").clientHeight;
 
-        // Add/update nodes
         newNodes.forEach((newNode) => {
           const existing = nodeMap.get(newNode.id);
           if (existing) {
@@ -1158,7 +1001,6 @@
           } else if (!knownNodeIds.has(newNode.id)) {
             knownNodeIds.add(newNode.id);
 
-            // Set initial position near parent or center
             const parent = nodes.find((n) => n.id === newNode.parent);
             if (parent && parent.x !== undefined && parent.y !== undefined) {
               newNode.x = parent.x + (Math.random() - 0.5) * 50;
@@ -1171,7 +1013,6 @@
           }
         });
 
-        // Process edges
         edges = newEdges.map((e) => {
           const edgeId = `${e.source}-${e.target}`;
           knownEdgeIds.add(edgeId);
@@ -1182,14 +1023,13 @@
       }
 
       function renderGraph() {
-        // Render links with colors based on source node
         const links = linksGroup
           .selectAll(".link")
           .data(edges, (d) => `${d.source.id || d.source}-${d.target.id || d.target}`);
 
         links.exit().remove();
 
-        const linksEnter = links
+        links
           .enter()
           .append("line")
           .attr("class", "link")
@@ -1201,7 +1041,6 @@
           })
           .attr("stroke-linecap", "round");
 
-        // Update existing links colors
         links.attr("stroke", (d) => {
           const sourceId = d.source.id || d.source;
           const sourceNode = nodes.find((n) => n.id === sourceId);
@@ -1243,7 +1082,6 @@
 
         const allNodes = nodeSelection.merge(nodeEnter);
 
-        // Update node classes for status
         allNodes.attr("class", (d) => "node" + (d.status === "running" ? " running" : "")).attr("data-id", (d) => d.id);
 
         allNodes
@@ -1258,8 +1096,6 @@
         simulation.alpha(0.3).restart();
 
         updateStats();
-
-        // Auto-zoom to fit all nodes as graph grows
         autoZoomToFitAll();
       }
 
@@ -1280,7 +1116,6 @@
         d.fx = null;
         d.fy = null;
         simulation.alpha(0.1).restart();
-        // Reset isDragging after a short delay to allow click to fire first
         setTimeout(() => {
           isDragging = false;
         }, 50);
@@ -1302,7 +1137,7 @@
         const btn = feed.querySelector(".activity-toggle");
         activityCollapsed = !activityCollapsed;
         feed.classList.toggle("collapsed", activityCollapsed);
-        btn.textContent = activityCollapsed ? "+" : "−";
+        btn.textContent = activityCollapsed ? "+" : "\u2212";
       }
 
       function updateActivityFeed(activity) {
@@ -1352,24 +1187,22 @@
 
         document.getElementById("report-panel").classList.remove("hidden");
         document.getElementById("panel-title").textContent = node.name;
-        document.getElementById("panel-type").textContent = node.type + (node.status ? ` • ${node.status}` : "");
+        document.getElementById("panel-type").textContent = node.type + (node.status ? ` \u2022 ${node.status}` : "");
 
-        document.getElementById("report-tab").innerHTML =
-          '<div class="no-report"><div class="icon">⏳</div><p>Loading report...</p></div>';
+        document.getElementById("report-tab").innerHTML = '<div class="no-report"><p>Loading report...</p></div>';
         document.getElementById("transcript-tab").innerHTML =
-          '<div class="no-report"><div class="icon">⏳</div><p>Loading transcript...</p></div>';
+          '<div class="no-report"><p>Loading transcript...</p></div>';
 
         try {
           const response = await fetch(`/report/${encodeURIComponent(node.id)}`);
 
-          // Check if response is JSON
           const contentType = response.headers.get("content-type");
           if (!contentType || !contentType.includes("application/json")) {
             const text = await response.text();
             document.getElementById("report-tab").innerHTML =
-              `<div class="no-report"><div class="icon">❌</div><p>Server returned non-JSON response</p><pre style="font-size: 10px; max-height: 200px; overflow: auto;">${escapeHtml(text.substring(0, 500))}</pre></div>`;
+              `<div class="no-report"><p>Server returned non-JSON response</p><pre style="font-size: 10px; max-height: 200px; overflow: auto;">${escapeHtml(text.substring(0, 500))}</pre></div>`;
             document.getElementById("transcript-tab").innerHTML =
-              '<div class="no-report"><div class="icon">❌</div><p>Could not load transcript</p></div>';
+              '<div class="no-report"><p>Could not load transcript</p></div>';
             return;
           }
 
@@ -1377,30 +1210,27 @@
 
           if (data.error) {
             document.getElementById("report-tab").innerHTML =
-              `<div class="no-report"><div class="icon">❌</div><p>${escapeHtml(data.error)}</p></div>`;
+              `<div class="no-report"><p>${escapeHtml(data.error)}</p></div>`;
             document.getElementById("transcript-tab").innerHTML =
-              `<div class="no-report"><div class="icon">❌</div><p>${escapeHtml(data.error)}</p></div>`;
+              `<div class="no-report"><p>${escapeHtml(data.error)}</p></div>`;
             return;
           }
 
-          // Render report
           if (data.report) {
             document.getElementById("report-tab").innerHTML = renderReport(node, data.report);
           } else {
             document.getElementById("report-tab").innerHTML =
-              `<div class="no-report"><div class="icon">⏳</div><p>${data.message || "Report not yet available"}</p></div>`;
+              `<div class="no-report"><p>${data.message || "Report not yet available"}</p></div>`;
           }
 
-          // Render transcript
           if (data.transcript && data.transcript.length > 0) {
             document.getElementById("transcript-tab").innerHTML = renderTranscript(data.transcript);
           } else {
             document.getElementById("transcript-tab").innerHTML =
-              '<div class="no-report"><div class="icon">💬</div><p>No transcript entries yet</p></div>';
+              '<div class="no-report"><p>No transcript entries yet</p></div>';
           }
         } catch (err) {
-          document.getElementById("report-tab").innerHTML =
-            `<div class="no-report"><div class="icon">❌</div><p>Error: ${err.message}</p></div>`;
+          document.getElementById("report-tab").innerHTML = `<div class="no-report"><p>Error: ${err.message}</p></div>`;
         }
       }
 
@@ -1425,11 +1255,10 @@
       }
 
       function renderReport(node, report) {
-        // Check if report has an error field
         if (report && report.error) {
           return `
             <div class="report-section">
-              <h3><span class="icon">❌</span> Error</h3>
+              <h3><span class="icon">&#10060;</span> Error</h3>
               <div class="recommendation" style="border-color: #f87171;">${escapeHtml(String(report.error))}</div>
             </div>
           `;
@@ -1437,13 +1266,10 @@
 
         if (node.type === "root") {
           return renderRootReport(report);
-        } else if (node.type === "dependency") {
-          return renderDependencyReport(report);
         } else if (node.type === "reviewer") {
           return renderReviewerReport(report);
         }
 
-        // Safe stringify with error handling
         try {
           return `<pre style="font-size: 11px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(JSON.stringify(report, null, 2))}</pre>`;
         } catch (e) {
@@ -1454,72 +1280,17 @@
       function renderRootReport(report) {
         return `
           <div class="report-section">
-            <h3><span class="icon">📦</span> Package</h3>
-            <p style="font-size: 15px; font-weight: 600;">${escapeHtml(report.package || "Unknown")}</p>
+            <h3><span class="icon">&#128193;</span> Repository</h3>
+            <p style="font-size: 15px; font-weight: 600;">${escapeHtml(report.org || "")}/${escapeHtml(report.repo || "")}</p>
+            <p style="color: #888; font-size: 13px; margin-top: 4px;">Branch: ${escapeHtml(report.branch || "unknown")} &middot; Language: ${escapeHtml(report.language || "unknown")}</p>
           </div>
           <div class="report-section">
-            <h3><span class="icon">🔗</span> Dependencies</h3>
-            <p style="margin-bottom: 10px;">Found <strong>${report.total_dependencies || 0}</strong> direct dependencies</p>
-            <ul class="signals-list">
-              ${(report.direct_dependencies || []).map((dep) => `<li>${escapeHtml(dep)}</li>`).join("")}
-            </ul>
-          </div>
-        `;
-      }
-
-      function renderDependencyReport(report) {
-        const reviews = report.reviews || {};
-        let html = `
-          <div class="report-section">
-            <h3><span class="icon">📦</span> Package Info</h3>
-            <p style="font-size: 15px; font-weight: 600;">${escapeHtml(report.package || "Unknown")} v${escapeHtml(report.version || "?")}</p>
-            <p style="color: #888; font-size: 13px; margin-top: 4px;">${escapeHtml(report.summary || "")}</p>
-          </div>
-          <div class="report-section">
-            <h3><span class="icon">⚠️</span> Overall Risk</h3>
-            <span class="risk-badge ${(report.overall_risk || "unknown").toLowerCase()}">${escapeHtml(report.overall_risk || "Unknown")}</span>
+            <h3><span class="icon">&#128202;</span> Summary</h3>
+            <p>Files scanned: <strong>${report.total_files || report.phase1_scanned || 0}</strong></p>
+            ${report.phase2_reviewed !== undefined ? `<p>Files fully reviewed: <strong>${report.phase2_reviewed}</strong></p>` : ""}
+            ${report.high_risk_count !== undefined ? `<p>High-risk files: <strong>${report.high_risk_count}</strong></p>` : ""}
           </div>
         `;
-
-        if (reviews.security) html += renderReviewSection("🔒", "Security", reviews.security, "risk_level");
-        if (reviews.maintenance) html += renderReviewSection("🔧", "Maintenance", reviews.maintenance, "health_level");
-        if (reviews.license) html += renderReviewSection("📜", "License", reviews.license, "compliance_level");
-        if (reviews.trust) html += renderReviewSection("⭐", "Trust", reviews.trust, "trust_level");
-
-        return html;
-      }
-
-      function renderReviewSection(icon, title, review, levelKey) {
-        const level = review[levelKey] || review.raw_response?.substring(0, 20) || "Unknown";
-        const concerns = review.concerns || [];
-        const signals = review.signals || review.observations || [];
-        const recommendation = review.recommendation || "";
-
-        let badgeClass = level.toLowerCase().replace(/[^a-z]/g, "-");
-        if (badgeClass.includes("high") && title === "Trust") badgeClass = "high-trust";
-        if (badgeClass.includes("medium") && title === "Trust") badgeClass = "medium-trust";
-        if (badgeClass.includes("low") && title === "Trust") badgeClass = "low-trust";
-
-        let html = `
-          <div class="report-section">
-            <h3><span class="icon">${icon}</span> ${title}</h3>
-            <span class="risk-badge ${badgeClass}">${escapeHtml(level)}</span>
-        `;
-
-        if (signals.length > 0) {
-          html += `<ul class="signals-list" style="margin-top: 12px;">${signals.map((s) => `<li>✓ ${escapeHtml(s)}</li>`).join("")}</ul>`;
-        }
-
-        if (concerns.length > 0) {
-          html += `<ul class="concerns-list" style="margin-top: 12px;">${concerns.map((c) => `<li>⚠ ${escapeHtml(c)}</li>`).join("")}</ul>`;
-        }
-
-        if (recommendation) {
-          html += `<div class="recommendation" style="margin-top: 12px;">${escapeHtml(recommendation)}</div>`;
-        }
-
-        html += "</div>";
-        return html;
       }
 
       function renderReviewerReport(report) {
@@ -1537,17 +1308,16 @@
         const signals = report.signals || report.observations || report.metrics || report.missing || [];
         const recommendation = report.recommendation || "";
 
-        // Determine if this is a file review or package review
         const targetLabel = report.file ? "File" : "Package";
         const targetValue = report.file || report.package || "Unknown";
 
         let html = `
           <div class="report-section">
-            <h3><span class="icon">📋</span> ${escapeHtml((report.reviewer_type || "Review").toUpperCase())}</h3>
+            <h3><span class="icon">&#128203;</span> ${escapeHtml((report.reviewer_type || "Review").toUpperCase())}</h3>
             <p style="color: #888; font-size: 13px;">${targetLabel}: ${escapeHtml(targetValue)}</p>
           </div>
           <div class="report-section">
-            <h3><span class="icon">📊</span> Assessment</h3>
+            <h3><span class="icon">&#128200;</span> Assessment</h3>
             <span class="risk-badge ${level.toLowerCase().replace(/[^a-z]/g, "-")}">${escapeHtml(level)}</span>
           </div>
         `;
@@ -1555,7 +1325,7 @@
         if (signals.length > 0) {
           html += `
             <div class="report-section">
-              <h3><span class="icon">✓</span> Observations</h3>
+              <h3>Observations</h3>
               <ul class="signals-list">${signals.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>
             </div>
           `;
@@ -1564,7 +1334,7 @@
         if (concerns.length > 0) {
           html += `
             <div class="report-section">
-              <h3><span class="icon">⚠️</span> Concerns</h3>
+              <h3>Concerns</h3>
               <ul class="concerns-list">${concerns.map((c) => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
             </div>
           `;
@@ -1573,7 +1343,7 @@
         if (recommendation) {
           html += `
             <div class="report-section">
-              <h3><span class="icon">💡</span> Recommendation</h3>
+              <h3>Recommendation</h3>
               <div class="recommendation">${escapeHtml(recommendation)}</div>
             </div>
           `;
@@ -1582,7 +1352,7 @@
         if (report.raw_response) {
           html += `
             <div class="report-section">
-              <h3><span class="icon">📝</span> Raw Response</h3>
+              <h3>Raw Response</h3>
               <pre style="font-size: 11px; background: #1a1a24; padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap;">${escapeHtml(report.raw_response)}</pre>
             </div>
           `;
@@ -1591,7 +1361,7 @@
         if (report.error) {
           html += `
             <div class="report-section">
-              <h3><span class="icon">❌</span> Error</h3>
+              <h3>Error</h3>
               <div class="recommendation" style="border-color: #f87171;">${escapeHtml(report.error)}</div>
             </div>
           `;
@@ -1605,7 +1375,6 @@
         selectedNode = null;
       }
 
-      // Utility functions
       function escapeHtml(text) {
         if (!text) return "";
         const div = document.createElement("div");
@@ -1647,7 +1416,6 @@
               analyzeBtn.disabled = false;
           }
 
-          // Auto-refresh selected node
           if (selectedNode && !document.getElementById("report-panel").classList.contains("hidden")) {
             const updatedNode = nodes.find((n) => n.id === selectedNode.id);
             if (updatedNode && updatedNode.status !== selectedNode.status) {
@@ -1669,44 +1437,15 @@
         }
       }
 
-      // Mode switching
-      document.getElementById("mode-select").addEventListener("change", (e) => {
-        const mode = e.target.value;
-        document.getElementById("deps-inputs").style.display = mode === "deps" ? "flex" : "none";
-        document.getElementById("repo-inputs").style.display = mode === "repo" ? "flex" : "none";
-      });
-
       async function startAnalysis() {
-        const mode = document.getElementById("mode-select").value;
+        const repoInput = document.getElementById("repo-input").value.trim() || "vuejs/core";
+        const [org, repo] = repoInput.includes("/") ? repoInput.split("/") : ["vuejs", repoInput];
+        const maxFiles = document.getElementById("files-select").value;
+        const analyzeDeps = document.getElementById("analyze-deps-checkbox").checked;
 
         try {
-          let response;
-          if (mode === "deps") {
-            const packageName = document.getElementById("package-input").value.trim() || "flask";
-            const maxDepth = document.getElementById("depth-select").value;
-            response = await fetch(`/analyze?package=${encodeURIComponent(packageName)}&max_depth=${maxDepth}`, {
-              method: "POST",
-            });
-          } else {
-            const repoInput = document.getElementById("repo-input").value.trim() || "pallets/click";
-            const [org, repo] = repoInput.includes("/") ? repoInput.split("/") : ["pallets", repoInput];
-            const maxFiles = document.getElementById("files-select").value;
-            const reviewers = document.getElementById("reviewers-select").value;
-            const analyzeDeps = document.getElementById("analyze-deps-checkbox").checked;
-            const analysisMode = document.getElementById("analysis-mode-select").value;
-
-            let endpoint;
-            if (analysisMode === "multiphase") {
-              endpoint = `/analyze-repo-multiphase?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&max_files=${maxFiles}&analyze_deps=${analyzeDeps}`;
-            } else if (analysisMode === "full") {
-              endpoint = `/analyze-repo-full?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&max_files=${maxFiles}&analyze_deps=${analyzeDeps}&cross_file=true`;
-            } else {
-              endpoint = `/analyze-repo?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&max_files=${maxFiles}&reviewers=${reviewers}&analyze_deps=${analyzeDeps}`;
-            }
-
-            response = await fetch(endpoint, { method: "POST" });
-          }
-
+          const endpoint = `/analyze?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&max_files=${maxFiles}&analyze_deps=${analyzeDeps}`;
+          const response = await fetch(endpoint, { method: "POST" });
           const data = await response.json();
           if (data.error) {
             alert(data.error);
@@ -1724,7 +1463,6 @@
           edges = [];
           knownNodeIds.clear();
           knownEdgeIds.clear();
-          nodeStatusMap.clear();
           renderGraph();
           closePanel();
           updateActivityFeed([]);
@@ -1733,29 +1471,22 @@
         }
       }
 
-      // Toggle controls collapse
       function toggleControls() {
         const controls = document.getElementById("controls");
         controls.classList.toggle("collapsed");
-      }
-
-      // Toggle legend visibility
-      function toggleLegend() {
-        const legend = document.getElementById("legend");
-        legend.classList.toggle("visible");
       }
 
       // Event listeners
       document.getElementById("collapse-controls-btn").addEventListener("click", toggleControls);
       document.getElementById("analyze-btn").addEventListener("click", startAnalysis);
       document.getElementById("reset-btn").addEventListener("click", resetGraph);
-      document.getElementById("package-input").addEventListener("keypress", (e) => {
+      document.getElementById("repo-input").addEventListener("keypress", (e) => {
         if (e.key === "Enter") startAnalysis();
       });
       document.getElementById("auto-focus-checkbox").addEventListener("change", (e) => {
         autoZoomEnabled = e.target.checked;
         if (autoZoomEnabled) {
-          lastNodeCount = 0; // Reset so it will zoom to fit
+          lastNodeCount = 0;
           autoZoomToFitAll();
         }
       });
