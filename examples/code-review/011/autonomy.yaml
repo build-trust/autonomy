@@ -1,4 +1,4 @@
-name: depreview
+name: example011
 pods:
   - name: main-pod
     size: big
