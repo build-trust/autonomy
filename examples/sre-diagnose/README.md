@@ -289,5 +289,5 @@ sre-diagnose/
 
 - [Autonomy Documentation](https://autonomy.computer/docs)
 - [Cursor Hooks Documentation](https://cursor.com/docs/agent/hooks.md)
-- [Architecture Document](../../.scratch/sre-incident-diagnosis/ARCHITECTURE.md)
-- [Implementation Plan](../../.scratch/sre-incident-diagnosis/IMPLEMENTATION_PLAN.md)
+- [Architecture Document](planning/ARCHITECTURE.md)
+- [Implementation Plan](planning/IMPLEMENTATION_PLAN.md)
