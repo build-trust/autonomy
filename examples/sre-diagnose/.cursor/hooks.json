@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": ".cursor/hooks/session-init.sh"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": ".cursor/hooks/sre-diagnose.sh",
+        "matcher": "sre-diagnose|diagnose-infra"
+      }
+    ],
+    "stop": [
+      {
+        "command": ".cursor/hooks/audit.sh"
+      }
+    ]
+  }
+}
