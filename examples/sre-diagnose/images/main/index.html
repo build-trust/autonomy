@@ -304,6 +304,11 @@
           </div>
         </div>
 
+        <div id="analysis-section" class="card" style="display: none; margin-top: 16px; background: #0d1117">
+          <h3>Analysis</h3>
+          <div id="analysis-content" style="line-height: 1.6"></div>
+        </div>
+
         <div id="findings-section" class="findings" style="display: none">
           <h3>Findings</h3>
           <div id="findings-list"></div>
@@ -398,11 +403,22 @@
 
           // Show approval section if waiting
           const approvalSection = document.getElementById("approval-section");
-          if (data.phase === "waiting_for_approval") {
+          if (data.phase === "waiting_for_approval" || data.approval_pending) {
             approvalSection.style.display = "block";
-            addLog("Waiting for credential approval...", "warn");
+            if (data.approval_prompt) {
+              document.getElementById("approval-message").textContent = data.approval_prompt;
+            }
           } else {
             approvalSection.style.display = "none";
+          }
+
+          // Show analysis if available
+          if (data.analysis) {
+            const analysisSection = document.getElementById("analysis-section");
+            if (analysisSection) {
+              analysisSection.style.display = "block";
+              document.getElementById("analysis-content").innerHTML = formatMarkdown(data.analysis);
+            }
           }
 
           // Show findings if available
@@ -438,6 +454,45 @@
         }
       }
 
+      // Simple markdown formatter
+      function formatMarkdown(text) {
+        if (!text) return "";
+        return text
+          .replace(/^## (.+)$/gm, "<h3>$1</h3>")
+          .replace(/^### (.+)$/gm, "<h4>$1</h4>")
+          .replace(/^\- (.+)$/gm, "<li>$1</li>")
+          .replace(/^\d+\. (.+)$/gm, "<li>$1</li>")
+          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(/\n/g, "<br>");
+      }
+
+      // Stream NDJSON response
+      async function streamResponse(response, onChunk) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                onChunk(data);
+              } catch (e) {
+                console.warn("Failed to parse line:", line);
+              }
+            }
+          }
+        }
+      }
+
       // Submit diagnosis form
       document.getElementById("diagnose-form").addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -450,18 +505,42 @@
         }
 
         try {
+          addLog("Starting diagnosis...", "info");
           const response = await fetch(`${API_BASE}/diagnose`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ problem, environment }),
           });
-          const data = await response.json();
-          addLog(`Created session ${data.session_id}`, "info");
-          await fetchSessions();
-          selectSession(data.session_id);
+
+          // Stream the response
+          await streamResponse(response, (data) => {
+            if (data.type === "session_start") {
+              addLog(`Session ${data.session_id} started`, "info");
+              currentSessionId = data.session_id;
+              document.getElementById("session-detail").style.display = "block";
+              document.getElementById("detail-session-id").textContent = data.session_id;
+              fetchSessions();
+            } else if (data.type === "approval_required") {
+              addLog("Agent requesting credential approval", "warn");
+              document.getElementById("approval-section").style.display = "block";
+              document.getElementById("approval-message").textContent = data.prompt || "Approval needed";
+              updateSessionDetail();
+              fetchSessions();
+            } else if (data.type === "session_complete") {
+              addLog("Analysis complete", "info");
+              updateSessionDetail();
+              fetchSessions();
+            } else if (data.type === "error") {
+              addLog(`Error: ${data.message}`, "error");
+            } else if (data.text) {
+              // Streaming text content
+              addLog(data.text.substring(0, 50) + "...", "info");
+            }
+          });
+
           document.getElementById("problem").value = "";
         } catch (error) {
-          alert("Failed to start diagnosis: " + error.message);
+          addLog(`Failed to start diagnosis: ${error.message}`, "error");
         }
       });
 
@@ -469,12 +548,30 @@
       document.getElementById("approve-btn").addEventListener("click", async () => {
         if (!currentSessionId) return;
         try {
-          await fetch(`${API_BASE}/approve/${currentSessionId}`, {
+          addLog("Sending approval...", "info");
+          document.getElementById("approval-section").style.display = "none";
+
+          const response = await fetch(`${API_BASE}/approve/${currentSessionId}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ approved: true }),
+            body: JSON.stringify({ approved: true, message: "approve" }),
           });
-          addLog("Credentials approved", "info");
+
+          // Stream the resumed agent response
+          await streamResponse(response, (data) => {
+            if (data.type === "approval_accepted") {
+              addLog("Credentials approved, resuming diagnosis...", "info");
+            } else if (data.type === "diagnosis_complete") {
+              addLog("Diagnosis complete!", "info");
+              updateSessionDetail();
+              fetchSessions();
+            } else if (data.type === "error") {
+              addLog(`Error: ${data.message}`, "error");
+            } else if (data.text) {
+              addLog("Receiving diagnosis results...", "info");
+            }
+          });
+
           await updateSessionDetail();
           await fetchSessions();
         } catch (error) {
