@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SRE Incident Diagnosis</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: #0d1117;
+        color: #c9d1d9;
+        min-height: 100vh;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      h1 {
+        color: #58a6ff;
+        margin-bottom: 8px;
+      }
+      .subtitle {
+        color: #8b949e;
+        margin-bottom: 24px;
+      }
+      .card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      .card h2 {
+        margin-top: 0;
+        color: #c9d1d9;
+        font-size: 18px;
+      }
+      .form-group {
+        margin-bottom: 16px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #8b949e;
+        font-size: 14px;
+      }
+      .form-group input,
+      .form-group textarea,
+      .form-group select {
+        width: 100%;
+        padding: 10px 12px;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        color: #c9d1d9;
+        font-size: 14px;
+      }
+      .form-group textarea {
+        min-height: 100px;
+        resize: vertical;
+      }
+      .form-group input:focus,
+      .form-group textarea:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: #58a6ff;
+      }
+      .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      .btn-primary {
+        background: #238636;
+        color: #fff;
+      }
+      .btn-primary:hover {
+        background: #2ea043;
+      }
+      .btn-secondary {
+        background: #21262d;
+        color: #c9d1d9;
+        border: 1px solid #30363d;
+      }
+      .btn-secondary:hover {
+        background: #30363d;
+      }
+      .btn-danger {
+        background: #da3633;
+        color: #fff;
+      }
+      .btn-danger:hover {
+        background: #f85149;
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .sessions-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .session-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        margin-bottom: 8px;
+      }
+      .session-item:hover {
+        border-color: #58a6ff;
+      }
+      .session-info {
+        flex: 1;
+      }
+      .session-id {
+        font-family: monospace;
+        color: #58a6ff;
+        font-size: 14px;
+      }
+      .session-problem {
+        color: #8b949e;
+        font-size: 13px;
+        margin-top: 4px;
+      }
+      .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+      }
+      .status-created {
+        background: #1f6feb33;
+        color: #58a6ff;
+      }
+      .status-analyzing {
+        background: #a371f733;
+        color: #a371f7;
+      }
+      .status-waiting {
+        background: #d29922cc;
+        color: #0d1117;
+      }
+      .status-approved {
+        background: #23863633;
+        color: #3fb950;
+      }
+      .status-denied {
+        background: #f8514933;
+        color: #f85149;
+      }
+      .status-completed {
+        background: #23863633;
+        color: #3fb950;
+      }
+      .status-error {
+        background: #f8514933;
+        color: #f85149;
+      }
+      .approval-box {
+        background: #341a00;
+        border: 1px solid #d29922;
+        border-radius: 6px;
+        padding: 16px;
+        margin-top: 16px;
+      }
+      .approval-box h3 {
+        color: #d29922;
+        margin-top: 0;
+      }
+      .approval-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .findings {
+        margin-top: 16px;
+      }
+      .finding {
+        padding: 12px;
+        background: #0d1117;
+        border-left: 3px solid #58a6ff;
+        margin-bottom: 8px;
+      }
+      .finding-critical {
+        border-left-color: #f85149;
+      }
+      .finding-warning {
+        border-left-color: #d29922;
+      }
+      .finding-info {
+        border-left-color: #58a6ff;
+      }
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #8b949e;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 768px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .log-output {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .log-entry {
+        margin-bottom: 4px;
+      }
+      .log-time {
+        color: #8b949e;
+      }
+      .log-info {
+        color: #58a6ff;
+      }
+      .log-warn {
+        color: #d29922;
+      }
+      .log-error {
+        color: #f85149;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔧 SRE Incident Diagnosis</h1>
+      <p class="subtitle">Autonomous infrastructure diagnosis with secure credential access</p>
+
+      <div class="grid">
+        <div class="card">
+          <h2>New Diagnosis</h2>
+          <form id="diagnose-form">
+            <div class="form-group">
+              <label for="problem">Problem Description</label>
+              <textarea
+                id="problem"
+                placeholder="Describe the incident, e.g., 'Database connection timeouts in production API'"
+              ></textarea>
+            </div>
+            <div class="form-group">
+              <label for="environment">Environment</label>
+              <select id="environment">
+                <option value="prod">Production</option>
+                <option value="staging">Staging</option>
+                <option value="dev">Development</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Start Diagnosis</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Active Sessions</h2>
+          <ul id="sessions-list" class="sessions-list">
+            <li class="empty-state">No active sessions</li>
+          </ul>
+          <button id="refresh-btn" class="btn btn-secondary" style="margin-top: 12px">Refresh</button>
+        </div>
+      </div>
+
+      <div class="card" id="session-detail" style="display: none">
+        <h2>Session Details: <span id="detail-session-id"></span></h2>
+        <div>
+          <span class="status-badge" id="detail-status"></span>
+          <span id="detail-phase" style="margin-left: 12px; color: #8b949e"></span>
+        </div>
+        <p id="detail-problem" style="margin-top: 12px"></p>
+
+        <div id="approval-section" class="approval-box" style="display: none">
+          <h3>⚠️ Credential Access Required</h3>
+          <p id="approval-message">The diagnosis agent needs access to the following credentials:</p>
+          <ul id="credential-list"></ul>
+          <div class="approval-actions">
+            <button id="approve-btn" class="btn btn-primary">Approve Access</button>
+            <button id="deny-btn" class="btn btn-danger">Deny</button>
+          </div>
+        </div>
+
+        <div id="findings-section" class="findings" style="display: none">
+          <h3>Findings</h3>
+          <div id="findings-list"></div>
+        </div>
+
+        <div class="log-output" id="log-output" style="margin-top: 16px">
+          <div class="log-entry"><span class="log-time">[--:--:--]</span> Waiting for activity...</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = "";
+      let currentSessionId = null;
+      let pollInterval = null;
+
+      // Format timestamp
+      function formatTime(date) {
+        return date.toTimeString().split(" ")[0];
+      }
+
+      // Add log entry
+      function addLog(message, level = "info") {
+        const logOutput = document.getElementById("log-output");
+        const entry = document.createElement("div");
+        entry.className = "log-entry";
+        entry.innerHTML = `<span class="log-time">[${formatTime(new Date())}]</span> <span class="log-${level}">${message}</span>`;
+        logOutput.appendChild(entry);
+        logOutput.scrollTop = logOutput.scrollHeight;
+      }
+
+      // Clear logs
+      function clearLogs() {
+        document.getElementById("log-output").innerHTML = "";
+      }
+
+      // Fetch sessions
+      async function fetchSessions() {
+        try {
+          const response = await fetch(`${API_BASE}/sessions`);
+          const data = await response.json();
+          renderSessions(data.sessions);
+        } catch (error) {
+          console.error("Failed to fetch sessions:", error);
+        }
+      }
+
+      // Render sessions list
+      function renderSessions(sessions) {
+        const list = document.getElementById("sessions-list");
+        if (sessions.length === 0) {
+          list.innerHTML = '<li class="empty-state">No active sessions</li>';
+          return;
+        }
+        list.innerHTML = sessions
+          .map(
+            (s) => `
+                <li class="session-item" onclick="selectSession('${s.session_id}')">
+                    <div class="session-info">
+                        <div class="session-id">${s.session_id}</div>
+                        <div class="session-problem">${s.problem}</div>
+                    </div>
+                    <span class="status-badge status-${s.status}">${s.status}</span>
+                </li>
+            `,
+          )
+          .join("");
+      }
+
+      // Select session
+      async function selectSession(sessionId) {
+        currentSessionId = sessionId;
+        document.getElementById("session-detail").style.display = "block";
+        document.getElementById("detail-session-id").textContent = sessionId;
+        clearLogs();
+        addLog(`Selected session ${sessionId}`, "info");
+        await updateSessionDetail();
+        startPolling();
+      }
+
+      // Update session detail
+      async function updateSessionDetail() {
+        if (!currentSessionId) return;
+
+        try {
+          const response = await fetch(`${API_BASE}/status/${currentSessionId}`);
+          const data = await response.json();
+
+          document.getElementById("detail-status").textContent = data.status;
+          document.getElementById("detail-status").className = `status-badge status-${data.status}`;
+          document.getElementById("detail-phase").textContent = `Phase: ${data.phase}`;
+
+          // Show approval section if waiting
+          const approvalSection = document.getElementById("approval-section");
+          if (data.phase === "waiting_for_approval") {
+            approvalSection.style.display = "block";
+            addLog("Waiting for credential approval...", "warn");
+          } else {
+            approvalSection.style.display = "none";
+          }
+
+          // Show findings if available
+          if (data.findings && data.findings.length > 0) {
+            document.getElementById("findings-section").style.display = "block";
+            document.getElementById("findings-list").innerHTML = data.findings
+              .map(
+                (f) => `
+                        <div class="finding finding-${f.severity || "info"}">
+                            <strong>${f.title || "Finding"}</strong>
+                            <p>${f.description || f}</p>
+                        </div>
+                    `,
+              )
+              .join("");
+          }
+        } catch (error) {
+          addLog(`Error fetching status: ${error.message}`, "error");
+        }
+      }
+
+      // Start polling for updates
+      function startPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(updateSessionDetail, 2000);
+      }
+
+      // Stop polling
+      function stopPolling() {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      }
+
+      // Submit diagnosis form
+      document.getElementById("diagnose-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const problem = document.getElementById("problem").value;
+        const environment = document.getElementById("environment").value;
+
+        if (!problem.trim()) {
+          alert("Please describe the problem");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${API_BASE}/diagnose`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ problem, environment }),
+          });
+          const data = await response.json();
+          addLog(`Created session ${data.session_id}`, "info");
+          await fetchSessions();
+          selectSession(data.session_id);
+          document.getElementById("problem").value = "";
+        } catch (error) {
+          alert("Failed to start diagnosis: " + error.message);
+        }
+      });
+
+      // Approve credentials
+      document.getElementById("approve-btn").addEventListener("click", async () => {
+        if (!currentSessionId) return;
+        try {
+          await fetch(`${API_BASE}/approve/${currentSessionId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved: true }),
+          });
+          addLog("Credentials approved", "info");
+          await updateSessionDetail();
+          await fetchSessions();
+        } catch (error) {
+          addLog(`Approval failed: ${error.message}`, "error");
+        }
+      });
+
+      // Deny credentials
+      document.getElementById("deny-btn").addEventListener("click", async () => {
+        if (!currentSessionId) return;
+        try {
+          await fetch(`${API_BASE}/approve/${currentSessionId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved: false }),
+          });
+          addLog("Credentials denied", "warn");
+          await updateSessionDetail();
+          await fetchSessions();
+        } catch (error) {
+          addLog(`Denial failed: ${error.message}`, "error");
+        }
+      });
+
+      // Refresh button
+      document.getElementById("refresh-btn").addEventListener("click", fetchSessions);
+
+      // Initial load
+      fetchSessions();
+    </script>
+  </body>
+</html>
