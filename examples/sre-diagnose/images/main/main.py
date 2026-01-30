@@ -11,7 +11,6 @@ from typing import Optional
 import uuid
 import json
 import secrets
-import asyncio
 from datetime import datetime
 
 
@@ -117,13 +116,35 @@ async def health():
   )
 
 
-def json_serializer(obj):
-  """JSON serializer for objects not serializable by default."""
-  if hasattr(obj, "isoformat"):
-    return obj.isoformat()
-  if hasattr(obj, "__dict__"):
-    return obj.__dict__
-  return str(obj)
+def extract_text_from_snippet(snippet):
+  """Extract text content from a conversation snippet."""
+  text = ""
+  phase = None
+
+  # Handle the snippet object
+  if hasattr(snippet, "messages"):
+    for msg in snippet.messages:
+      if hasattr(msg, "content") and hasattr(msg.content, "text"):
+        text += msg.content.text
+      if hasattr(msg, "phase"):
+        # Get the string value of the phase enum
+        if hasattr(msg.phase, "value"):
+          phase = msg.phase.value
+        else:
+          phase = str(msg.phase)
+
+  return text, phase
+
+
+def serialize_snippet(snippet):
+  """Serialize a snippet to a simple JSON-friendly dict."""
+  text, phase = extract_text_from_snippet(snippet)
+
+  result = {"text": text}
+  if phase:
+    result["phase"] = phase
+
+  return result
 
 
 @app.post("/diagnose")
@@ -188,36 +209,20 @@ After your initial analysis, use ask_user_for_input to request approval for the 
       # Stream the agent's analysis
       async for response in agent.send_stream(message, timeout=120):
         snippet = response.snippet
-        yield json.dumps(snippet, default=json_serializer) + "\n"
 
-        # Accumulate the analysis text
-        if hasattr(snippet, "text"):
-          full_analysis += snippet.text
-        elif isinstance(snippet, dict) and "text" in snippet:
-          full_analysis += snippet["text"]
+        # Extract text and phase from snippet
+        text, phase = extract_text_from_snippet(snippet)
+
+        if text:
+          full_analysis += text
+          yield json.dumps({"type": "text", "text": text}) + "\n"
 
         # Check for waiting_for_input phase
-        if hasattr(snippet, "phase") and snippet.phase == "waiting_for_input":
+        if phase == "waiting_for_input":
           session["status"] = "waiting_for_approval"
           session["phase"] = "waiting_for_approval"
           session["approval_pending"] = True
-          session["approval_prompt"] = getattr(snippet, "content", full_analysis)
-          session["analysis"] = full_analysis
-
-          yield json.dumps({
-            "type": "approval_required",
-            "session_id": session_id,
-            "status": "waiting_for_approval",
-            "phase": "waiting_for_approval",
-            "prompt": session["approval_prompt"]
-          }) + "\n"
-          return  # Stop streaming, wait for approval
-
-        elif isinstance(snippet, dict) and snippet.get("phase") == "waiting_for_input":
-          session["status"] = "waiting_for_approval"
-          session["phase"] = "waiting_for_approval"
-          session["approval_pending"] = True
-          session["approval_prompt"] = snippet.get("content", full_analysis)
+          session["approval_prompt"] = text or full_analysis
           session["analysis"] = full_analysis
 
           yield json.dumps({
@@ -301,7 +306,6 @@ async def approve(session_id: str, request: ApproveRequest):
     session["approval_pending"] = False
 
     # Resume the agent by sending the approval response
-    # This will trigger the agent to continue from WAITING_FOR_INPUT state
     async def stream_resume():
       try:
         yield json.dumps({
@@ -314,13 +318,11 @@ async def approve(session_id: str, request: ApproveRequest):
         resume_message = request.message or "approve"
         async for response in agent.send_stream(resume_message, timeout=120):
           snippet = response.snippet
-          yield json.dumps(snippet, default=json_serializer) + "\n"
+          text, phase = extract_text_from_snippet(snippet)
 
-          # Update analysis with continued response
-          if hasattr(snippet, "text"):
-            session["analysis"] += snippet.text
-          elif isinstance(snippet, dict) and "text" in snippet:
-            session["analysis"] += snippet["text"]
+          if text:
+            session["analysis"] += text
+            yield json.dumps({"type": "text", "text": text}) + "\n"
 
         session["status"] = "completed"
         session["phase"] = "diagnosis_complete"
