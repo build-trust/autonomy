@@ -5,3 +5,5 @@ pods:
     containers:
       - name: main
         image: main
+      - name: onepass
+        image: mock-1password

@@ -304,6 +304,18 @@
           </div>
         </div>
 
+        <div
+          id="credentials-section"
+          class="card"
+          style="display: none; margin-top: 16px; background: #0a1628; border: 1px solid #1f6feb"
+        >
+          <h3>🔑 Credentials Retrieved</h3>
+          <p style="font-size: 13px; color: #8b949e; margin-bottom: 8px">
+            The following credentials have been securely retrieved (values are stored internally, never exposed):
+          </p>
+          <ul id="credentials-list" style="margin: 0; padding-left: 20px; font-family: monospace; font-size: 12px"></ul>
+        </div>
+
         <div id="analysis-section" class="card" style="display: none; margin-top: 16px; background: #0d1117">
           <h3>Analysis</h3>
           <div id="analysis-content" style="line-height: 1.6"></div>
@@ -368,7 +380,7 @@
             (s) => `
                 <li class="session-item" onclick="selectSession('${s.session_id}')">
                     <div class="session-info">
-                        <div class="session-id">${s.session_id}</div>
+                        <div class="session-id">${s.session_id}${s.credentials_retrieved > 0 ? " 🔑" + s.credentials_retrieved : ""}</div>
                         <div class="session-problem">${s.problem}</div>
                     </div>
                     <span class="status-badge status-${s.status}">${s.status}</span>
@@ -410,6 +422,17 @@
             }
           } else {
             approvalSection.style.display = "none";
+          }
+
+          // Show credentials retrieved section
+          const credsSection = document.getElementById("credentials-section");
+          if (credsSection && data.credentials_retrieved && data.credentials_retrieved.length > 0) {
+            credsSection.style.display = "block";
+            document.getElementById("credentials-list").innerHTML = data.credentials_retrieved
+              .map((ref) => `<li><code>${ref}</code></li>`)
+              .join("");
+          } else if (credsSection) {
+            credsSection.style.display = "none";
           }
 
           // Show analysis if available
