@@ -102,6 +102,209 @@ async def retrieve_credential(reference: str, session: dict) -> str:
     return f"Connection error: {str(e)}"
 
 
+# === Mock Diagnostic Tools ===
+
+async def query_db_connections(environment: str) -> str:
+  """Query database connection statistics."""
+  # Return mock data based on environment
+  if environment == "prod":
+    return json.dumps({
+      "environment": environment,
+      "active_connections": 145,
+      "max_connections": 200,
+      "idle_connections": 23,
+      "waiting_queries": 12,
+      "avg_query_time_ms": 45,
+      "connection_errors_last_hour": 3
+    })
+  else:
+    return json.dumps({
+      "environment": environment,
+      "active_connections": 42,
+      "max_connections": 100,
+      "idle_connections": 15,
+      "waiting_queries": 2,
+      "avg_query_time_ms": 28,
+      "connection_errors_last_hour": 0
+    })
+
+
+async def query_slow_queries(environment: str, threshold_ms: int = 1000) -> str:
+  """Query slow database queries above threshold."""
+  return json.dumps({
+    "environment": environment,
+    "threshold_ms": threshold_ms,
+    "slow_queries": [
+      {
+        "query": "SELECT * FROM orders WHERE created_at > ? ORDER BY id DESC LIMIT 1000",
+        "avg_duration_ms": 5420,
+        "calls_last_hour": 156,
+        "table": "orders"
+      },
+      {
+        "query": "UPDATE inventory SET quantity = quantity - ? WHERE product_id = ?",
+        "avg_duration_ms": 2340,
+        "calls_last_hour": 89,
+        "table": "inventory"
+      },
+      {
+        "query": "SELECT u.*, o.* FROM users u JOIN orders o ON u.id = o.user_id WHERE u.status = ?",
+        "avg_duration_ms": 1850,
+        "calls_last_hour": 234,
+        "table": "users, orders"
+      }
+    ]
+  })
+
+
+async def get_cloudwatch_metrics(service: str, metric: str, period_minutes: int = 60) -> str:
+  """Get CloudWatch metrics for a service."""
+  # Return mock metrics based on service/metric combination
+  import random
+  base_values = {
+    "CPUUtilization": [75.2, 82.1, 91.5, 88.3, 79.6, 85.4, 92.1, 87.3],
+    "MemoryUtilization": [68.5, 72.3, 78.9, 85.2, 82.1, 79.8, 76.4, 80.2],
+    "NetworkIn": [1024000, 1256000, 980000, 1450000, 1120000, 1380000, 1290000, 1150000],
+    "NetworkOut": [512000, 678000, 590000, 720000, 650000, 710000, 680000, 620000],
+    "DiskReadOps": [450, 520, 480, 610, 550, 590, 530, 490],
+    "DiskWriteOps": [280, 320, 290, 380, 340, 360, 310, 300],
+  }
+
+  values = base_values.get(metric, [random.uniform(50, 90) for _ in range(8)])
+  unit_map = {
+    "CPUUtilization": "Percent",
+    "MemoryUtilization": "Percent",
+    "NetworkIn": "Bytes",
+    "NetworkOut": "Bytes",
+    "DiskReadOps": "Count",
+    "DiskWriteOps": "Count",
+  }
+
+  return json.dumps({
+    "service": service,
+    "metric": metric,
+    "period_minutes": period_minutes,
+    "datapoints": [
+      {"timestamp": f"2024-01-15T{10+i}:00:00Z", "value": v}
+      for i, v in enumerate(values)
+    ],
+    "unit": unit_map.get(metric, "None"),
+    "statistics": {
+      "min": min(values),
+      "max": max(values),
+      "avg": sum(values) / len(values)
+    }
+  })
+
+
+async def check_instance_health(instance_id: str) -> str:
+  """Check EC2/RDS instance health status."""
+  return json.dumps({
+    "instance_id": instance_id,
+    "instance_type": "m5.xlarge",
+    "status": "running",
+    "health_checks": {
+      "system_status": "ok",
+      "instance_status": "ok"
+    },
+    "metrics": {
+      "cpu_utilization": 78.5,
+      "memory_utilization": 85.2,
+      "disk_io_wait": 12.3,
+      "network_packets_dropped": 0
+    },
+    "recent_events": [
+      {"timestamp": "2024-01-15T08:00:00Z", "event": "Instance started"},
+      {"timestamp": "2024-01-15T10:30:00Z", "event": "High CPU alert triggered"}
+    ]
+  })
+
+
+async def check_kubernetes_pods(namespace: str, label_selector: str = "") -> str:
+  """Check Kubernetes pod status and health."""
+  return json.dumps({
+    "namespace": namespace,
+    "label_selector": label_selector or "app=api",
+    "pods": [
+      {
+        "name": "api-deployment-7d4f8b6c9-abc12",
+        "status": "Running",
+        "restarts": 3,
+        "ready": "1/1",
+        "age": "2d",
+        "cpu_usage": "250m",
+        "memory_usage": "512Mi",
+        "last_restart_reason": "OOMKilled"
+      },
+      {
+        "name": "api-deployment-7d4f8b6c9-def34",
+        "status": "Running",
+        "restarts": 0,
+        "ready": "1/1",
+        "age": "2d",
+        "cpu_usage": "180m",
+        "memory_usage": "384Mi",
+        "last_restart_reason": None
+      },
+      {
+        "name": "api-deployment-7d4f8b6c9-ghi56",
+        "status": "CrashLoopBackOff",
+        "restarts": 15,
+        "ready": "0/1",
+        "age": "1h",
+        "cpu_usage": "0m",
+        "memory_usage": "0Mi",
+        "last_restart_reason": "Error"
+      }
+    ],
+    "summary": {
+      "total": 3,
+      "running": 2,
+      "failed": 1,
+      "pending": 0
+    }
+  })
+
+
+async def get_application_logs(service: str, level: str = "ERROR", limit: int = 10) -> str:
+  """Get recent application logs filtered by level."""
+  return json.dumps({
+    "service": service,
+    "level": level,
+    "limit": limit,
+    "logs": [
+      {
+        "timestamp": "2024-01-15T10:45:23Z",
+        "level": "ERROR",
+        "message": "Database connection timeout after 30000ms",
+        "source": "db-pool",
+        "trace_id": "abc123"
+      },
+      {
+        "timestamp": "2024-01-15T10:44:18Z",
+        "level": "ERROR",
+        "message": "Failed to acquire connection from pool: pool exhausted",
+        "source": "db-pool",
+        "trace_id": "def456"
+      },
+      {
+        "timestamp": "2024-01-15T10:43:55Z",
+        "level": "ERROR",
+        "message": "Request timeout: /api/orders took 45023ms",
+        "source": "http-handler",
+        "trace_id": "ghi789"
+      },
+      {
+        "timestamp": "2024-01-15T10:42:30Z",
+        "level": "ERROR",
+        "message": "Memory pressure detected: heap usage at 92%",
+        "source": "memory-monitor",
+        "trace_id": "jkl012"
+      }
+    ]
+  })
+
+
 # === Agent Instructions ===
 
 ANALYSIS_INSTRUCTIONS = """You are an expert SRE (Site Reliability Engineer) analyzing an infrastructure incident.
@@ -159,6 +362,107 @@ Focus on:
 4. Monitoring improvements (what alerts or metrics to add)
 
 Be specific and actionable. Provide commands or configurations where applicable."""
+
+
+# === Specialized Agent Instructions ===
+
+DB_DIAGNOSTIC_INSTRUCTIONS = """You are a database diagnostic specialist agent.
+
+Your role is to investigate database-related issues using the available diagnostic tools.
+
+DIAGNOSTIC APPROACH:
+1. Check connection pool status to identify exhaustion or leaks
+2. Query for slow queries that may be holding connections
+3. Analyze query patterns for optimization opportunities
+4. Look for connection errors and their patterns
+
+Use the tools provided to gather data, then provide a structured analysis.
+
+OUTPUT FORMAT:
+## Database Health Assessment
+[Overall health status: CRITICAL/WARNING/HEALTHY]
+
+## Connection Pool Analysis
+[Details from query_db_connections]
+
+## Slow Query Analysis
+[Details from query_slow_queries]
+
+## Root Cause Hypothesis
+[Your assessment based on the data]
+
+## Recommended Actions
+1. [Immediate action]
+2. [Short-term fix]
+3. [Long-term improvement]
+
+Be data-driven in your analysis. Reference specific metrics from the tools."""
+
+
+CLOUD_DIAGNOSTIC_INSTRUCTIONS = """You are a cloud infrastructure diagnostic specialist agent.
+
+Your role is to investigate AWS/cloud infrastructure issues using the available diagnostic tools.
+
+DIAGNOSTIC APPROACH:
+1. Check instance health and status
+2. Review CloudWatch metrics for CPU, memory, network, disk
+3. Identify resource bottlenecks or anomalies
+4. Check for scaling issues or capacity problems
+
+Use the tools provided to gather data, then provide a structured analysis.
+
+OUTPUT FORMAT:
+## Infrastructure Health Assessment
+[Overall health status: CRITICAL/WARNING/HEALTHY]
+
+## Instance Status
+[Details from check_instance_health]
+
+## Resource Metrics Analysis
+[Details from get_cloudwatch_metrics]
+
+## Anomalies Detected
+[List any concerning patterns]
+
+## Recommended Actions
+1. [Immediate action]
+2. [Scaling recommendation]
+3. [Monitoring improvement]
+
+Focus on actionable insights backed by metric data."""
+
+
+K8S_DIAGNOSTIC_INSTRUCTIONS = """You are a Kubernetes diagnostic specialist agent.
+
+Your role is to investigate Kubernetes cluster and pod issues using the available diagnostic tools.
+
+DIAGNOSTIC APPROACH:
+1. Check pod status and health across the namespace
+2. Look for crash loops, OOM kills, or failed deployments
+3. Analyze resource usage patterns
+4. Review recent events and restart reasons
+
+Use the tools provided to gather data, then provide a structured analysis.
+
+OUTPUT FORMAT:
+## Kubernetes Health Assessment
+[Overall health status: CRITICAL/WARNING/HEALTHY]
+
+## Pod Status Summary
+[Details from check_kubernetes_pods]
+
+## Issues Identified
+[List pods with problems and their symptoms]
+
+## Root Cause Analysis
+[Your assessment based on restart reasons, resource usage]
+
+## Recommended Actions
+1. [Immediate remediation]
+2. [Resource adjustment]
+3. [Deployment fix]
+
+Focus on getting unhealthy pods back to running state."""
 
 
 # === FastAPI App ===
@@ -330,9 +634,188 @@ Provide your analysis including the specific credentials needed for investigatio
   return StreamingResponse(stream_response(), media_type="application/x-ndjson")
 
 
+# === Specialized Agent Runner Functions ===
+
+async def run_db_diagnosis(node: Node, session: dict, credentials: dict) -> dict:
+  """Run database-focused diagnosis with specialized agent."""
+  agent_name = f"db_diag_{session['id']}_{secrets.token_hex(4)}"
+
+  try:
+    agent = await Agent.start(
+      node=node,
+      name=agent_name,
+      instructions=DB_DIAGNOSTIC_INSTRUCTIONS,
+      model=Model("claude-sonnet-4-5"),
+      tools=[
+        Tool(query_db_connections),
+        Tool(query_slow_queries),
+      ]
+    )
+
+    environment = session.get("environment", "prod")
+    message = f"""Investigate database issues for environment: {environment}
+
+Original problem: {session.get('problem')}
+
+Use your tools to gather diagnostic data and provide your analysis."""
+
+    findings = ""
+    async for response in agent.send_stream(message, timeout=90):
+      text = extract_text_from_snippet(response.snippet)
+      if text:
+        findings += text
+
+    return {
+      "agent": "database_specialist",
+      "status": "completed",
+      "findings": findings
+    }
+  except Exception as e:
+    logger.error(f"DB diagnosis error: {e}")
+    return {
+      "agent": "database_specialist",
+      "status": "error",
+      "findings": f"Error running database diagnosis: {str(e)}"
+    }
+  finally:
+    try:
+      await Agent.stop(node, agent_name)
+    except Exception:
+      pass
+
+
+async def run_cloud_diagnosis(node: Node, session: dict, credentials: dict) -> dict:
+  """Run cloud infrastructure diagnosis with specialized agent."""
+  agent_name = f"cloud_diag_{session['id']}_{secrets.token_hex(4)}"
+
+  try:
+    agent = await Agent.start(
+      node=node,
+      name=agent_name,
+      instructions=CLOUD_DIAGNOSTIC_INSTRUCTIONS,
+      model=Model("claude-sonnet-4-5"),
+      tools=[
+        Tool(get_cloudwatch_metrics),
+        Tool(check_instance_health),
+      ]
+    )
+
+    environment = session.get("environment", "prod")
+    message = f"""Investigate cloud infrastructure issues for environment: {environment}
+
+Original problem: {session.get('problem')}
+
+Use your tools to gather diagnostic data and provide your analysis."""
+
+    findings = ""
+    async for response in agent.send_stream(message, timeout=90):
+      text = extract_text_from_snippet(response.snippet)
+      if text:
+        findings += text
+
+    return {
+      "agent": "cloud_specialist",
+      "status": "completed",
+      "findings": findings
+    }
+  except Exception as e:
+    logger.error(f"Cloud diagnosis error: {e}")
+    return {
+      "agent": "cloud_specialist",
+      "status": "error",
+      "findings": f"Error running cloud diagnosis: {str(e)}"
+    }
+  finally:
+    try:
+      await Agent.stop(node, agent_name)
+    except Exception:
+      pass
+
+
+async def run_k8s_diagnosis(node: Node, session: dict, credentials: dict) -> dict:
+  """Run Kubernetes diagnosis with specialized agent."""
+  agent_name = f"k8s_diag_{session['id']}_{secrets.token_hex(4)}"
+
+  try:
+    agent = await Agent.start(
+      node=node,
+      name=agent_name,
+      instructions=K8S_DIAGNOSTIC_INSTRUCTIONS,
+      model=Model("claude-sonnet-4-5"),
+      tools=[
+        Tool(check_kubernetes_pods),
+        Tool(get_application_logs),
+      ]
+    )
+
+    environment = session.get("environment", "prod")
+    message = f"""Investigate Kubernetes issues for environment: {environment}
+
+Original problem: {session.get('problem')}
+
+Use your tools to gather diagnostic data and provide your analysis."""
+
+    findings = ""
+    async for response in agent.send_stream(message, timeout=90):
+      text = extract_text_from_snippet(response.snippet)
+      if text:
+        findings += text
+
+    return {
+      "agent": "kubernetes_specialist",
+      "status": "completed",
+      "findings": findings
+    }
+  except Exception as e:
+    logger.error(f"K8s diagnosis error: {e}")
+    return {
+      "agent": "kubernetes_specialist",
+      "status": "error",
+      "findings": f"Error running Kubernetes diagnosis: {str(e)}"
+    }
+  finally:
+    try:
+      await Agent.stop(node, agent_name)
+    except Exception:
+      pass
+
+
+def determine_specialist_agents(problem: str, analysis: str) -> list:
+  """Determine which specialist agents to run based on the problem and analysis."""
+  agents = []
+
+  problem_lower = problem.lower()
+  analysis_lower = analysis.lower()
+  combined = problem_lower + " " + analysis_lower
+
+  # Database indicators
+  db_keywords = ["database", "db", "connection pool", "query", "sql", "postgres", "mysql",
+                 "timeout", "connection", "transaction", "deadlock"]
+  if any(kw in combined for kw in db_keywords):
+    agents.append("database")
+
+  # Cloud/AWS indicators
+  cloud_keywords = ["aws", "ec2", "cloudwatch", "instance", "cpu", "memory usage",
+                    "scaling", "load balancer", "rds"]
+  if any(kw in combined for kw in cloud_keywords):
+    agents.append("cloud")
+
+  # Kubernetes indicators
+  k8s_keywords = ["kubernetes", "k8s", "pod", "container", "deployment", "replica",
+                  "crashloop", "oom", "health check", "liveness", "readiness"]
+  if any(kw in combined for kw in k8s_keywords):
+    agents.append("kubernetes")
+
+  # If no specific indicators, run database (most common) and cloud
+  if not agents:
+    agents = ["database", "cloud"]
+
+  return agents
+
+
 @app.post("/approve/{session_id}")
 async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
-  """Approve or deny credential access - Phase 2: Diagnosis."""
+  """Approve or deny credential access - Phase 2: Diagnosis with specialized agents."""
   if session_id not in sessions:
     return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
@@ -356,8 +839,6 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
   # Approved - retrieve credentials and start diagnosis
   session["status"] = "retrieving_credentials"
   session["phase"] = "credential_retrieval"
-
-  diagnosis_agent_name = f"diagnoser_{session_id}_{secrets.token_hex(4)}"
 
   async def stream_diagnosis():
     try:
@@ -389,17 +870,77 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
         "credentials_retrieved": len(session.get("credentials_retrieved", []))
       }) + "\n"
 
-      # Create diagnosis agent
+      # Build diagnosis prompt with context from analysis
+      creds_summary = ", ".join(session.get("credentials_retrieved", [])) or "none"
+      # Determine which specialist agents to run
+      specialists = determine_specialist_agents(
+        session.get("problem", ""),
+        session.get("analysis", "")
+      )
+
+      yield json.dumps({
+        "type": "specialists_selected",
+        "session_id": session_id,
+        "specialists": specialists
+      }) + "\n"
+
+      # Run specialist agents in parallel
+      import asyncio
+      specialist_tasks = []
+      credentials = session.get("credentials", {})
+
+      for specialist in specialists:
+        if specialist == "database":
+          specialist_tasks.append(run_db_diagnosis(node, session, credentials))
+        elif specialist == "cloud":
+          specialist_tasks.append(run_cloud_diagnosis(node, session, credentials))
+        elif specialist == "kubernetes":
+          specialist_tasks.append(run_k8s_diagnosis(node, session, credentials))
+
+      # Run all specialists in parallel
+      specialist_results = await asyncio.gather(*specialist_tasks, return_exceptions=True)
+
+      # Collect findings from specialists
+      all_findings = []
+      for result in specialist_results:
+        if isinstance(result, Exception):
+          yield json.dumps({
+            "type": "specialist_error",
+            "error": str(result)
+          }) + "\n"
+        else:
+          all_findings.append(result)
+          yield json.dumps({
+            "type": "specialist_complete",
+            "agent": result.get("agent"),
+            "status": result.get("status")
+          }) + "\n"
+
+      # Store specialist findings
+      session["specialist_findings"] = all_findings
+
+      # Now run synthesizer agent to combine findings
+      yield json.dumps({
+        "type": "synthesis_started",
+        "session_id": session_id
+      }) + "\n"
+
+      # Create synthesis agent to combine all findings
+      synthesis_agent_name = f"synthesizer_{session_id}_{secrets.token_hex(4)}"
       agent = await Agent.start(
         node=node,
-        name=diagnosis_agent_name,
+        name=synthesis_agent_name,
         instructions=DIAGNOSIS_INSTRUCTIONS,
         model=Model("claude-sonnet-4-5"),
       )
 
-      # Build diagnosis prompt with context from analysis
-      creds_summary = ", ".join(session.get("credentials_retrieved", [])) or "none"
-      diagnosis_message = f"""Complete the diagnosis for this incident.
+      # Build synthesis prompt
+      findings_text = "\n\n".join([
+        f"## {f.get('agent', 'Unknown')} Findings:\n{f.get('findings', 'No findings')}"
+        for f in all_findings
+      ])
+
+      diagnosis_message = f"""Synthesize the diagnosis for this incident based on specialist agent findings.
 
 **Original Problem**: {session.get('problem')}
 **Environment**: {session.get('environment')}
@@ -409,7 +950,15 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
 
 **Credentials Retrieved**: {creds_summary}
 
-Based on this analysis and with access to the credentials, provide your final diagnosis and remediation recommendations."""
+**Specialist Agent Findings**:
+{findings_text}
+
+Based on all the specialist findings above, provide your final synthesized diagnosis and remediation recommendations.
+Focus on:
+1. The most likely root cause (considering all specialist findings)
+2. Immediate remediation steps
+3. Long-term prevention measures
+4. Monitoring improvements"""
 
       # Stream diagnosis
       diagnosis_text = ""
@@ -447,9 +996,9 @@ Based on this analysis and with access to the credentials, provide your final di
       }) + "\n"
 
     finally:
-      # Clean up diagnosis agent
+      # Clean up synthesis agent
       try:
-        await Agent.stop(node, diagnosis_agent_name)
+        await Agent.stop(node, synthesis_agent_name)
       except Exception:
         pass
 
