@@ -152,9 +152,21 @@
         background: #a371f733;
         color: #a371f7;
       }
+      .status-waiting_for_approval {
+        background: #d29922cc;
+        color: #0d1117;
+      }
       .status-waiting {
         background: #d29922cc;
         color: #0d1117;
+      }
+      .status-retrieving_credentials {
+        background: #1f6feb33;
+        color: #58a6ff;
+      }
+      .status-diagnosing {
+        background: #a371f733;
+        color: #a371f7;
       }
       .status-approved {
         background: #23863633;
@@ -170,6 +182,62 @@
       }
       .status-error {
         background: #f8514933;
+        color: #f85149;
+      }
+      .phase-progress {
+        display: flex;
+        gap: 8px;
+        margin: 16px 0;
+        align-items: center;
+      }
+      .phase-step {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: #21262d;
+        border-radius: 16px;
+        font-size: 12px;
+        color: #8b949e;
+      }
+      .phase-step.active {
+        background: #1f6feb33;
+        color: #58a6ff;
+        border: 1px solid #1f6feb;
+      }
+      .phase-step.completed {
+        background: #23863633;
+        color: #3fb950;
+      }
+      .phase-step .icon {
+        font-size: 14px;
+      }
+      .phase-connector {
+        width: 20px;
+        height: 2px;
+        background: #30363d;
+      }
+      .phase-connector.completed {
+        background: #3fb950;
+      }
+      .credential-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .credential-item .icon {
+        font-size: 14px;
+      }
+      .credential-item.success {
+        color: #3fb950;
+      }
+      .credential-item.pending {
+        color: #8b949e;
+      }
+      .credential-item.failed {
         color: #f85149;
       }
       .approval-box {
@@ -292,6 +360,30 @@
           <span class="status-badge" id="detail-status"></span>
           <span id="detail-phase" style="margin-left: 12px; color: #8b949e"></span>
         </div>
+
+        <!-- Two-Phase Progress Indicator -->
+        <div class="phase-progress" id="phase-progress">
+          <div class="phase-step" id="phase-analysis">
+            <span class="icon">📋</span>
+            <span>Analysis</span>
+          </div>
+          <div class="phase-connector" id="connector-1"></div>
+          <div class="phase-step" id="phase-approval">
+            <span class="icon">🔐</span>
+            <span>Approval</span>
+          </div>
+          <div class="phase-connector" id="connector-2"></div>
+          <div class="phase-step" id="phase-credentials">
+            <span class="icon">🔑</span>
+            <span>Credentials</span>
+          </div>
+          <div class="phase-connector" id="connector-3"></div>
+          <div class="phase-step" id="phase-diagnosis">
+            <span class="icon">🔧</span>
+            <span>Diagnosis</span>
+          </div>
+        </div>
+
         <p id="detail-problem" style="margin-top: 12px"></p>
 
         <div id="approval-section" class="approval-box" style="display: none">
@@ -299,8 +391,8 @@
           <p id="approval-message">The diagnosis agent needs access to the following credentials:</p>
           <ul id="credential-list"></ul>
           <div class="approval-actions">
-            <button id="approve-btn" class="btn btn-primary">Approve Access</button>
-            <button id="deny-btn" class="btn btn-danger">Deny</button>
+            <button id="approve-btn" class="btn btn-primary">✓ Approve Access</button>
+            <button id="deny-btn" class="btn btn-danger">✗ Deny</button>
           </div>
         </div>
 
@@ -401,6 +493,53 @@
         startPolling();
       }
 
+      // Update phase progress indicator
+      function updatePhaseProgress(phase, status) {
+        const phases = ["analysis", "approval", "credentials", "diagnosis"];
+        const phaseMap = {
+          analyzing: 0,
+          analysis: 0,
+          awaiting_approval: 1,
+          waiting_for_approval: 1,
+          credential_retrieval: 2,
+          retrieving_credentials: 2,
+          diagnosis: 3,
+          diagnosing: 3,
+          diagnosis_complete: 4,
+          completed: 4,
+          error: -1,
+          denied: -1,
+          credentials_denied: -1,
+        };
+
+        const currentPhase = phaseMap[phase] ?? phaseMap[status] ?? 0;
+
+        phases.forEach((p, i) => {
+          const stepEl = document.getElementById(`phase-${p}`);
+          const connectorEl = document.getElementById(`connector-${i + 1}`);
+
+          if (i < currentPhase) {
+            stepEl.className = "phase-step completed";
+            if (connectorEl) connectorEl.className = "phase-connector completed";
+          } else if (i === currentPhase && currentPhase < 4) {
+            stepEl.className = "phase-step active";
+            if (connectorEl) connectorEl.className = "phase-connector";
+          } else {
+            stepEl.className = "phase-step";
+            if (connectorEl) connectorEl.className = "phase-connector";
+          }
+        });
+
+        // Special handling for completed state
+        if (status === "completed" || phase === "diagnosis_complete") {
+          phases.forEach((p, i) => {
+            document.getElementById(`phase-${p}`).className = "phase-step completed";
+            const conn = document.getElementById(`connector-${i + 1}`);
+            if (conn) conn.className = "phase-connector completed";
+          });
+        }
+      }
+
       // Update session detail
       async function updateSessionDetail() {
         if (!currentSessionId) return;
@@ -413,9 +552,12 @@
           document.getElementById("detail-status").className = `status-badge status-${data.status}`;
           document.getElementById("detail-phase").textContent = `Phase: ${data.phase}`;
 
+          // Update phase progress indicator
+          updatePhaseProgress(data.phase, data.status);
+
           // Show approval section if waiting
           const approvalSection = document.getElementById("approval-section");
-          if (data.phase === "waiting_for_approval" || data.approval_pending) {
+          if (data.phase === "awaiting_approval" || data.status === "waiting_for_approval") {
             approvalSection.style.display = "block";
             if (data.approval_prompt) {
               document.getElementById("approval-message").textContent = data.approval_prompt;
@@ -538,26 +680,32 @@
           // Stream the response
           await streamResponse(response, (data) => {
             if (data.type === "session_start") {
-              addLog(`Session ${data.session_id} started`, "info");
+              addLog(`🚀 Session ${data.session_id} started - Phase 1: Analysis`, "info");
               currentSessionId = data.session_id;
               document.getElementById("session-detail").style.display = "block";
               document.getElementById("detail-session-id").textContent = data.session_id;
+              updatePhaseProgress("analysis", "analyzing");
               fetchSessions();
             } else if (data.type === "approval_required") {
-              addLog("Agent requesting credential approval", "warn");
+              addLog(`🔐 Analysis complete - ${data.requested_credentials?.length || 0} credentials requested`, "warn");
               document.getElementById("approval-section").style.display = "block";
-              document.getElementById("approval-message").textContent = data.prompt || "Approval needed";
+              document.getElementById("approval-message").textContent =
+                `The agent needs access to ${data.requested_credentials?.length || 0} credentials to complete diagnosis:`;
+              updatePhaseProgress("awaiting_approval", "waiting_for_approval");
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "session_complete") {
-              addLog("Analysis complete", "info");
+              addLog("✅ Analysis complete", "info");
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "error") {
-              addLog(`Error: ${data.message}`, "error");
+              addLog(`❌ Error: ${data.message}`, "error");
             } else if (data.text) {
-              // Streaming text content
-              addLog(data.text.substring(0, 50) + "...", "info");
+              // Streaming text content - show abbreviated
+              const preview = data.text.replace(/\n/g, " ").substring(0, 60);
+              if (preview.trim()) {
+                addLog(`📝 ${preview}${data.text.length > 60 ? "..." : ""}`, "info");
+              }
             }
           });
 
@@ -581,17 +729,35 @@
           });
 
           // Stream the resumed agent response
+          let credentialCount = 0;
           await streamResponse(response, (data) => {
             if (data.type === "approval_accepted") {
-              addLog("Credentials approved, resuming diagnosis...", "info");
+              addLog("✅ Credentials approved - Phase 2: Retrieving credentials...", "info");
+              updatePhaseProgress("credential_retrieval", "retrieving_credentials");
+            } else if (data.type === "credential_retrieved") {
+              credentialCount++;
+              const icon = data.success ? "🔑" : "❌";
+              const status = data.success ? "retrieved" : "failed";
+              addLog(
+                `${icon} Credential ${credentialCount}: ${data.reference} - ${status}`,
+                data.success ? "info" : "error",
+              );
+            } else if (data.type === "diagnosis_started") {
+              addLog(`🔧 Starting diagnosis with ${data.credentials_retrieved} credentials...`, "info");
+              updatePhaseProgress("diagnosis", "diagnosing");
             } else if (data.type === "diagnosis_complete") {
-              addLog("Diagnosis complete!", "info");
+              addLog("✅ Diagnosis complete!", "info");
+              updatePhaseProgress("diagnosis_complete", "completed");
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "error") {
-              addLog(`Error: ${data.message}`, "error");
+              addLog(`❌ Error: ${data.message}`, "error");
             } else if (data.text) {
-              addLog("Receiving diagnosis results...", "info");
+              // Show diagnosis output
+              const preview = data.text.replace(/\n/g, " ").substring(0, 80);
+              if (preview.trim() && !preview.match(/^\d{4}-\d{2}-\d{2}/)) {
+                addLog(`📋 ${preview}${data.text.length > 80 ? "..." : ""}`, "info");
+              }
             }
           });
 

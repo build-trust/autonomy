@@ -1,9 +1,12 @@
 """SRE Incident Diagnosis - Main Entry Point
 
 Provides HTTP API for incident diagnosis with human-in-the-loop credential approval.
+Uses a two-phase approach:
+1. Analysis phase: Agent analyzes problem and identifies needed credentials
+2. Diagnosis phase: After approval, new agent runs diagnosis with credentials
 """
 
-from autonomy import Agent, HttpServer, Model, Node, NodeDep, tool
+from autonomy import Agent, HttpServer, Model, Node, NodeDep, Tool
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -12,7 +15,13 @@ import uuid
 import json
 import secrets
 import httpx
+import re
 from datetime import datetime
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("sre-diagnose")
 
 
 # === Request/Response Models ===
@@ -49,9 +58,6 @@ class StatusResponse(BaseModel):
 
 sessions: dict = {}
 
-# Store active agents for resume capability
-active_agents: dict = {}
-
 # HTTP client for calling mock 1Password server
 http_client = httpx.AsyncClient(timeout=30.0)
 
@@ -59,123 +65,100 @@ http_client = httpx.AsyncClient(timeout=30.0)
 MOCK_1PASSWORD_URL = "http://localhost:8080"
 
 
-# === Credential Retrieval Tool ===
+# === Credential Retrieval Function ===
 
-def create_get_credential_tool(session_id: str):
-  """Create a get_credential tool bound to a specific session."""
+async def retrieve_credential(reference: str, session: dict) -> str:
+  """
+  Retrieve a credential from 1Password.
+  Returns the result message and stores credential in session.
+  """
+  # Normalize reference
+  if not reference.startswith("op://"):
+    reference = f"op://{reference}"
 
-  @tool(
-    name="get_credential",
-    description="""Retrieve a credential from 1Password by its reference.
+  try:
+    response = await http_client.get(f"{MOCK_1PASSWORD_URL}/secrets/{reference}")
 
-Reference format: op://vault/item/field
-Examples:
-- op://Infrastructure/prod-db/password
-- op://Infrastructure/aws-cloudwatch/access-key
+    if response.status_code == 200:
+      data = response.json()
+      # Store credential in session (for later use by diagnostic tools)
+      if "credentials" not in session:
+        session["credentials"] = {}
+      session["credentials"][reference] = data["value"]
 
-IMPORTANT: You must have approval before calling this tool.
-The actual credential value is stored securely and NOT returned to you.
-You will only receive confirmation that the credential was retrieved."""
-  )
-  async def get_credential(reference: str) -> str:
-    """
-    Retrieve a credential from 1Password.
+      # Track which credentials have been retrieved
+      if "credentials_retrieved" not in session:
+        session["credentials_retrieved"] = []
+      if reference not in session["credentials_retrieved"]:
+        session["credentials_retrieved"].append(reference)
 
-    The actual credential value is stored securely and NOT returned to the LLM.
-    Only a confirmation message is returned.
-    """
-    session = sessions.get(session_id)
-    if not session:
-      return f"Error: Session {session_id} not found"
+      return f"Successfully retrieved: {reference}"
+    elif response.status_code == 404:
+      return f"Not found: {reference}"
+    else:
+      return f"Error (HTTP {response.status_code}): {reference}"
 
-    # Check if approval was granted
-    if session.get("status") != "approved" and session.get("phase") != "credentials_approved":
-      return "Error: Credential access not approved. Use ask_user_for_input to request approval first."
-
-    # Normalize reference
-    if not reference.startswith("op://"):
-      reference = f"op://{reference}"
-
-    try:
-      # Call mock 1Password server
-      response = await http_client.get(
-        f"{MOCK_1PASSWORD_URL}/secrets/{reference}"
-      )
-
-      if response.status_code == 200:
-        data = response.json()
-        # Store credential in session (for later use by diagnostic tools)
-        # NEVER return actual credential value to LLM
-        if "credentials" not in session:
-          session["credentials"] = {}
-        session["credentials"][reference] = data["value"]
-
-        # Track which credentials have been retrieved
-        if "credentials_retrieved" not in session:
-          session["credentials_retrieved"] = []
-        if reference not in session["credentials_retrieved"]:
-          session["credentials_retrieved"].append(reference)
-
-        # Return only confirmation (NOT the actual credential!)
-        return f"✓ Successfully retrieved credential: {reference}"
-
-      elif response.status_code == 404:
-        return f"Error: Credential not found: {reference}"
-      else:
-        return f"Error retrieving credential: HTTP {response.status_code}"
-
-    except httpx.RequestError as e:
-      return f"Error connecting to credential store: {str(e)}"
-
-  return get_credential
+  except httpx.RequestError as e:
+    return f"Connection error: {str(e)}"
 
 
-# === Orchestrator Agent Instructions ===
+# === Agent Instructions ===
 
-ORCHESTRATOR_INSTRUCTIONS = """You are an expert SRE (Site Reliability Engineer) incident diagnosis agent.
+ANALYSIS_INSTRUCTIONS = """You are an expert SRE (Site Reliability Engineer) analyzing an infrastructure incident.
 
-Your role is to analyze infrastructure problems and provide a structured diagnosis.
+Your task is to analyze the problem and identify what credentials would be needed to diagnose it.
 
-IMPORTANT WORKFLOW:
-1. First, analyze the problem and identify what credentials/access you would need
-2. Use the ask_user_for_input tool to request approval before accessing any systems
-3. Wait for approval before proceeding with deeper diagnosis
-4. After approval, use the get_credential tool to retrieve each credential you need
-5. Proceed with diagnosis using the retrieved credentials
+AVAILABLE CREDENTIALS (you can request any of these):
+- op://Infrastructure/prod-db/password - Production database password
+- op://Infrastructure/prod-db/username - Production database username
+- op://Infrastructure/prod-db/host - Production database host
+- op://Infrastructure/staging-db/password - Staging database password
+- op://Infrastructure/staging-db/username - Staging database username
+- op://Infrastructure/aws-cloudwatch/access-key - CloudWatch access key
+- op://Infrastructure/aws-cloudwatch/secret-key - CloudWatch secret key
+- op://Infrastructure/aws-ec2/access-key - EC2 access key
+- op://Infrastructure/aws-ec2/secret-key - EC2 secret key
+- op://Infrastructure/k8s-prod/token - Kubernetes production token
+- op://Infrastructure/datadog/api-key - Datadog API key
+- op://Infrastructure/grafana/admin-password - Grafana admin password
+- op://Services/payment-api/api-key - Payment API key
+- op://Services/email-service/smtp-password - Email service SMTP password
 
-When given a problem description:
-1. Identify the type of incident (database, network, application, cloud infrastructure, etc.)
-2. List potential root causes in order of likelihood
-3. Identify what credentials/access would be needed to investigate further
-4. Use ask_user_for_input to request approval for the credentials you need
-
-Format your initial analysis as follows:
+Provide your analysis in this format:
 
 ## Incident Classification
-[Type of incident and severity assessment]
+[Type and severity assessment]
 
 ## Potential Root Causes
-1. [Most likely cause] - [Brief explanation]
-2. [Second likely cause] - [Brief explanation]
-3. [Third likely cause] - [Brief explanation]
+1. [Most likely] - [Brief explanation]
+2. [Second likely] - [Brief explanation]
+3. [Third likely] - [Brief explanation]
 
-## Required Access for Investigation
-- [Credential 1]: [Why it's needed]
-- [Credential 2]: [Why it's needed]
+## Required Credentials
+List the specific credentials needed from the available list above:
+- op://... : [why needed]
+- op://... : [why needed]
 
-After your analysis, you MUST use ask_user_for_input to request approval with a message like:
-"To proceed with diagnosis, I need access to the following credentials:
-- op://Infrastructure/prod-db/password (read-only database access)
-- op://Infrastructure/aws-cloudwatch/access-key (log access)
+## Recommended Investigation Steps
+1. [First step with specific credential]
+2. [Second step]
+3. [Third step]
 
-Reply 'approve' to grant access, or 'deny' to cancel."
+Be concise and specific. Only request credentials that are actually needed."""
 
-After receiving approval:
-1. Use get_credential for each credential you need
-2. You will receive confirmation that credentials were retrieved (not the actual values)
-3. Continue with your diagnosis knowing the credentials are available
 
-Be concise but thorough. Focus on actionable insights."""
+DIAGNOSIS_INSTRUCTIONS = """You are an expert SRE (Site Reliability Engineer) completing a diagnosis.
+
+You have been given access to the requested credentials (stored securely, not visible to you).
+Based on the initial analysis, provide your final diagnosis and recommendations.
+
+Focus on:
+1. Most likely root cause based on the incident type
+2. Immediate remediation steps (what to do right now)
+3. Long-term prevention measures (how to prevent recurrence)
+4. Monitoring improvements (what alerts or metrics to add)
+
+Be specific and actionable. Provide commands or configurations where applicable."""
 
 
 # === FastAPI App ===
@@ -183,7 +166,7 @@ Be concise but thorough. Focus on actionable insights."""
 app = FastAPI(
   title="SRE Incident Diagnosis",
   description="Diagnose infrastructure problems with autonomous agents",
-  version="0.2.0"
+  version="0.3.0"
 )
 
 
@@ -196,7 +179,6 @@ async def index():
 @app.get("/health")
 async def health():
   """Health check endpoint."""
-  # Also check mock 1Password server health
   onepass_status = "unknown"
   try:
     response = await http_client.get(f"{MOCK_1PASSWORD_URL}/health")
@@ -211,6 +193,7 @@ async def health():
     content={
       "status": "healthy",
       "service": "sre-diagnose",
+      "version": "0.3.0",
       "dependencies": {
         "mock-1password": onepass_status
       }
@@ -222,93 +205,76 @@ async def health():
 def extract_text_from_snippet(snippet):
   """Extract text content from a conversation snippet."""
   text = ""
-  phase = None
-
-  # Handle the snippet object
   if hasattr(snippet, "messages"):
     for msg in snippet.messages:
-      if hasattr(msg, "content") and hasattr(msg.content, "text"):
-        text += msg.content.text
-      if hasattr(msg, "phase"):
-        # Get the string value of the phase enum
-        if hasattr(msg.phase, "value"):
-          phase = msg.phase.value
-        else:
-          phase = str(msg.phase)
-
-  return text, phase
+      if hasattr(msg, "content"):
+        if hasattr(msg.content, "text"):
+          text += msg.content.text
+        elif isinstance(msg.content, str):
+          text += msg.content
+  return text
 
 
-def serialize_snippet(snippet):
-  """Serialize a snippet to a simple JSON-friendly dict."""
-  text, phase = extract_text_from_snippet(snippet)
-
-  result = {"text": text}
-  if phase:
-    result["phase"] = phase
-
-  return result
+def extract_credential_refs(text: str) -> list:
+  """Extract op:// credential references from text."""
+  pattern = r'op://[^\s\)\]\,\:\*]+(?:/[^\s\)\]\,\:\*]+)*'
+  matches = re.findall(pattern, text)
+  # Clean up any trailing punctuation or markdown formatting
+  cleaned = []
+  for m in matches:
+    m = m.rstrip('.,;:*')
+    if m not in cleaned:
+      cleaned.append(m)
+  return cleaned
 
 
 @app.post("/diagnose")
 async def diagnose(request: DiagnoseRequest, node: NodeDep):
-  """Start a new diagnostic session with streaming response."""
+  """Start a new diagnostic session - Phase 1: Analysis."""
   session_id = str(uuid.uuid4())[:8]
-  agent_name = f"orchestrator_{session_id}_{secrets.token_hex(4)}"
+  agent_name = f"analyzer_{session_id}_{secrets.token_hex(4)}"
 
   sessions[session_id] = {
     "id": session_id,
     "status": "analyzing",
-    "phase": "initial_analysis",
+    "phase": "analysis",
     "problem": request.problem,
     "environment": request.environment,
     "context": request.context or {},
     "created_at": datetime.utcnow().isoformat(),
-    "findings": [],
-    "approval_pending": False,
-    "approval_prompt": None,
     "analysis": "",
+    "requested_credentials": [],
+    "credentials": {},
+    "credentials_retrieved": [],
     "agent_name": agent_name,
-    "node": node,
-    "credentials": {},  # Store retrieved credentials here (never exposed to LLM)
-    "credentials_retrieved": [],  # Track which credentials have been retrieved
   }
 
-  # Create the session-bound credential tool
-  credential_tool = create_get_credential_tool(session_id)
-
-  # Create the orchestrator agent with human-in-the-loop enabled and credential tool
+  # Create analysis agent (no tools needed, just analysis)
   agent = await Agent.start(
     node=node,
     name=agent_name,
-    instructions=ORCHESTRATOR_INSTRUCTIONS,
-    model=Model("claude-sonnet-4-v1"),
-    enable_ask_for_user_input=True,
-    tools=[credential_tool],
+    instructions=ANALYSIS_INSTRUCTIONS,
+    model=Model("claude-sonnet-4-5"),
   )
 
-  # Store agent reference for later resume
-  active_agents[session_id] = agent
-
-  # Build the diagnosis message
+  # Build the analysis message
   context_str = ""
   if request.context:
     context_str = "\n".join(f"- {k}: {v}" for k, v in request.context.items())
     context_str = f"\n\nAdditional Context:\n{context_str}"
 
-  message = f"""Analyze this infrastructure incident and request approval for any credentials you need:
+  message = f"""Analyze this infrastructure incident:
 
 **Problem**: {request.problem}
 **Environment**: {request.environment}{context_str}
 
-After your initial analysis, use ask_user_for_input to request approval for the credentials needed."""
+Provide your analysis including the specific credentials needed for investigation."""
 
   async def stream_response():
     session = sessions[session_id]
     full_analysis = ""
 
     try:
-      # Send initial session info
       yield json.dumps({
         "type": "session_start",
         "session_id": session_id,
@@ -318,52 +284,33 @@ After your initial analysis, use ask_user_for_input to request approval for the 
       # Stream the agent's analysis
       async for response in agent.send_stream(message, timeout=120):
         snippet = response.snippet
-
-        # Extract text and phase from snippet
-        text, phase = extract_text_from_snippet(snippet)
+        text = extract_text_from_snippet(snippet)
 
         if text:
           full_analysis += text
           yield json.dumps({"type": "text", "text": text}) + "\n"
 
-        # Check for waiting_for_input phase
-        if phase == "waiting_for_input":
-          session["status"] = "waiting_for_approval"
-          session["phase"] = "waiting_for_approval"
-          session["approval_pending"] = True
-          session["approval_prompt"] = text or full_analysis
-          session["analysis"] = full_analysis
-
-          yield json.dumps({
-            "type": "approval_required",
-            "session_id": session_id,
-            "status": "waiting_for_approval",
-            "phase": "waiting_for_approval",
-            "prompt": session["approval_prompt"]
-          }) + "\n"
-          return  # Stop streaming, wait for approval
-
-      # If we get here without requesting approval, analysis is complete
+      # Store analysis
       session["analysis"] = full_analysis
-      session["status"] = "analyzed"
-      session["phase"] = "analysis_complete"
+
+      # Extract requested credentials from analysis
+      requested_creds = extract_credential_refs(full_analysis)
+      session["requested_credentials"] = requested_creds
+
+      # Update status
+      session["status"] = "waiting_for_approval"
+      session["phase"] = "awaiting_approval"
 
       yield json.dumps({
-        "type": "session_complete",
+        "type": "approval_required",
         "session_id": session_id,
-        "status": "analyzed",
-        "phase": "analysis_complete"
+        "status": "waiting_for_approval",
+        "requested_credentials": requested_creds,
+        "message": f"Analysis complete. {len(requested_creds)} credentials requested. Approve to continue."
       }) + "\n"
 
-      # Clean up if analysis completes without needing approval
-      if session_id in active_agents:
-        del active_agents[session_id]
-      try:
-        await Agent.stop(node, agent_name)
-      except Exception:
-        pass
-
     except Exception as e:
+      logger.error(f"Error in analysis: {str(e)}")
       session["status"] = "error"
       session["phase"] = "analysis_failed"
       session["message"] = str(e)
@@ -373,9 +320,8 @@ After your initial analysis, use ask_user_for_input to request approval for the 
         "message": str(e)
       }) + "\n"
 
-      # Clean up on error
-      if session_id in active_agents:
-        del active_agents[session_id]
+    finally:
+      # Clean up analysis agent
       try:
         await Agent.stop(node, agent_name)
       except Exception:
@@ -385,132 +331,136 @@ After your initial analysis, use ask_user_for_input to request approval for the 
 
 
 @app.post("/approve/{session_id}")
-async def approve(session_id: str, request: ApproveRequest):
-  """Approve or deny credential access and resume the agent."""
+async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
+  """Approve or deny credential access - Phase 2: Diagnosis."""
   if session_id not in sessions:
-    return JSONResponse(
-      content={"error": "Session not found"},
-      status_code=404
-    )
+    return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
   session = sessions[session_id]
 
-  if not session.get("approval_pending"):
+  if session.get("status") != "waiting_for_approval":
     return JSONResponse(
-      content={"error": "No approval pending for this session"},
+      content={"error": f"Session not waiting for approval (status: {session.get('status')})"},
       status_code=400
     )
 
-  if session_id not in active_agents:
-    return JSONResponse(
-      content={"error": "Agent no longer active for this session"},
-      status_code=400
-    )
-
-  agent = active_agents[session_id]
-
-  if request.approved:
-    session["status"] = "approved"
-    session["phase"] = "credentials_approved"
-    session["approval_pending"] = False
-
-    # Resume the agent by sending the approval response
-    async def stream_resume():
-      try:
-        yield json.dumps({
-          "type": "approval_accepted",
-          "session_id": session_id,
-          "status": "approved"
-        }) + "\n"
-
-        # Send approval message to resume the agent
-        # The agent can now use get_credential tool
-        resume_message = request.message or "Approved. You may now retrieve the credentials you requested using the get_credential tool."
-        async for response in agent.send_stream(resume_message, timeout=120):
-          snippet = response.snippet
-          text, phase = extract_text_from_snippet(snippet)
-
-          if text:
-            session["analysis"] += text
-            yield json.dumps({"type": "text", "text": text}) + "\n"
-
-          # Check for tool calls (credential retrieval)
-          if hasattr(snippet, "messages"):
-            for msg in snippet.messages:
-              if hasattr(msg, "tool_calls"):
-                for tool_call in msg.tool_calls:
-                  yield json.dumps({
-                    "type": "tool_call",
-                    "tool": getattr(tool_call, "name", "unknown"),
-                  }) + "\n"
-
-        session["status"] = "completed"
-        session["phase"] = "diagnosis_complete"
-
-        yield json.dumps({
-          "type": "diagnosis_complete",
-          "session_id": session_id,
-          "status": "completed",
-          "phase": "diagnosis_complete",
-          "credentials_retrieved": session.get("credentials_retrieved", [])
-        }) + "\n"
-
-      except Exception as e:
-        session["status"] = "error"
-        session["phase"] = "diagnosis_failed"
-        session["message"] = str(e)
-        yield json.dumps({
-          "type": "error",
-          "session_id": session_id,
-          "message": str(e)
-        }) + "\n"
-
-      finally:
-        # Clean up agent
-        if session_id in active_agents:
-          del active_agents[session_id]
-        try:
-          node = session.get("node")
-          if node:
-            await Agent.stop(node, session["agent_name"])
-        except Exception:
-          pass
-
-    return StreamingResponse(stream_resume(), media_type="application/x-ndjson")
-
-  else:
-    # Denial - cancel the diagnosis
+  if not request.approved:
     session["status"] = "denied"
     session["phase"] = "credentials_denied"
-    session["approval_pending"] = False
+    return JSONResponse(content={
+      "session_id": session_id,
+      "status": "denied",
+      "message": "Credential access denied, diagnosis cancelled"
+    })
 
-    # Clean up agent
-    if session_id in active_agents:
-      del active_agents[session_id]
+  # Approved - retrieve credentials and start diagnosis
+  session["status"] = "retrieving_credentials"
+  session["phase"] = "credential_retrieval"
+
+  diagnosis_agent_name = f"diagnoser_{session_id}_{secrets.token_hex(4)}"
+
+  async def stream_diagnosis():
     try:
-      node = session.get("node")
-      if node:
-        await Agent.stop(node, session["agent_name"])
-    except Exception:
-      pass
-
-    return JSONResponse(
-      content={
+      yield json.dumps({
+        "type": "approval_accepted",
         "session_id": session_id,
-        "status": "denied",
-        "message": "Credential access denied, diagnosis cancelled"
-      }
-    )
+        "status": "approved"
+      }) + "\n"
+
+      # Retrieve all requested credentials
+      requested = session.get("requested_credentials", [])
+      for ref in requested:
+        result = await retrieve_credential(ref, session)
+        success = "Successfully" in result
+        yield json.dumps({
+          "type": "credential_retrieved",
+          "reference": ref,
+          "success": success
+        }) + "\n"
+        logger.info(f"Credential retrieval: {result}")
+
+      # Update status
+      session["status"] = "diagnosing"
+      session["phase"] = "diagnosis"
+
+      yield json.dumps({
+        "type": "diagnosis_started",
+        "session_id": session_id,
+        "credentials_retrieved": len(session.get("credentials_retrieved", []))
+      }) + "\n"
+
+      # Create diagnosis agent
+      agent = await Agent.start(
+        node=node,
+        name=diagnosis_agent_name,
+        instructions=DIAGNOSIS_INSTRUCTIONS,
+        model=Model("claude-sonnet-4-5"),
+      )
+
+      # Build diagnosis prompt with context from analysis
+      creds_summary = ", ".join(session.get("credentials_retrieved", [])) or "none"
+      diagnosis_message = f"""Complete the diagnosis for this incident.
+
+**Original Problem**: {session.get('problem')}
+**Environment**: {session.get('environment')}
+
+**Initial Analysis**:
+{session.get('analysis', 'No analysis available')}
+
+**Credentials Retrieved**: {creds_summary}
+
+Based on this analysis and with access to the credentials, provide your final diagnosis and remediation recommendations."""
+
+      # Stream diagnosis
+      diagnosis_text = ""
+      async for response in agent.send_stream(diagnosis_message, timeout=120):
+        snippet = response.snippet
+        text = extract_text_from_snippet(snippet)
+
+        if text:
+          diagnosis_text += text
+          yield json.dumps({"type": "text", "text": text}) + "\n"
+
+      # Update session with diagnosis
+      session["diagnosis"] = diagnosis_text
+      session["status"] = "completed"
+      session["phase"] = "diagnosis_complete"
+
+      yield json.dumps({
+        "type": "diagnosis_complete",
+        "session_id": session_id,
+        "status": "completed",
+        "credentials_retrieved": session.get("credentials_retrieved", [])
+      }) + "\n"
+
+    except Exception as e:
+      logger.error(f"Error in diagnosis: {str(e)}")
+      import traceback
+      logger.error(f"Traceback: {traceback.format_exc()}")
+      session["status"] = "error"
+      session["phase"] = "diagnosis_failed"
+      session["message"] = str(e)
+      yield json.dumps({
+        "type": "error",
+        "session_id": session_id,
+        "message": str(e)
+      }) + "\n"
+
+    finally:
+      # Clean up diagnosis agent
+      try:
+        await Agent.stop(node, diagnosis_agent_name)
+      except Exception:
+        pass
+
+  return StreamingResponse(stream_diagnosis(), media_type="application/x-ndjson")
 
 
 @app.get("/status/{session_id}", response_model=StatusResponse)
 async def status(session_id: str):
   """Get the current status of a diagnostic session."""
   if session_id not in sessions:
-    return JSONResponse(
-      content={"error": "Session not found"},
-      status_code=404
-    )
+    return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
   session = sessions[session_id]
   return StatusResponse(
@@ -520,7 +470,7 @@ async def status(session_id: str):
     created_at=session["created_at"],
     message=session.get("message"),
     analysis=session.get("analysis"),
-    approval_prompt=session.get("approval_prompt"),
+    approval_prompt=f"Requested credentials: {session.get('requested_credentials', [])}",
     credentials_retrieved=session.get("credentials_retrieved", [])
   )
 
@@ -536,7 +486,6 @@ async def list_sessions():
         "phase": s["phase"],
         "problem": s["problem"][:50] + "..." if len(s["problem"]) > 50 else s["problem"],
         "created_at": s["created_at"],
-        "approval_pending": s.get("approval_pending", False),
         "credentials_retrieved": len(s.get("credentials_retrieved", []))
       }
       for s in sessions.values()
@@ -546,54 +495,42 @@ async def list_sessions():
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
-  """Delete a diagnostic session and clean up resources."""
+  """Delete a diagnostic session."""
   if session_id not in sessions:
-    return JSONResponse(
-      content={"error": "Session not found"},
-      status_code=404
-    )
-
-  session = sessions[session_id]
-
-  # Clean up agent if active
-  if session_id in active_agents:
-    del active_agents[session_id]
-    try:
-      node = session.get("node")
-      if node:
-        await Agent.stop(node, session["agent_name"])
-    except Exception:
-      pass
+    return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
   del sessions[session_id]
-
   return {"status": "deleted", "session_id": session_id}
 
 
-# === Debug Endpoints (for credential security verification) ===
+# === Debug Endpoints ===
 
 @app.get("/debug/sessions/{session_id}/credentials")
 async def debug_credentials(session_id: str):
-  """
-  Debug endpoint to verify credentials are stored in session.
-  ONLY shows that credentials exist, NOT the actual values.
-  In production, this endpoint should be protected or removed.
-  """
+  """Debug endpoint to verify credentials are stored (not actual values)."""
   if session_id not in sessions:
-    return JSONResponse(
-      content={"error": "Session not found"},
-      status_code=404
-    )
+    return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
   session = sessions[session_id]
   credentials = session.get("credentials", {})
 
-  # Return only metadata, never actual values
   return {
     "session_id": session_id,
     "credentials_count": len(credentials),
     "credentials_references": list(credentials.keys()),
     "note": "Actual credential values are stored securely and never exposed via API"
+  }
+
+
+@app.get("/debug/test-credential/{reference:path}")
+async def test_credential(reference: str):
+  """Debug endpoint to test credential retrieval directly."""
+  test_session = {"credentials": {}, "credentials_retrieved": []}
+  result = await retrieve_credential(reference, test_session)
+  return {
+    "reference": reference,
+    "result": result,
+    "success": "Successfully" in result
   }
 
 
