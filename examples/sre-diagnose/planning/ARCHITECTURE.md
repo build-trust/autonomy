@@ -409,6 +409,203 @@ pods:
 2. Analysis agent cannot trigger credential retrieval
 3. Session-based access (manual cleanup for now)
 
+## Agent Visualization (Phase 9)
+
+Real-time visualization of all agents using D3.js force-directed graph, similar to the code-review/011 example.
+
+### Graph State Tracking
+
+```python
+graph_state = {
+    "nodes": [],      # All agent nodes
+    "edges": [],      # Parent-child relationships
+    "reports": {},    # Agent reports/findings
+    "transcripts": {},# Agent conversation logs
+    "activity": [],   # Recent activity feed
+    "status": "idle", # idle, running, completed
+}
+```
+
+### Node Types and Colors
+
+| Type | Color | Description |
+|------|-------|-------------|
+| `root` | Purple (#a78bfa) | Investigation root |
+| `region` | Cyan (#22d3ee) | AWS region being investigated |
+| `service` | Blue (#60a5fa) | Service being diagnosed |
+| `runner` | Teal (#06b6d4) | Runner pod executing workers |
+| `diagnostic-agent` | Green (#4ade80) | Primary diagnostic agent |
+| `sub-agent` | Gold (#fbbf24) | Sub-agent for deep investigation |
+| `synthesis` | Pink (#ec4899) | Synthesis agent |
+
+### Status Colors
+
+| Status | Color | Description |
+|--------|-------|-------------|
+| `pending` | Gray (#666) | Not yet started |
+| `running` | Yellow (#facc15) | Currently executing (animated pulse) |
+| `completed` | Green (#4ade80) | Successfully finished |
+| `error` | Red (#f87171) | Failed with error |
+
+### Visualization API Endpoints
+
+```
+GET  /graph              - Current graph state (nodes, edges, status)
+GET  /graph/report/{id}  - Report and transcript for a specific node
+GET  /activity           - Recent activity feed (last 50 entries)
+POST /graph/reset        - Reset graph state for new session
+```
+
+### Dashboard Layout
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  🔧 SRE Incident Diagnosis                              [Stats: 156/200]│
+├─────────────────────────────────────────┬───────────────────────────────┤
+│                                         │  Activity Feed               │
+│      Force-Directed Graph               │  ─────────────────            │
+│      Visualization                      │  [Runner 2] cache-agent done  │
+│                                         │  [Runner 1] Starting db-agent │
+│      (nodes, edges, animation)          │  [Runner 3] network-agent...  │
+│                                         │                               │
+├─────────────────────────────────────────┴───────────────────────────────┤
+│  Node Details (click to select)                                         │
+│  Selected: us-east-1/api-gateway/database-agent | Status: ✓ Completed   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Agent Swarm Architecture (Phase 10)
+
+Distributed diagnosis using runner pods to support 100s of parallel agents.
+
+### Swarm Infrastructure
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              AUTONOMY ZONE                                 │
+│                                                                            │
+│  ┌─────────────────────────────────┐                                       │
+│  │         MAIN POD (public)       │                                       │
+│  │                                 │                                       │
+│  │  ┌───────────────────────────┐  │                                       │
+│  │  │     main container        │  │                                       │
+│  │  │  • FastAPI orchestration  │  │                                       │
+│  │  │  • Graph state tracking   │  │                                       │
+│  │  │  • Visualization APIs     │  │                                       │
+│  │  │  • Synthesis agent        │  │                                       │
+│  │  └───────────────────────────┘  │                                       │
+│  │                                 │                                       │
+│  │  ┌───────────────────────────┐  │                                       │
+│  │  │   onepass container       │  │                                       │
+│  │  │   (Mock 1Password)        │  │                                       │
+│  │  └───────────────────────────┘  │                                       │
+│  └─────────────────────────────────┘                                       │
+│                                                                            │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    RUNNER PODS (clones: 5)                          │   │
+│  │                                                                     │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │   │
+│  │  │ Runner 1 │  │ Runner 2 │  │ Runner 3 │  │ Runner 4 │  │Runner 5│ │   │
+│  │  │          │  │          │  │          │  │          │  │        │ │   │
+│  │  │ Workers  │  │ Workers  │  │ Workers  │  │ Workers  │  │Workers │ │   │
+│  │  │ execute  │  │ execute  │  │ execute  │  │ execute  │  │execute │ │   │
+│  │  │ agents   │  │ agents   │  │ agents   │  │ agents   │  │agents  │ │   │
+│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └────────┘ │   │
+│  │                                                                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### DiagnosticWorker
+
+Workers run on runner pods and spawn multiple diagnostic agents:
+
+```python
+class DiagnosticWorker:
+    async def run_service_diagnosis(self, service_info: dict) -> dict:
+        """Run 5 diagnostic agents for a single service."""
+        agent_types = ["database", "cache", "network", "resources", "logs"]
+        
+        for agent_type in agent_types:
+            agent = await Agent.start(
+                node=self.node,
+                instructions=f"Diagnose {agent_type} issues...",
+                model=Model("nova-micro-v1", throttle=True),
+            )
+            # Run diagnosis and collect results
+            ...
+        
+        return results
+```
+
+### Demo Scenario: "Production Latency Spike"
+
+**Input:** "Production API experiencing latency spikes across all regions"
+
+**Agent Hierarchy:**
+
+```
+Investigation Root
+├── Runner 1 (handling us-east-1)
+├── Runner 2 (handling us-west-2)
+├── Runner 3 (handling eu-west-1)
+├── Runner 4 (overflow)
+├── Runner 5 (overflow)
+│
+├── us-east-1 (Region)
+│   ├── api-gateway
+│   │   ├── database-agent
+│   │   ├── cache-agent
+│   │   ├── network-agent
+│   │   ├── resources-agent
+│   │   └── logs-agent
+│   ├── user-service (5 agents)
+│   ├── order-service (5 agents)
+│   └── ... (10 services × 5 agents = 50 agents)
+│
+├── us-west-2 (Region) - 50 agents
+├── eu-west-1 (Region) - 50 agents
+│
+└── Synthesis Agent
+```
+
+**Scale Math:**
+- 3 regions × 10 services = 30 investigation targets
+- 5 diagnostic agents per service = 150 base agents
+- Sub-agents for critical findings = ~50 more
+- **Total: 200+ agents** visualized in the graph
+
+### Distributed Flow
+
+```python
+async def run_distributed_diagnosis(node, problem, session_id, root_id):
+    # Discover runner pods
+    runners = await Zone.nodes(node, filter="runner")
+    
+    # Create investigation targets
+    targets = []
+    for region in ["us-east-1", "us-west-2", "eu-west-1"]:
+        for service in services:
+            targets.append({"service": service, "region": region})
+    
+    # Distribute targets across runners
+    target_batches = split_list_into_n_parts(targets, len(runners))
+    
+    # Start workers on each runner
+    for runner, batch in zip(runners, target_batches):
+        await runner.start_worker("diagnostic", DiagnosticWorker())
+        mailbox = await node.send("diagnostic", request, node=runner.name)
+        # Process progress updates and update graph state
+    
+    # Synthesize results
+    ...
+```
+
+---
+
 ## Implementation Status
 
 ### Completed
@@ -419,8 +616,11 @@ pods:
 - [x] **Phase 5**: Real 1Password Integration - SDK support for production use
 - [x] **Cursor Hooks**: IDE integration with session-start, pre-tool-call, post-tool-call
 
+### Next Phases
+- [ ] **Phase 9**: Agent Visualization - D3.js force-directed graph dashboard
+- [ ] **Phase 10**: Agent Swarm Scaling - Runner pods, 200+ parallel agents
+
 ### Future Enhancements
-- [ ] **Distributed Processing**: Runner pods for true parallel execution
 - [ ] **Real Diagnostic Tools**: Actual database, AWS, Kubernetes integrations
 - [ ] **Persistent Sessions**: Database-backed session storage
 

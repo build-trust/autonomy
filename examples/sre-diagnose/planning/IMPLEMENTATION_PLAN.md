@@ -757,46 +757,777 @@ async def retrieve_credential(reference: str, session: dict) -> tuple[bool, str]
 
 **Goal**: Replace mock diagnostic tools with real integrations
 
-### Task 8.1: Error Handling & Timeouts
+---
 
-- Add comprehensive error handling
-- Implement retry logic
-- Add timeouts throughout
-- Create user-friendly error messages
+## Phase 9: Agent Visualization (D3.js Force-Directed Graph)
 
-**Commit:** `git commit -m "sre-diagnose: add error handling and timeouts"`
+**Goal**: Add real-time visualization of all agents in a session, similar to code-review/011 example
+
+### Task 9.1: Add Graph State Tracking
+
+Add global graph state to `main.py`:
+
+```python
+# Graph state for visualization
+graph_state = {
+    "nodes": [],      # All agent nodes
+    "edges": [],      # Parent-child relationships
+    "reports": {},    # Agent reports/findings
+    "transcripts": {},# Agent conversation logs
+    "activity": [],   # Recent activity feed
+    "status": "idle", # idle, running, completed
+}
+graph_lock = asyncio.Lock()
+MAX_ACTIVITY_ITEMS = 100
+
+async def add_node(node_id: str, name: str, node_type: str, parent_id: str = None, meta: dict = None):
+    """Add a node to the visualization graph."""
+    async with graph_lock:
+        node = {
+            "id": node_id,
+            "name": name,
+            "type": node_type,  # root, region, service, runner, diagnostic-agent, sub-agent, synthesis
+            "status": "pending",
+            "parent": parent_id,
+            "meta": meta or {},
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        graph_state["nodes"].append(node)
+        if parent_id:
+            graph_state["edges"].append({"source": parent_id, "target": node_id})
+        return node
+
+async def add_edge(source_id: str, target_id: str):
+    """Add an edge between two nodes."""
+    async with graph_lock:
+        graph_state["edges"].append({"source": source_id, "target": target_id})
+
+async def update_node_status(node_id: str, status: str, report: dict = None):
+    """Update a node's status and optionally add a report."""
+    async with graph_lock:
+        for node in graph_state["nodes"]:
+            if node["id"] == node_id:
+                node["status"] = status
+                node["updated_at"] = datetime.utcnow().isoformat()
+                break
+        if report:
+            graph_state["reports"][node_id] = report
+
+async def add_transcript_entry(node_id: str, role: str, content: str, entry_type: str = "message"):
+    """Add an entry to a node's transcript and activity feed."""
+    async with graph_lock:
+        if node_id not in graph_state["transcripts"]:
+            graph_state["transcripts"][node_id] = []
+        
+        entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "role": role,
+            "content": content,
+            "type": entry_type,
+        }
+        graph_state["transcripts"][node_id].append(entry)
+        
+        # Add to activity feed
+        node_name = node_id
+        for node in graph_state["nodes"]:
+            if node["id"] == node_id:
+                node_name = node.get("name", node_id)
+                break
+        
+        activity_entry = {
+            "timestamp": entry["timestamp"],
+            "node_id": node_id,
+            "node_name": node_name,
+            "role": role,
+            "content": content[:200] + ("..." if len(content) > 200 else ""),
+            "type": entry_type,
+        }
+        graph_state["activity"].insert(0, activity_entry)
+        
+        if len(graph_state["activity"]) > MAX_ACTIVITY_ITEMS:
+            graph_state["activity"] = graph_state["activity"][:MAX_ACTIVITY_ITEMS]
+
+async def reset_graph():
+    """Reset the graph state for a new session."""
+    async with graph_lock:
+        graph_state["nodes"] = []
+        graph_state["edges"] = []
+        graph_state["reports"] = {}
+        graph_state["transcripts"] = {}
+        graph_state["activity"] = []
+        graph_state["status"] = "idle"
+```
+
+**Commit:** `git commit -m "sre-diagnose: add graph state tracking for visualization"`
 
 ---
 
-### Task 6.2: Streaming Updates
+### Task 9.2: Add Visualization API Endpoints
 
-- Implement WebSocket or SSE for real-time updates
-- Stream diagnostic progress
-- Show agent activity
+Add endpoints to serve graph data:
 
-**Commit:** `git commit -m "sre-diagnose: implement streaming updates"`
+```python
+@app.get("/graph")
+async def get_graph():
+    """Return current graph state for visualization."""
+    async with graph_lock:
+        return JSONResponse(content={
+            "nodes": graph_state["nodes"],
+            "edges": graph_state["edges"],
+            "status": graph_state["status"],
+        })
+
+@app.get("/graph/report/{node_id}")
+async def get_node_report(node_id: str):
+    """Return report and transcript for a specific node."""
+    async with graph_lock:
+        return JSONResponse(content={
+            "report": graph_state["reports"].get(node_id),
+            "transcript": graph_state["transcripts"].get(node_id, []),
+        })
+
+@app.get("/activity")
+async def get_activity():
+    """Return recent activity feed."""
+    async with graph_lock:
+        return JSONResponse(content=graph_state["activity"][:50])
+
+@app.post("/graph/reset")
+async def reset_graph_endpoint():
+    """Reset the graph state."""
+    await reset_graph()
+    return JSONResponse(content={"status": "reset"})
+```
+
+**Commit:** `git commit -m "sre-diagnose: add visualization API endpoints"`
 
 ---
 
-### Task 6.3: Status Dashboard
+### Task 9.3: Add D3.js Force-Directed Graph to Dashboard
 
-- Enhance index.html
-- Show active diagnoses
-- Display agent activity
-- Add audit log viewer
+Update `index.html` with D3.js visualization:
 
-**Commit:** `git commit -m "sre-diagnose: add status dashboard"`
+**Key Components:**
+
+1. **Graph Container** - Full-width SVG with zoom/pan
+2. **Node Types and Colors:**
+   - `root` (purple #a78bfa) - Investigation root
+   - `region` (cyan #22d3ee) - AWS region
+   - `service` (blue #60a5fa) - Service being investigated
+   - `runner` (teal #06b6d4) - Runner pod
+   - `diagnostic-agent` (green #4ade80) - Primary diagnostic agent
+   - `sub-agent` (gold #fbbf24) - Sub-agent for deep investigation
+   - `synthesis` (pink #ec4899) - Synthesis agent
+
+3. **Status Colors:**
+   - `pending` (gray #666)
+   - `running` (yellow #facc15, animated pulse)
+   - `completed` (green #4ade80)
+   - `error` (red #f87171)
+
+4. **Features:**
+   - Force-directed layout with collision detection
+   - Auto-zoom to fit all nodes
+   - Click nodes to see reports/transcripts
+   - Activity feed showing real-time agent progress
+   - Stats panel (total agents, running, completed)
+
+5. **Split-View Layout:**
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  🔧 SRE Incident Diagnosis                              [Stats: 156/200]│
+├─────────────────────────────────────────┬───────────────────────────────┤
+│                                         │  Activity Feed               │
+│      Force-Directed Graph               │  ─────────────────            │
+│      Visualization                      │  [Runner 2] cache-agent done  │
+│                                         │  [Runner 1] Starting db-agent │
+│      (nodes, edges, animation)          │  [Runner 3] network-agent...  │
+│                                         │                               │
+├─────────────────────────────────────────┴───────────────────────────────┤
+│  Node Details (click to select)                                         │
+│  Selected: us-east-1/api-gateway/database-agent | Status: ✓ Completed   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Commit:** `git commit -m "sre-diagnose: add D3.js force-directed graph visualization"`
 
 ---
 
-### Task 6.4: Documentation
+### Task 9.4: Integrate Graph Updates with Existing Diagnosis Flow
 
-- Complete README.md
-- Add architecture diagrams
-- Write troubleshooting guide
-- Document all APIs
+Update the diagnosis flow to emit graph events:
 
-**Commit:** `git commit -m "sre-diagnose: complete documentation"`
+```python
+async def diagnose(request: DiagnoseRequest, node: NodeDep):
+    # Create root node for visualization
+    session_id = secrets.token_hex(8)
+    root_id = f"investigation-{session_id}"
+    await add_node(root_id, "Incident Investigation", "root")
+    await update_node_status(root_id, "running")
+    graph_state["status"] = "running"
+    
+    # ... existing analysis code ...
+    
+    # Create analysis agent node
+    analysis_id = f"analysis-{session_id}"
+    await add_node(analysis_id, "Analysis Agent", "diagnostic-agent", root_id)
+    await update_node_status(analysis_id, "running")
+    await add_transcript_entry(analysis_id, "system", f"Analyzing: {request.problem}")
+    
+    # ... run analysis ...
+    
+    await update_node_status(analysis_id, "completed", {"analysis": analysis_text})
+
+async def approve(session_id: str, ...):
+    # Create specialist agent nodes
+    for agent_type in specialist_agents:
+        agent_id = f"{agent_type}-{session_id}"
+        await add_node(agent_id, f"{agent_type.title()} Specialist", "diagnostic-agent", root_id)
+        await update_node_status(agent_id, "running")
+        
+    # ... run specialists in parallel ...
+    
+    # Create synthesis node
+    synthesis_id = f"synthesis-{session_id}"
+    await add_node(synthesis_id, "Synthesis Agent", "synthesis", root_id)
+```
+
+**Commit:** `git commit -m "sre-diagnose: integrate graph updates with diagnosis flow"`
+
+---
+
+### PHASE 9 HANDOVER PROMPT
+
+```
+# SRE Incident Diagnosis - Handover Prompt
+
+## Project Location
+- Path: `autonomy/examples/sre-diagnose`
+- Branch: `sre-diagnose-phase9-visualization`
+
+## Completed Phases
+- [x] Phase 1-7: Core functionality complete
+- [x] Phase 9: Agent Visualization with D3.js force-directed graph
+
+## What Was Added
+- Graph state tracking (nodes, edges, reports, transcripts, activity)
+- Visualization API endpoints (/graph, /activity, /graph/report/{id})
+- D3.js force-directed graph in dashboard
+- Real-time activity feed
+- Click-to-inspect node details
+
+## Next Step
+- Phase 10: Agent Swarm Scaling (100s of parallel agents)
+
+## Deploy & Test
+cd autonomy/examples/sre-diagnose
+autonomy zone deploy
+
+# View visualization at dashboard URL
+```
+
+---
+
+## Phase 10: Agent Swarm Scaling (100s of Parallel Agents)
+
+**Goal**: Scale to 100s of parallel agents using distributed runner pods, demonstrating swarm-like diagnosis
+
+### Task 10.1: Add Runner Pod Infrastructure
+
+Update `autonomy.yaml`:
+
+```yaml
+name: srediag
+pods:
+  - name: main-pod
+    size: big
+    public: true
+    containers:
+      - name: main
+        image: main
+        env:
+          ONEPASSWORD_MODE: mock
+      - name: onepass
+        image: mock-1password
+
+  - name: runner-pod
+    size: big
+    clones: 5  # 5 runner pods for parallel diagnosis
+    containers:
+      - name: runner
+        image: runner
+```
+
+Create `images/runner/main.py`:
+
+```python
+from autonomy import Node
+
+# Simple runner - starts a node that can receive workers
+Node.start()
+```
+
+Create `images/runner/Dockerfile`:
+
+```dockerfile
+FROM ghcr.io/build-trust/autonomy-python:latest
+COPY main.py .
+ENTRYPOINT ["python", "main.py"]
+```
+
+**Commit:** `git commit -m "sre-diagnose: add runner pod infrastructure"`
+
+---
+
+### Task 10.2: Create DiagnosticWorker Class
+
+Add worker that runs on remote runners:
+
+```python
+class DiagnosticWorker:
+    """Worker that runs on remote runners to execute diagnostic agents."""
+    
+    async def run_service_diagnosis(self, service_info: dict) -> dict:
+        """Run multiple diagnostic agents for a single service."""
+        from autonomy import Agent, Model
+        
+        service_name = service_info["service"]
+        region = service_info["region"]
+        node_id = service_info["node_id"]
+        
+        # Define diagnostic agent types
+        agent_configs = [
+            ("database", "Analyze database connections, query latency, connection pool health..."),
+            ("cache", "Analyze cache hit rates, eviction patterns, memory usage..."),
+            ("network", "Check network latency, DNS resolution, connection errors..."),
+            ("resources", "Check CPU, memory, disk I/O, container resource limits..."),
+            ("logs", "Scan application logs for errors, warning patterns, anomalies..."),
+        ]
+        
+        model = Model(
+            "nova-micro-v1",
+            throttle=True,
+            throttle_requests_per_minute=1000,
+            throttle_max_requests_in_progress=100,
+        )
+        
+        results = {}
+        for agent_type, instructions in agent_configs:
+            agent = await Agent.start(
+                node=self.node,
+                instructions=instructions,
+                model=model,
+                max_execution_time=300.0,
+                max_iterations=3,
+            )
+            
+            try:
+                message = f"Diagnose {agent_type} for {service_name} in {region}"
+                response = await agent.send(message, timeout=120)
+                results[agent_type] = {
+                    "status": "completed",
+                    "findings": response[-1].content.text if response else "No response"
+                }
+            except Exception as e:
+                results[agent_type] = {"status": "error", "error": str(e)}
+            finally:
+                await Agent.stop(self.node, agent.name, timeout=5.0)
+        
+        return {
+            "service": service_name,
+            "region": region,
+            "results": results,
+        }
+    
+    async def handle_message(self, context, message):
+        """Handle batch of services to diagnose with progress updates."""
+        import json
+        
+        request = json.loads(message)
+        services = request.get("services", [])
+        runner_id = request.get("runner_id", "unknown")
+        
+        results = []
+        for idx, service_info in enumerate(services):
+            # Send starting progress
+            await context.reply(json.dumps({
+                "type": "progress",
+                "runner_id": runner_id,
+                "status": "starting",
+                "service": service_info["service"],
+                "region": service_info["region"],
+                "index": idx + 1,
+                "total": len(services),
+            }))
+            
+            result = await self.run_service_diagnosis(service_info)
+            results.append(result)
+            
+            # Send completed progress
+            await context.reply(json.dumps({
+                "type": "progress",
+                "runner_id": runner_id,
+                "status": "completed",
+                "service": service_info["service"],
+                "region": service_info["region"],
+                "index": idx + 1,
+                "total": len(services),
+                "result": result,
+            }))
+        
+        # Send final results
+        await context.reply(json.dumps({
+            "type": "final",
+            "runner_id": runner_id,
+            "results": results,
+        }))
+```
+
+**Commit:** `git commit -m "sre-diagnose: add DiagnosticWorker for distributed diagnosis"`
+
+---
+
+### Task 10.3: Implement Distributed Diagnosis Flow
+
+Add orchestration for swarm diagnosis:
+
+```python
+def split_list_into_n_parts(lst, n):
+    """Split a list into n roughly equal parts."""
+    if n <= 0:
+        return [lst]
+    q, r = divmod(len(lst), n)
+    return [lst[i * q + min(i, r): (i + 1) * q + min(i + 1, r)] for i in range(n)]
+
+
+async def run_distributed_diagnosis(node, problem: str, session_id: str, root_id: str):
+    """Distribute diagnosis across runners with massive parallelism."""
+    
+    # Define investigation targets (multi-region, multi-service)
+    regions = ["us-east-1", "us-west-2", "eu-west-1"]
+    services = [
+        "api-gateway", "user-service", "order-service", "payment-service",
+        "inventory-service", "notification-service", "auth-service",
+        "analytics-service", "search-service", "recommendation-service"
+    ]
+    
+    # Create region and service nodes in visualization
+    targets = []
+    for region in regions:
+        region_id = f"region-{region}-{session_id}"
+        await add_node(region_id, region, "region", root_id)
+        await update_node_status(region_id, "running")
+        
+        for service in services:
+            service_id = f"service-{region}-{service}-{session_id}"
+            await add_node(service_id, service, "service", region_id)
+            targets.append({
+                "service": service,
+                "region": region,
+                "node_id": service_id,
+            })
+    
+    await add_transcript_entry(root_id, "system", 
+        f"Created {len(targets)} investigation targets across {len(regions)} regions")
+    
+    # Discover runners and distribute work
+    runners = await Zone.nodes(node, filter="runner")
+    num_runners = len(runners)
+    
+    if num_runners == 0:
+        # Fallback to local execution
+        await add_transcript_entry(root_id, "system", "No runners found, running locally")
+        return await run_local_diagnosis(node, targets, session_id, root_id)
+    
+    await add_transcript_entry(root_id, "system", 
+        f"Found {num_runners} runner nodes, distributing {len(targets)} targets")
+    
+    # Create runner nodes in visualization
+    runner_node_ids = []
+    for i in range(num_runners):
+        runner_node_id = f"runner-{i+1}-{session_id}"
+        await add_node(runner_node_id, f"Runner {i+1}", "runner", root_id, {
+            "runner_name": runners[i].name,
+        })
+        await update_node_status(runner_node_id, "running")
+        runner_node_ids.append(runner_node_id)
+    
+    # Split targets across runners
+    target_batches = split_list_into_n_parts(targets, num_runners)
+    
+    async def run_on_runner(runner_idx, runner, batch):
+        """Run diagnosis on a single runner."""
+        worker_name = f"diagnostic-{secrets.token_hex(4)}"
+        runner_id = f"Runner {runner_idx + 1}"
+        runner_node_id = runner_node_ids[runner_idx]
+        
+        await runner.start_worker(worker_name, DiagnosticWorker())
+        
+        request = json.dumps({
+            "services": batch,
+            "runner_id": runner_id,
+        })
+        
+        results = []
+        try:
+            mailbox = await node.send(worker_name, request, node=runner.name)
+            
+            while True:
+                try:
+                    reply_json = await mailbox.receive(timeout=1800)
+                    msg = json.loads(reply_json)
+                    msg_type = msg.get("type", "")
+                    
+                    if msg_type == "progress":
+                        status = msg.get("status", "")
+                        service = msg.get("service", "")
+                        region = msg.get("region", "")
+                        service_node_id = f"service-{region}-{service}-{session_id}"
+                        
+                        if status == "starting":
+                            await update_node_status(service_node_id, "running")
+                            
+                            # Create diagnostic agent nodes
+                            for agent_type in ["database", "cache", "network", "resources", "logs"]:
+                                agent_node_id = f"agent-{region}-{service}-{agent_type}-{session_id}"
+                                await add_node(agent_node_id, agent_type, "diagnostic-agent", service_node_id)
+                                await update_node_status(agent_node_id, "running")
+                            
+                            await add_transcript_entry(runner_node_id, "system", 
+                                f"Starting diagnosis: {service} in {region}")
+                        
+                        elif status == "completed":
+                            await update_node_status(service_node_id, "completed")
+                            
+                            # Update agent nodes with results
+                            result = msg.get("result", {})
+                            for agent_type, agent_result in result.get("results", {}).items():
+                                agent_node_id = f"agent-{region}-{service}-{agent_type}-{session_id}"
+                                agent_status = "completed" if agent_result.get("status") == "completed" else "error"
+                                await update_node_status(agent_node_id, agent_status, agent_result)
+                            
+                            await add_transcript_entry(runner_node_id, "system", 
+                                f"Completed: {service} in {region}")
+                    
+                    elif msg_type == "final":
+                        results = msg.get("results", [])
+                        await update_node_status(runner_node_id, "completed")
+                        break
+                
+                except Exception as e:
+                    await add_transcript_entry(runner_node_id, "error", str(e))
+                    break
+        
+        except Exception as e:
+            await update_node_status(runner_node_id, "error")
+            await add_transcript_entry(runner_node_id, "error", str(e))
+        finally:
+            try:
+                await runner.stop_worker(worker_name)
+            except:
+                pass
+        
+        return results
+    
+    # Run all runners in parallel
+    futures = [run_on_runner(i, runners[i], target_batches[i]) for i in range(num_runners)]
+    all_results = await asyncio.gather(*futures)
+    
+    # Flatten results
+    flattened = []
+    for batch in all_results:
+        if isinstance(batch, list):
+            flattened.extend(batch)
+    
+    # Update region nodes to completed
+    for region in regions:
+        region_id = f"region-{region}-{session_id}"
+        await update_node_status(region_id, "completed")
+    
+    return flattened
+```
+
+**Commit:** `git commit -m "sre-diagnose: implement distributed diagnosis across runners"`
+
+---
+
+### Task 10.4: Demo Scenario - "Production Latency Spike"
+
+Create a compelling demo that shows 200+ agents:
+
+**Scenario Input:** "Production API experiencing latency spikes across all regions"
+
+**Agent Hierarchy Created:**
+
+```
+Investigation Root
+├── Runner 1 (handling us-east-1)
+├── Runner 2 (handling us-west-2)
+├── Runner 3 (handling eu-west-1)
+├── Runner 4 (overflow)
+├── Runner 5 (overflow)
+│
+├── us-east-1 (Region)
+│   ├── api-gateway
+│   │   ├── database-agent
+│   │   ├── cache-agent
+│   │   ├── network-agent
+│   │   ├── resources-agent
+│   │   └── logs-agent
+│   ├── user-service (5 agents)
+│   ├── order-service (5 agents)
+│   └── ... (10 services × 5 agents = 50 agents)
+│
+├── us-west-2 (Region) - 50 agents
+├── eu-west-1 (Region) - 50 agents
+│
+└── Synthesis Agent
+```
+
+**Scale Math:**
+- 3 regions × 10 services = 30 investigation targets
+- 5 diagnostic agents per service = 150 base agents
+- Sub-agents for critical findings = ~50 more
+- **Total: 200+ agents** visualized in the graph
+
+**Integration:**
+
+```python
+async def diagnose_with_swarm(request: DiagnoseRequest, node: NodeDep):
+    """Enhanced diagnosis using agent swarm."""
+    session_id = secrets.token_hex(8)
+    root_id = f"investigation-{session_id}"
+    
+    await reset_graph()
+    await add_node(root_id, "Incident Investigation", "root", meta={
+        "problem": request.problem,
+        "environment": request.environment,
+    })
+    await update_node_status(root_id, "running")
+    graph_state["status"] = "running"
+    
+    # Run distributed diagnosis across all regions/services
+    results = await run_distributed_diagnosis(node, request.problem, session_id, root_id)
+    
+    # Run synthesis
+    synthesis_id = f"synthesis-{session_id}"
+    await add_node(synthesis_id, "Synthesis Agent", "synthesis", root_id)
+    await update_node_status(synthesis_id, "running")
+    
+    # ... synthesize findings ...
+    
+    await update_node_status(synthesis_id, "completed")
+    await update_node_status(root_id, "completed")
+    graph_state["status"] = "completed"
+```
+
+**Commit:** `git commit -m "sre-diagnose: add swarm demo scenario with 200+ agents"`
+
+---
+
+### Task 10.5: Update Dashboard for Swarm Visualization
+
+Enhance the dashboard to handle large agent counts:
+
+1. **Performance optimizations:**
+   - Throttle graph updates (batch every 100ms)
+   - Use canvas rendering for 500+ nodes
+   - Implement node clustering for dense areas
+
+2. **Stats panel:**
+   - Total agents spawned
+   - Running / Completed / Error counts
+   - Agents per runner breakdown
+   - Time elapsed
+
+3. **Activity feed improvements:**
+   - Filter by runner
+   - Search functionality
+   - Collapse/expand regions
+
+**Commit:** `git commit -m "sre-diagnose: optimize dashboard for large agent counts"`
+
+---
+
+### PHASE 10 HANDOVER PROMPT
+
+```
+# SRE Incident Diagnosis - Handover Prompt
+
+## Project Location
+- Path: `autonomy/examples/sre-diagnose`
+- Branch: `sre-diagnose-phase10-swarm`
+
+## Completed Phases
+- [x] Phase 1-7: Core functionality
+- [x] Phase 9: Agent Visualization
+- [x] Phase 10: Agent Swarm Scaling
+
+## What Was Added
+- Runner pod infrastructure (5 clones)
+- DiagnosticWorker for distributed execution
+- Multi-region, multi-service investigation
+- 200+ parallel agents in swarm demo
+- Optimized dashboard for large graphs
+
+## Demo
+1. Deploy: `autonomy zone deploy`
+2. Open dashboard
+3. Enter: "Production API latency spike across all regions"
+4. Watch 200+ agents spawn and investigate in parallel
+5. See results synthesized
+
+## Scale Math
+- 3 regions × 10 services = 30 targets
+- 5 agents per service = 150 base agents
+- Sub-agents + synthesis = 200+ total
+
+## Files Changed
+- autonomy.yaml (added runner pods)
+- images/runner/ (new runner image)
+- images/main/main.py (DiagnosticWorker, distributed flow)
+- images/main/index.html (enhanced visualization)
+```
+
+---
+
+### Task 8.1: Real Database Integration
+
+- Replace mock `query_db_connections` with real PostgreSQL queries
+- Use `mcp-server-postgres` or direct `asyncpg` connection
+- Requires real database credentials from 1Password
+
+**Commit:** `git commit -m "sre-diagnose: integrate real database diagnostics"`
+
+---
+
+### Task 8.2: Real AWS Integration
+
+- Replace mock CloudWatch/EC2 functions with real AWS SDK calls
+- Use `@aws-mcp/server` or `boto3` directly
+- Requires AWS credentials from 1Password
+
+**Commit:** `git commit -m "sre-diagnose: integrate real AWS diagnostics"`
+
+---
+
+### Task 8.3: Real Kubernetes Integration
+
+- Replace mock `check_kubernetes_pods` with real K8s API calls
+- Use `@modelcontextprotocol/server-kubernetes` or `kubernetes` Python client
+- Requires kubeconfig from 1Password
+
+**Commit:** `git commit -m "sre-diagnose: integrate real Kubernetes diagnostics"`
+
+---
+
+### Task 8.4: Real Log Aggregation
+
+- Integrate with real log systems (Datadog, CloudWatch Logs, ELK)
+- Use appropriate MCP servers or SDKs
+- Pattern matching for anomaly detection
+
+**Commit:** `git commit -m "sre-diagnose: integrate real log aggregation"`
 
 ---
 
@@ -887,56 +1618,62 @@ See README.md for curl examples and Cursor integration instructions.
 
 ---
 
-## File Structure (Final)
+## File Structure (Final with Swarm Support)
 
 ```
 autonomy/examples/sre-diagnose/
-├── autonomy.yaml
+├── autonomy.yaml                # Zone config with runner pods (clones: 5)
 ├── README.md
 │
 ├── images/
-│   ├── main/                    # Main container (all agents run here)
+│   ├── main/                    # Main container (orchestration + visualization)
 │   │   ├── Dockerfile
-│   │   ├── main.py              # FastAPI + orchestrator + diagnostic agents + mock tools
-│   │   └── index.html           # Status dashboard
+│   │   ├── main.py              # FastAPI + graph state + distributed orchestration
+│   │   ├── index.html           # D3.js force-directed graph dashboard
+│   │   └── requirements.txt
 │   │
-│   ├── mock-1password/          # Phase 2 (HTTP server, replaced in Phase 7)
+│   ├── mock-1password/          # Mock credential server
 │   │   ├── Dockerfile
 │   │   └── server.py
 │   │
-│   └── runner/                  # Phase 5 (optional distributed processing)
+│   └── runner/                  # Runner pods for distributed diagnosis
 │       ├── Dockerfile
-│       └── main.py
+│       └── main.py              # Simple Node.start() for receiving workers
 │
-└── cursor-hooks/                # Phase 6
-    ├── hooks.json
-    └── hooks/
-        ├── sre-session-init.sh
-        ├── audit-mcp.sh
-        └── cleanup-session.sh
+├── .cursor/                     # Cursor IDE hooks
+│   └── hooks.json
+│
+└── planning/
+    ├── ARCHITECTURE.md
+    ├── IMPLEMENTATION_PLAN.md
+    └── 1PASSWORD_CONNECT_REFERENCE.md
 ```
 
-**Note:** Phases 1-4 use only the `main` container. All agents (orchestrator, DB diagnostic, cloud diagnostic) 
-run in the main pod. Mock diagnostic tools are Python functions in `main.py`, not separate containers.
-The `runner` pod is only added in Phase 5 for optional scale-out.
+**Architecture Notes:**
+- `main` pod handles orchestration, visualization APIs, and synthesis
+- `runner` pods (5 clones) execute DiagnosticWorker for parallel diagnosis
+- Communication via Autonomy's Zone.nodes() discovery and mailbox messaging
+- Graph state tracked in main pod, polled by dashboard for visualization
 ```
 
 ---
 
 ## Timeline Estimate
 
-| Phase | Duration | Dependencies |
-|-------|----------|--------------|
-| Phase 1: Foundation | 2-3 hours | None |
-| Phase 2: Mock 1Password HTTP Server | 2-3 hours | Phase 1 |
-| Phase 3: Diagnostic Tools & Agents (Single Pod) | 3-4 hours | Phase 2 |
+| Phase | Duration | Dependencies | Status |
+|-------|----------|--------------|--------|
+| Phase 1: Foundation | 2-3 hours | None | ✅ |
+| Phase 2: Mock 1Password HTTP Server | 2-3 hours | Phase 1 | ✅ |
+| Phase 3: Diagnostic Tools & Agents (Single Pod) | 3-4 hours | Phase 2 | ✅ |
 | Phase 4: Polish & Production Readiness | 2-3 hours | Phase 3 | ✅ |
-| Phase 5: Distributed Processing (Optional) | - | - | Skipped |
+| Phase 5: Distributed Processing (Original) | - | - | Skipped |
 | Phase 6: Cursor Hooks | 2-3 hours | Phase 1 | ✅ |
 | Phase 7: Real 1Password Integration | 2-3 hours | Phase 2 | ✅ |
-| Phase 8: Real Diagnostic Tools (Optional) | 4-6 hours | All previous | Future |
+| Phase 8: Real Diagnostic Tools | 4-6 hours | All previous | Future |
+| **Phase 9: Agent Visualization** | 3-4 hours | Phase 4 | **Next** |
+| **Phase 10: Agent Swarm Scaling** | 4-6 hours | Phase 9 | **Next** |
 
-**Total Completed: ~15-20 hours** across multiple sessions
+**Estimated Remaining: ~7-10 hours** for Phases 9-10
 
 ---
 

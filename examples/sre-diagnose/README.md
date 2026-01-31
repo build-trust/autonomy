@@ -2,7 +2,7 @@
 
 An Autonomy app that enables developers to diagnose infrastructure problems using autonomous diagnostic agents with secure credential retrieval via human-in-the-loop approval.
 
-**Version**: 0.5.0
+**Version**: 0.6.0
 
 ## Overview
 
@@ -10,6 +10,7 @@ This app demonstrates:
 
 - **Two-Phase Diagnosis Flow**: Analysis → Approval → Diagnosis
 - **Specialized Diagnostic Agents**: Database, Cloud, and Kubernetes specialists
+- **Agent Visualization**: Real-time D3.js force-directed graph showing all agents
 - **Mock Diagnostic Tools**: Realistic tool responses for testing
 - **Human-in-the-Loop Approval**: Requests permission before accessing credentials
 - **Secure Credential Flow**: Credentials retrieved from 1Password, never exposed to LLM
@@ -105,6 +106,53 @@ curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.c
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Agent Visualization
+
+The dashboard includes a real-time D3.js force-directed graph that visualizes all agents in a diagnosis session:
+
+### Node Types and Colors
+
+| Type | Color | Description |
+|------|-------|-------------|
+| Root | Purple | Investigation root node |
+| Diagnostic Agent | Green | Specialist agents (Database, Cloud, K8s) |
+| Synthesis | Pink | Synthesis agent that combines findings |
+| Runner | Teal | Runner pods (Phase 10) |
+| Service | Blue | Service nodes (Phase 10) |
+
+### Status Colors
+
+| Status | Color | Description |
+|--------|-------|-------------|
+| Pending | Gray | Not yet started |
+| Running | Yellow | Currently executing (animated) |
+| Completed | Green | Successfully finished |
+| Error | Red | Failed with error |
+
+### Visualization API Endpoints
+
+```bash
+# Get current graph state
+curl https://...srediag.cluster.autonomy.computer/graph
+
+# Get report and transcript for a specific node
+curl https://...srediag.cluster.autonomy.computer/graph/report/{node_id}
+
+# Get activity feed
+curl https://...srediag.cluster.autonomy.computer/activity
+
+# Reset graph state
+curl -X POST https://...srediag.cluster.autonomy.computer/graph/reset
+```
+
+### Using the Graph Panel
+
+1. Click the **📊 Graph** button to toggle the visualization panel
+2. The graph automatically appears when starting a new diagnosis
+3. Click on nodes to see details (type, status, timestamps)
+4. The activity feed shows real-time agent events
+5. Stats show total agents, running, and completed counts
 
 ## Specialist Agents
 

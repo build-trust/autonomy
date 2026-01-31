@@ -62,7 +62,7 @@ logger.info(f"1Password mode: {ONEPASSWORD_MODE}")
 
 # === Configuration Constants ===
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 # Timeouts (in seconds)
 ANALYSIS_TIMEOUT = 120
@@ -112,6 +112,104 @@ class StatusResponse(BaseModel):
 # === Session State (in-memory for MVP) ===
 
 sessions: dict = {}
+
+
+# === Graph State for Visualization ===
+
+graph_state = {
+  "nodes": [],       # All agent nodes
+  "edges": [],       # Parent-child relationships
+  "reports": {},     # Agent reports/findings
+  "transcripts": {}, # Agent conversation logs
+  "activity": [],    # Recent activity feed
+  "status": "idle",  # idle, running, completed
+}
+graph_lock = asyncio.Lock()
+MAX_ACTIVITY_ITEMS = 100
+
+
+async def add_node(node_id: str, name: str, node_type: str, parent_id: str = None, meta: dict = None):
+  """Add a node to the visualization graph."""
+  async with graph_lock:
+    node = {
+      "id": node_id,
+      "name": name,
+      "type": node_type,  # root, region, service, runner, diagnostic-agent, sub-agent, synthesis
+      "status": "pending",
+      "parent": parent_id,
+      "meta": meta or {},
+      "created_at": datetime.utcnow().isoformat(),
+    }
+    graph_state["nodes"].append(node)
+    if parent_id:
+      graph_state["edges"].append({"source": parent_id, "target": node_id})
+    return node
+
+
+async def add_edge(source_id: str, target_id: str):
+  """Add an edge between two nodes."""
+  async with graph_lock:
+    graph_state["edges"].append({"source": source_id, "target": target_id})
+
+
+async def update_node_status(node_id: str, status: str, report: dict = None):
+  """Update a node's status and optionally add a report."""
+  async with graph_lock:
+    for node in graph_state["nodes"]:
+      if node["id"] == node_id:
+        node["status"] = status
+        node["updated_at"] = datetime.utcnow().isoformat()
+        break
+    if report:
+      graph_state["reports"][node_id] = report
+
+
+async def add_transcript_entry(node_id: str, role: str, content: str, entry_type: str = "message"):
+  """Add an entry to a node's transcript and activity feed."""
+  async with graph_lock:
+    if node_id not in graph_state["transcripts"]:
+      graph_state["transcripts"][node_id] = []
+
+    entry = {
+      "timestamp": datetime.utcnow().isoformat(),
+      "role": role,
+      "content": content,
+      "type": entry_type,
+    }
+    graph_state["transcripts"][node_id].append(entry)
+
+    # Find node name for activity feed
+    node_name = node_id
+    for node in graph_state["nodes"]:
+      if node["id"] == node_id:
+        node_name = node.get("name", node_id)
+        break
+
+    # Add to activity feed
+    activity_entry = {
+      "timestamp": entry["timestamp"],
+      "node_id": node_id,
+      "node_name": node_name,
+      "role": role,
+      "content": content[:200] + ("..." if len(content) > 200 else ""),
+      "type": entry_type,
+    }
+    graph_state["activity"].insert(0, activity_entry)
+
+    # Trim activity feed
+    if len(graph_state["activity"]) > MAX_ACTIVITY_ITEMS:
+      graph_state["activity"] = graph_state["activity"][:MAX_ACTIVITY_ITEMS]
+
+
+async def reset_graph():
+  """Reset the graph state for a new session."""
+  async with graph_lock:
+    graph_state["nodes"] = []
+    graph_state["edges"] = []
+    graph_state["reports"] = {}
+    graph_state["transcripts"] = {}
+    graph_state["activity"] = []
+    graph_state["status"] = "idle"
 
 # HTTP client for calling mock 1Password server (only used in mock mode)
 http_client = httpx.AsyncClient(timeout=CREDENTIAL_TIMEOUT)
@@ -640,6 +738,43 @@ async def index():
   return FileResponse("index.html")
 
 
+# === Graph Visualization Endpoints ===
+
+@app.get("/graph")
+async def get_graph():
+  """Return current graph state for visualization."""
+  async with graph_lock:
+    return JSONResponse(content={
+      "nodes": graph_state["nodes"],
+      "edges": graph_state["edges"],
+      "status": graph_state["status"],
+    })
+
+
+@app.get("/graph/report/{node_id}")
+async def get_node_report(node_id: str):
+  """Return report and transcript for a specific node."""
+  async with graph_lock:
+    return JSONResponse(content={
+      "report": graph_state["reports"].get(node_id),
+      "transcript": graph_state["transcripts"].get(node_id, []),
+    })
+
+
+@app.get("/activity")
+async def get_activity():
+  """Return recent activity feed."""
+  async with graph_lock:
+    return JSONResponse(content=graph_state["activity"][:50])
+
+
+@app.post("/graph/reset")
+async def reset_graph_endpoint():
+  """Reset the graph state."""
+  await reset_graph()
+  return JSONResponse(content={"status": "reset"})
+
+
 @app.get("/health")
 async def health():
   """Health check endpoint."""
@@ -734,6 +869,31 @@ async def diagnose(request: DiagnoseRequest, node: NodeDep):
     "agent_name": agent_name,
   }
 
+  # === Graph Visualization: Create root and analysis nodes ===
+  root_id = f"investigation-{session_id}"
+  analysis_node_id = f"analysis-{session_id}"
+
+  # Reset graph for new session and create root node
+  await reset_graph()
+  await add_node(root_id, "Incident Investigation", "root", meta={
+    "problem": request.problem,
+    "environment": request.environment,
+    "session_id": session_id,
+  })
+  await update_node_status(root_id, "running")
+  graph_state["status"] = "running"
+
+  # Create analysis agent node
+  await add_node(analysis_node_id, "Analysis Agent", "diagnostic-agent", root_id, meta={
+    "agent_name": agent_name,
+  })
+  await update_node_status(analysis_node_id, "running")
+  await add_transcript_entry(analysis_node_id, "system", f"Starting analysis: {request.problem[:100]}...")
+
+  # Store graph node IDs in session for later use
+  sessions[session_id]["root_node_id"] = root_id
+  sessions[session_id]["analysis_node_id"] = analysis_node_id
+
   # Create analysis agent (no tools needed, just analysis)
   agent = await Agent.start(
     node=node,
@@ -767,6 +927,8 @@ Provide your analysis including the specific credentials needed for investigatio
         progress=0
       )
 
+      await add_transcript_entry(analysis_node_id, "agent", "Beginning incident analysis...")
+
       # Stream the agent's analysis
       try:
         async for response in agent.send_stream(message, timeout=ANALYSIS_TIMEOUT):
@@ -782,6 +944,10 @@ Provide your analysis including the specific credentials needed for investigatio
       # Store analysis
       session["analysis"] = full_analysis
 
+      # Update graph with analysis completion
+      await add_transcript_entry(analysis_node_id, "model", full_analysis[:500] + "..." if len(full_analysis) > 500 else full_analysis)
+      await update_node_status(analysis_node_id, "completed", {"analysis": full_analysis})
+
       # Extract requested credentials from analysis
       requested_creds = extract_credential_refs(full_analysis)
       session["requested_credentials"] = requested_creds
@@ -789,6 +955,8 @@ Provide your analysis including the specific credentials needed for investigatio
       # Update status
       session["status"] = "waiting_for_approval"
       session["phase"] = "awaiting_approval"
+
+      await add_transcript_entry(analysis_node_id, "system", f"Identified {len(requested_creds)} credential(s) needed: {', '.join(requested_creds)}")
 
       yield make_event("approval_required",
         session_id=session_id,
@@ -805,6 +973,11 @@ Provide your analysis including the specific credentials needed for investigatio
       session["status"] = "error"
       session["phase"] = "analysis_failed"
       session["message"] = str(e)
+
+      # Update graph with error status
+      await update_node_status(analysis_node_id, "error", {"error": str(e)})
+      await add_transcript_entry(analysis_node_id, "error", f"Analysis failed: {str(e)}")
+
       yield make_event("error",
         session_id=session_id,
         message=str(e)
@@ -1040,6 +1213,14 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
   if not request.approved:
     session["status"] = "denied"
     session["phase"] = "credentials_denied"
+
+    # Update graph with denial
+    root_id = session.get("root_node_id")
+    if root_id:
+      await update_node_status(root_id, "error")
+      await add_transcript_entry(root_id, "system", "Credential access denied by user")
+      graph_state["status"] = "completed"
+
     return JSONResponse(content={
       "session_id": session_id,
       "status": "denied",
@@ -1054,12 +1235,18 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
     synthesis_agent_name = None
     diagnosis_start_time = datetime.utcnow()
 
+    # Get graph node IDs from session
+    root_id = session.get("root_node_id", f"investigation-{session_id}")
+    specialist_node_ids = {}
+
     try:
       yield make_event("approval_accepted",
         session_id=session_id,
         status="approved",
         progress=0
       )
+
+      await add_transcript_entry(root_id, "system", "Credentials approved, starting diagnosis")
 
       # Retrieve all requested credentials
       requested = session.get("requested_credentials", [])
@@ -1086,6 +1273,8 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
       if failed_creds:
         logger.warning(f"Failed to retrieve {len(failed_creds)} credentials: {failed_creds}")
 
+      await add_transcript_entry(root_id, "system", f"Retrieved {successful_creds}/{total_creds} credentials")
+
       # Update status
       session["status"] = "diagnosing"
       session["phase"] = "diagnosis"
@@ -1110,6 +1299,18 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
         specialists=specialists,
         progress=25
       )
+
+      # Create specialist agent nodes in graph
+      for specialist in specialists:
+        specialist_node_id = f"{specialist}-specialist-{session_id}"
+        specialist_node_ids[specialist] = specialist_node_id
+        await add_node(specialist_node_id, f"{specialist.title()} Specialist", "diagnostic-agent", root_id, meta={
+          "specialist_type": specialist,
+        })
+        await update_node_status(specialist_node_id, "running")
+        await add_transcript_entry(specialist_node_id, "system", f"Starting {specialist} diagnosis...")
+
+      await add_transcript_entry(root_id, "system", f"Running {len(specialists)} specialist agents in parallel: {', '.join(specialists)}")
 
       # Run specialist agents in parallel
       specialist_tasks = []
@@ -1146,6 +1347,18 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
         else:
           all_findings.append(result)
           completed_count += 1
+
+          # Update graph node for this specialist
+          agent_name = result.get("agent", "unknown")
+          # Map agent name back to specialist type
+          specialist_type = agent_name.replace("_specialist", "").replace("_", "-")
+          for st, node_id in specialist_node_ids.items():
+            if st in specialist_type or specialist_type in st:
+              status = "completed" if result.get("status") == "completed" else "error"
+              await update_node_status(node_id, status, result)
+              await add_transcript_entry(node_id, "model", result.get("findings", "")[:300] + "..." if len(result.get("findings", "")) > 300 else result.get("findings", ""))
+              break
+
           yield make_event("specialist_complete",
             agent=result.get("agent"),
             status=result.get("status"),
@@ -1162,6 +1375,14 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
         findings_count=len(all_findings),
         progress=60
       )
+
+      # Create synthesis agent node in graph
+      synthesis_node_id = f"synthesis-{session_id}"
+      await add_node(synthesis_node_id, "Synthesis Agent", "synthesis", root_id, meta={
+        "findings_count": len(all_findings),
+      })
+      await update_node_status(synthesis_node_id, "running")
+      await add_transcript_entry(synthesis_node_id, "system", f"Synthesizing findings from {len(all_findings)} specialists...")
 
       # Create synthesis agent to combine all findings
       synthesis_agent_name = f"synthesizer_{session_id}_{secrets.token_hex(4)}"
@@ -1218,6 +1439,13 @@ Focus on:
       session["phase"] = "diagnosis_complete"
       session["completed_at"] = datetime.utcnow().isoformat() + "Z"
 
+      # Update graph with completion
+      await update_node_status(synthesis_node_id, "completed", {"diagnosis": diagnosis_text})
+      await add_transcript_entry(synthesis_node_id, "model", diagnosis_text[:500] + "..." if len(diagnosis_text) > 500 else diagnosis_text)
+      await update_node_status(root_id, "completed")
+      await add_transcript_entry(root_id, "system", f"Diagnosis complete in {round((datetime.utcnow() - diagnosis_start_time).total_seconds(), 1)}s")
+      graph_state["status"] = "completed"
+
       total_duration = (datetime.utcnow() - diagnosis_start_time).total_seconds()
       yield make_event("diagnosis_complete",
         session_id=session_id,
@@ -1235,6 +1463,12 @@ Focus on:
       session["status"] = "error"
       session["phase"] = "diagnosis_failed"
       session["message"] = str(e)
+
+      # Update graph with error
+      await update_node_status(root_id, "error")
+      await add_transcript_entry(root_id, "error", f"Diagnosis failed: {str(e)}")
+      graph_state["status"] = "completed"
+
       yield make_event("error",
         session_id=session_id,
         message=str(e)

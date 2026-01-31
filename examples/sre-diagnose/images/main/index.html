@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SRE Incident Diagnosis</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -415,6 +416,218 @@
           opacity: 0;
         }
       }
+
+      /* === Agent Graph Visualization Styles === */
+      .main-layout {
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 16px;
+        margin-top: 16px;
+      }
+      @media (max-width: 1200px) {
+        .main-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+      .graph-panel {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        overflow: hidden;
+        display: none;
+      }
+      .graph-panel.visible {
+        display: block;
+      }
+      .graph-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: #21262d;
+        border-bottom: 1px solid #30363d;
+      }
+      .graph-header h3 {
+        margin: 0;
+        font-size: 14px;
+        color: #c9d1d9;
+      }
+      .graph-stats {
+        display: flex;
+        gap: 16px;
+        font-size: 12px;
+      }
+      .graph-stat {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .graph-stat-value {
+        font-weight: bold;
+        color: #58a6ff;
+      }
+      .graph-stat-label {
+        color: #8b949e;
+      }
+      #graph-container {
+        width: 100%;
+        height: 400px;
+        background: #0d1117;
+      }
+      #graph-svg {
+        width: 100%;
+        height: 100%;
+      }
+      .node circle {
+        stroke-width: 2px;
+        cursor: pointer;
+        transition: stroke-width 0.2s;
+      }
+      .node:hover circle {
+        stroke-width: 4px;
+      }
+      .node.running circle {
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+      .node-label {
+        font-size: 10px;
+        fill: #8b949e;
+        text-anchor: middle;
+        pointer-events: none;
+      }
+      .link {
+        stroke-opacity: 0.6;
+        stroke-linecap: round;
+      }
+      .activity-feed {
+        max-height: 200px;
+        overflow-y: auto;
+        border-top: 1px solid #30363d;
+      }
+      .activity-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 16px;
+        background: #21262d;
+        border-bottom: 1px solid #30363d;
+        font-size: 12px;
+        color: #8b949e;
+      }
+      .activity-item {
+        padding: 8px 16px;
+        border-bottom: 1px solid #21262d;
+        font-size: 12px;
+      }
+      .activity-item:hover {
+        background: #21262d;
+      }
+      .activity-item .node-name {
+        color: #58a6ff;
+        font-weight: 500;
+      }
+      .activity-item .role {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        margin-left: 4px;
+      }
+      .activity-item .role.system {
+        background: #1f6feb33;
+        color: #58a6ff;
+      }
+      .activity-item .role.agent {
+        background: #23863633;
+        color: #3fb950;
+      }
+      .activity-item .role.model {
+        background: #a371f733;
+        color: #a371f7;
+      }
+      .activity-item .role.error {
+        background: #f8514933;
+        color: #f85149;
+      }
+      .activity-item .content {
+        color: #8b949e;
+        margin-top: 4px;
+        word-break: break-word;
+      }
+      .activity-item .timestamp {
+        color: #484f58;
+        font-size: 10px;
+      }
+      .node-details {
+        padding: 16px;
+        border-top: 1px solid #30363d;
+        display: none;
+      }
+      .node-details.visible {
+        display: block;
+      }
+      .node-details h4 {
+        margin: 0 0 8px 0;
+        color: #c9d1d9;
+        font-size: 14px;
+      }
+      .node-details .detail-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 4px 0;
+      }
+      .node-details .detail-label {
+        color: #8b949e;
+      }
+      .node-details .detail-value {
+        color: #c9d1d9;
+      }
+      .graph-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 16px;
+        border-top: 1px solid #30363d;
+        font-size: 10px;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .legend-color {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .toggle-graph-btn {
+        padding: 6px 12px;
+        background: #21262d;
+        border: 1px solid #30363d;
+        border-radius: 4px;
+        color: #8b949e;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .toggle-graph-btn:hover {
+        background: #30363d;
+        color: #c9d1d9;
+      }
+      .toggle-graph-btn.active {
+        background: #1f6feb33;
+        border-color: #1f6feb;
+        color: #58a6ff;
+      }
     </style>
   </head>
   <body>
@@ -451,7 +664,10 @@
             <li class="empty-state">No active sessions</li>
           </ul>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px">
-            <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+            <div style="display: flex; gap: 8px">
+              <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+              <button id="toggle-graph-btn" class="toggle-graph-btn" onclick="toggleGraphPanel()">📊 Graph</button>
+            </div>
             <label class="auto-refresh-toggle">
               <input type="checkbox" id="auto-refresh-toggle" checked />
               Auto-refresh
@@ -548,6 +764,72 @@
           <div class="log-entry"><span class="log-time">[--:--:--]</span> Waiting for activity...</div>
         </div>
       </div>
+
+      <!-- Agent Graph Visualization Panel -->
+      <div class="graph-panel" id="graph-panel">
+        <div class="graph-header">
+          <h3>🔗 Agent Graph</h3>
+          <div class="graph-stats">
+            <div class="graph-stat">
+              <span class="graph-stat-value" id="stat-total">0</span>
+              <span class="graph-stat-label">agents</span>
+            </div>
+            <div class="graph-stat">
+              <span class="graph-stat-value" id="stat-running">0</span>
+              <span class="graph-stat-label">running</span>
+            </div>
+            <div class="graph-stat">
+              <span class="graph-stat-value" id="stat-completed">0</span>
+              <span class="graph-stat-label">done</span>
+            </div>
+          </div>
+        </div>
+        <div id="graph-container">
+          <svg id="graph-svg"></svg>
+        </div>
+        <div class="graph-legend">
+          <div class="legend-item">
+            <div class="legend-color" style="background: #a78bfa"></div>
+            Root
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #4ade80"></div>
+            Diagnostic
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #ec4899"></div>
+            Synthesis
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #06b6d4"></div>
+            Runner
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #60a5fa"></div>
+            Service
+          </div>
+        </div>
+        <div class="node-details" id="node-details">
+          <h4 id="node-details-name">Select a node</h4>
+          <div class="detail-row">
+            <span class="detail-label">Type:</span>
+            <span class="detail-value" id="node-details-type">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Status:</span>
+            <span class="detail-value" id="node-details-status">-</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Created:</span>
+            <span class="detail-value" id="node-details-created">-</span>
+          </div>
+        </div>
+        <div class="activity-header">
+          <span>Activity Feed</span>
+          <span id="activity-count">0 events</span>
+        </div>
+        <div class="activity-feed" id="activity-feed"></div>
+      </div>
     </div>
 
     <script>
@@ -562,6 +844,32 @@
       let isTyping = false;
       let streamingBuffer = "";
       const TYPEWRITER_DELAY = 8; // ms per character
+
+      // === Graph Visualization State ===
+      let graphNodes = [];
+      let graphEdges = [];
+      let simulation = null;
+      let selectedNode = null;
+      let graphPollInterval = null;
+
+      // Node type colors
+      const typeColors = {
+        root: "#a78bfa",
+        region: "#22d3ee",
+        service: "#60a5fa",
+        runner: "#06b6d4",
+        "diagnostic-agent": "#4ade80",
+        "sub-agent": "#fbbf24",
+        synthesis: "#ec4899",
+      };
+
+      // Status colors for node stroke
+      const statusColors = {
+        pending: "#666",
+        running: "#facc15",
+        completed: "#4ade80",
+        error: "#f87171",
+      };
 
       // Update progress bar
       function updateProgress(percent, text) {
@@ -601,6 +909,280 @@
       // Clear logs
       function clearLogs() {
         document.getElementById("log-output").innerHTML = "";
+      }
+
+      // === Graph Visualization Functions ===
+
+      function initGraph() {
+        const container = document.getElementById("graph-container");
+        const svg = d3.select("#graph-svg");
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        svg.attr("viewBox", [0, 0, width, height]);
+
+        // Create groups for links and nodes
+        svg.append("g").attr("class", "links");
+        svg.append("g").attr("class", "nodes");
+
+        // Setup zoom
+        const zoom = d3
+          .zoom()
+          .scaleExtent([0.1, 4])
+          .on("zoom", (event) => {
+            svg.selectAll("g").attr("transform", event.transform);
+          });
+        svg.call(zoom);
+
+        // Initialize force simulation
+        simulation = d3
+          .forceSimulation()
+          .force(
+            "link",
+            d3
+              .forceLink()
+              .id((d) => d.id)
+              .distance(80),
+          )
+          .force("charge", d3.forceManyBody().strength(-200))
+          .force("center", d3.forceCenter(width / 2, height / 2))
+          .force("collision", d3.forceCollide().radius(40))
+          .on("tick", ticked);
+      }
+
+      function ticked() {
+        const svg = d3.select("#graph-svg");
+
+        svg
+          .select(".links")
+          .selectAll("line")
+          .attr("x1", (d) => d.source.x)
+          .attr("y1", (d) => d.source.y)
+          .attr("x2", (d) => d.target.x)
+          .attr("y2", (d) => d.target.y);
+
+        svg
+          .select(".nodes")
+          .selectAll(".node")
+          .attr("transform", (d) => `translate(${d.x}, ${d.y})`);
+      }
+
+      function getNodeRadius(node) {
+        switch (node.type) {
+          case "root":
+            return 24;
+          case "synthesis":
+            return 18;
+          case "runner":
+            return 16;
+          case "diagnostic-agent":
+            return 12;
+          case "sub-agent":
+            return 10;
+          default:
+            return 14;
+        }
+      }
+
+      function updateGraph(newNodes, newEdges) {
+        const svg = d3.select("#graph-svg");
+        const container = document.getElementById("graph-container");
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        // Update nodes with positions
+        const nodeMap = new Map(graphNodes.map((n) => [n.id, n]));
+        newNodes.forEach((newNode) => {
+          const existing = nodeMap.get(newNode.id);
+          if (existing) {
+            Object.assign(existing, newNode);
+          } else {
+            // New node - position near parent or center
+            const parent = graphNodes.find((n) => n.id === newNode.parent);
+            if (parent && parent.x !== undefined) {
+              newNode.x = parent.x + (Math.random() - 0.5) * 50;
+              newNode.y = parent.y + (Math.random() - 0.5) * 50;
+            } else {
+              newNode.x = width / 2 + (Math.random() - 0.5) * 100;
+              newNode.y = height / 2 + (Math.random() - 0.5) * 100;
+            }
+            graphNodes.push(newNode);
+          }
+        });
+
+        graphEdges = newEdges.map((e) => ({ source: e.source, target: e.target }));
+
+        renderGraph();
+      }
+
+      function renderGraph() {
+        const svg = d3.select("#graph-svg");
+
+        // Update links
+        const links = svg
+          .select(".links")
+          .selectAll("line")
+          .data(graphEdges, (d) => `${d.source.id || d.source}-${d.target.id || d.target}`);
+
+        links.exit().remove();
+
+        links.enter().append("line").attr("class", "link").attr("stroke", "#4a5568").attr("stroke-width", 2);
+
+        // Update nodes
+        const nodes = svg
+          .select(".nodes")
+          .selectAll(".node")
+          .data(graphNodes, (d) => d.id);
+
+        nodes.exit().remove();
+
+        const nodeEnter = nodes
+          .enter()
+          .append("g")
+          .attr("class", (d) => `node ${d.status === "running" ? "running" : ""}`)
+          .call(d3.drag().on("start", dragStarted).on("drag", dragged).on("end", dragEnded))
+          .on("click", (event, d) => {
+            event.stopPropagation();
+            showNodeDetails(d);
+          });
+
+        nodeEnter
+          .append("circle")
+          .attr("r", (d) => getNodeRadius(d))
+          .attr("fill", (d) => typeColors[d.type] || "#666")
+          .attr("stroke", (d) => statusColors[d.status] || "#666")
+          .attr("stroke-width", 2);
+
+        nodeEnter
+          .append("text")
+          .attr("class", "node-label")
+          .attr("dy", (d) => getNodeRadius(d) + 12)
+          .text((d) => (d.name.length > 15 ? d.name.substring(0, 12) + "..." : d.name));
+
+        // Update existing nodes
+        const allNodes = nodes.merge(nodeEnter);
+
+        allNodes.attr("class", (d) => `node ${d.status === "running" ? "running" : ""}`);
+
+        allNodes
+          .select("circle")
+          .attr("fill", (d) => typeColors[d.type] || "#666")
+          .attr("stroke", (d) => statusColors[d.status] || "#666");
+
+        // Update simulation
+        simulation.nodes(graphNodes);
+        simulation.force("link").links(graphEdges);
+        simulation.alpha(0.3).restart();
+
+        // Update stats
+        updateGraphStats();
+      }
+
+      function dragStarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragEnded(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+
+      function updateGraphStats() {
+        const total = graphNodes.length;
+        const running = graphNodes.filter((n) => n.status === "running").length;
+        const completed = graphNodes.filter((n) => n.status === "completed").length;
+
+        document.getElementById("stat-total").textContent = total;
+        document.getElementById("stat-running").textContent = running;
+        document.getElementById("stat-completed").textContent = completed;
+      }
+
+      function showNodeDetails(node) {
+        selectedNode = node;
+        const details = document.getElementById("node-details");
+        details.classList.add("visible");
+
+        document.getElementById("node-details-name").textContent = node.name;
+        document.getElementById("node-details-type").textContent = node.type;
+        document.getElementById("node-details-status").textContent = node.status;
+        document.getElementById("node-details-created").textContent = node.created_at
+          ? new Date(node.created_at).toLocaleTimeString()
+          : "-";
+      }
+
+      async function fetchGraphData() {
+        try {
+          const response = await fetch(`${API_BASE}/graph`);
+          const data = await response.json();
+
+          if (data.nodes && data.nodes.length > 0) {
+            updateGraph(data.nodes, data.edges);
+            // Show graph panel if we have nodes
+            document.getElementById("graph-panel").classList.add("visible");
+          }
+        } catch (error) {
+          console.error("Failed to fetch graph:", error);
+        }
+      }
+
+      async function fetchActivityFeed() {
+        try {
+          const response = await fetch(`${API_BASE}/activity`);
+          const activity = await response.json();
+
+          const feed = document.getElementById("activity-feed");
+          feed.innerHTML = "";
+
+          activity.slice(0, 20).forEach((item) => {
+            const div = document.createElement("div");
+            div.className = "activity-item";
+            div.innerHTML = `
+              <span class="node-name">${escapeHtml(item.node_name)}</span>
+              <span class="role ${item.role}">${item.role}</span>
+              <span class="timestamp">${new Date(item.timestamp).toLocaleTimeString()}</span>
+              <div class="content">${escapeHtml(item.content)}</div>
+            `;
+            feed.appendChild(div);
+          });
+
+          document.getElementById("activity-count").textContent = `${activity.length} events`;
+        } catch (error) {
+          console.error("Failed to fetch activity:", error);
+        }
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function startGraphPolling() {
+        if (graphPollInterval) clearInterval(graphPollInterval);
+        graphPollInterval = setInterval(() => {
+          fetchGraphData();
+          fetchActivityFeed();
+        }, 1000);
+      }
+
+      function stopGraphPolling() {
+        if (graphPollInterval) {
+          clearInterval(graphPollInterval);
+          graphPollInterval = null;
+        }
+      }
+
+      function toggleGraphPanel() {
+        const panel = document.getElementById("graph-panel");
+        panel.classList.toggle("visible");
       }
 
       // Fetch sessions
@@ -645,6 +1227,10 @@
         addLog(`Selected session ${sessionId}`, "info");
         await updateSessionDetail();
         startPolling();
+
+        // Start graph polling and show graph panel
+        startGraphPolling();
+        document.getElementById("graph-panel").classList.add("visible");
       }
 
       // Update phase progress indicator
@@ -956,6 +1542,10 @@
               showSessionBanner(data.session_id);
               initStreamingOutput();
 
+              // Start graph polling and show graph panel
+              startGraphPolling();
+              document.getElementById("graph-panel").classList.add("visible");
+
               addLog(`🚀 Session ${data.session_id} started - Phase 1: Analysis`, "info");
               updatePhaseProgress("analysis", "analyzing");
               updateProgress(data.progress || 0, "Analyzing problem...");
@@ -1062,6 +1652,11 @@
                 durationBadge.style.display = "inline-block";
               }
 
+              // Final graph update then stop polling
+              fetchGraphData();
+              fetchActivityFeed();
+              setTimeout(() => stopGraphPolling(), 2000);
+
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "error") {
@@ -1110,6 +1705,11 @@
           stopPolling();
         }
         addLog(autoRefreshEnabled ? "Auto-refresh enabled" : "Auto-refresh disabled", "info");
+      });
+
+      // Initialize graph on page load
+      document.addEventListener("DOMContentLoaded", () => {
+        initGraph();
       });
 
       // Fetch version from health endpoint
