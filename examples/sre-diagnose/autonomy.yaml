@@ -1,6 +1,7 @@
 name: srediag
 pods:
   - name: main-pod
+    size: big
     public: true
     containers:
       - name: main
@@ -14,3 +15,10 @@ pods:
           # - OP_SERVICE_ACCOUNT_TOKEN: secrets.OP_SERVICE_ACCOUNT_TOKEN
       - name: onepass
         image: mock-1password
+
+  - name: runner-pod
+    size: big
+    clones: 5
+    containers:
+      - name: runner
+        image: runner

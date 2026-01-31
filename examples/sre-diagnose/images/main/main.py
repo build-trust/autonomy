@@ -12,7 +12,7 @@ Supports two 1Password modes:
 Set ONEPASSWORD_MODE=sdk and OP_SERVICE_ACCOUNT_TOKEN for production use.
 """
 
-from autonomy import Agent, HttpServer, Model, Node, NodeDep, Tool
+from autonomy import Agent, HttpServer, Model, Node, NodeDep, Tool, Zone
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -62,7 +62,7 @@ logger.info(f"1Password mode: {ONEPASSWORD_MODE}")
 
 # === Configuration Constants ===
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 # Timeouts (in seconds)
 ANALYSIS_TIMEOUT = 120
@@ -1163,6 +1163,320 @@ Use your tools to gather diagnostic data and provide your analysis."""
       logger.warning(f"Failed to cleanup agent {agent_name}: {cleanup_error}")
 
 
+# === Distributed Swarm Diagnosis ===
+
+# Agent types for swarm diagnosis - each service gets these 5 agents
+SWARM_AGENT_TYPES = [
+  ("database", "Analyze database connections, query latency, connection pool health, and slow queries."),
+  ("cache", "Analyze cache hit rates, eviction patterns, memory usage, and cache miss patterns."),
+  ("network", "Check network latency, DNS resolution, connection errors, and packet loss."),
+  ("resources", "Check CPU usage, memory consumption, disk I/O, and container resource limits."),
+  ("logs", "Scan application logs for errors, warning patterns, anomalies, and stack traces."),
+]
+
+# Demo scenario regions and services
+SWARM_REGIONS = ["us-east-1", "us-west-2", "eu-west-1"]
+SWARM_SERVICES = [
+  "api-gateway", "user-service", "order-service", "payment-service",
+  "inventory-service", "notification-service", "auth-service",
+  "analytics-service", "search-service", "recommendation-service"
+]
+
+
+class DiagnosticWorker:
+  """Worker that runs on remote runners to execute diagnostic agents for services."""
+
+  async def run_service_diagnosis(self, service_info: dict) -> dict:
+    """Run multiple diagnostic agents for a single service."""
+    # Import inside method for remote execution
+    from autonomy import Agent, Model
+    import secrets as secrets_module
+    import asyncio
+
+    # Agent types for swarm diagnosis
+    agent_configs = [
+      ("database", "Analyze database connections, query latency, connection pool health, and slow queries."),
+      ("cache", "Analyze cache hit rates, eviction patterns, memory usage, and cache miss patterns."),
+      ("network", "Check network latency, DNS resolution, connection errors, and packet loss."),
+      ("resources", "Check CPU usage, memory consumption, disk I/O, and container resource limits."),
+      ("logs", "Scan application logs for errors, warning patterns, anomalies, and stack traces."),
+    ]
+
+    service_name = service_info["service"]
+    region = service_info["region"]
+    node_id = service_info["node_id"]
+    session_id = service_info.get("session_id", "unknown")
+
+    # Configure model with throttling for high-scale batch processing
+    model = Model(
+      "nova-micro-v1",
+      throttle=True,
+      throttle_requests_per_minute=100,
+      throttle_max_requests_in_progress=10,
+      throttle_max_requests_waiting_in_queue=500,
+      throttle_max_seconds_to_wait_in_queue=180.0,
+      throttle_max_retry_attempts=3,
+      throttle_initial_seconds_between_retry_attempts=1.0,
+      request_timeout=60.0,
+    )
+
+    results = {}
+    for agent_type, instructions in agent_configs:
+      agent_name = f"swarm_{agent_type}_{service_name}_{secrets_module.token_hex(4)}"
+      try:
+        agent = await Agent.start(
+          node=self.node,
+          instructions=f"""You are a {agent_type} diagnostic agent for the {service_name} service in {region}.
+{instructions}
+
+Provide a brief assessment (2-3 sentences) of the {agent_type} health for this service.
+Report any issues found or confirm healthy status.""",
+          model=model,
+          max_execution_time=60.0,
+          max_iterations=3,
+        )
+
+        try:
+          message = f"Diagnose {agent_type} health for {service_name} in {region}. Check for any issues related to the production latency spike."
+          responses = await agent.send(message, timeout=45)
+          finding = responses[-1].content.text if responses else "No response"
+          results[agent_type] = {
+            "status": "completed",
+            "finding": finding[:500]  # Limit finding size
+          }
+        except asyncio.TimeoutError:
+          results[agent_type] = {
+            "status": "timeout",
+            "finding": "Agent timed out"
+          }
+        except Exception as agent_err:
+          results[agent_type] = {
+            "status": "error",
+            "finding": str(agent_err)[:200]
+          }
+        finally:
+          try:
+            await Agent.stop(self.node, agent_name, timeout=5.0)
+          except Exception:
+            pass
+      except Exception as start_err:
+        results[agent_type] = {
+          "status": "error",
+          "finding": f"Failed to start agent: {str(start_err)[:100]}"
+        }
+
+    return {
+      "service": service_name,
+      "region": region,
+      "node_id": node_id,
+      "results": results,
+    }
+
+  async def handle_message(self, context, message):
+    """Handle batch of services to diagnose."""
+    import json as json_module
+
+    request = json_module.loads(message)
+    services = request.get("services", [])
+    runner_id = request.get("runner_id", "unknown")
+
+    results = []
+    for service_info in services:
+      result = await self.run_service_diagnosis(service_info)
+      results.append(result)
+
+    # Return all results at once
+    await context.reply(json_module.dumps({
+      "runner_id": runner_id,
+      "results": results,
+    }))
+
+
+def split_list_into_n_parts(lst, n):
+  """Split a list into n roughly equal parts."""
+  if n <= 0:
+    return [lst]
+  q, r = divmod(len(lst), n)
+  return [lst[i * q + min(i, r): (i + 1) * q + min(i + 1, r)] for i in range(n)]
+
+
+async def run_distributed_diagnosis(node, problem: str, session_id: str, root_id: str):
+  """Distribute diagnosis across runners with massive parallelism."""
+  logger.info(f"Starting distributed diagnosis for session {session_id}")
+
+  # Create region and service nodes in visualization
+  targets = []
+  for region in SWARM_REGIONS:
+    region_id = f"region-{region}-{session_id}"
+    await add_node(region_id, region, "region", root_id)
+    await update_node_status(region_id, "running")
+
+    for service in SWARM_SERVICES:
+      service_id = f"service-{region}-{service}-{session_id}"
+      await add_node(service_id, service, "service", region_id)
+      targets.append({
+        "service": service,
+        "region": region,
+        "node_id": service_id,
+        "session_id": session_id,
+      })
+
+  await add_transcript_entry(root_id, "system",
+    f"Created {len(targets)} investigation targets across {len(SWARM_REGIONS)} regions")
+
+  # Discover runners
+  runners = await Zone.nodes(node, filter="runner")
+  num_runners = len(runners)
+
+  if num_runners == 0:
+    # Fallback to local execution if no runners found
+    await add_transcript_entry(root_id, "system", "No runners found, running locally (limited scale)")
+    return await run_local_swarm_diagnosis(node, targets, session_id, root_id)
+
+  await add_transcript_entry(root_id, "system",
+    f"Found {num_runners} runner nodes, distributing {len(targets)} targets")
+
+  # Create runner nodes in visualization
+  runner_node_ids = []
+  for i in range(num_runners):
+    runner_node_id = f"runner-{i+1}-{session_id}"
+    await add_node(runner_node_id, f"Runner {i+1}", "runner", root_id, {
+      "runner_name": runners[i].name,
+    })
+    await update_node_status(runner_node_id, "running")
+    runner_node_ids.append(runner_node_id)
+
+  # Split targets across runners
+  target_batches = split_list_into_n_parts(targets, num_runners)
+
+  async def run_on_runner(runner_idx, runner, batch):
+    """Run diagnosis on a single runner."""
+    worker_name = f"diagnostic-worker-{secrets.token_hex(4)}"
+    runner_id = f"Runner {runner_idx + 1}"
+    runner_node_id = runner_node_ids[runner_idx]
+
+    if not batch:
+      await update_node_status(runner_node_id, "completed")
+      return []
+
+    # Mark all services as running upfront
+    for service_info in batch:
+      service_node_id = service_info["node_id"]
+      await update_node_status(service_node_id, "running")
+      # Create diagnostic agent nodes
+      for agent_type, _ in SWARM_AGENT_TYPES:
+        agent_node_id = f"agent-{service_info['region']}-{service_info['service']}-{agent_type}-{session_id}"
+        await add_node(agent_node_id, agent_type, "diagnostic-agent", service_node_id)
+        await update_node_status(agent_node_id, "running")
+
+    await add_transcript_entry(runner_node_id, "system",
+      f"Processing {len(batch)} services...")
+
+    results = []
+    try:
+      await runner.start_worker(worker_name, DiagnosticWorker())
+
+      request_data = json.dumps({
+        "services": batch,
+        "runner_id": runner_id,
+      })
+
+      # Use runner.send_and_receive for proper remote worker communication
+      reply_json = await runner.send_and_receive(worker_name, request_data, timeout=600)
+      msg = json.loads(reply_json)
+      results = msg.get("results", [])
+
+      # Update graph with results
+      for result in results:
+        service = result.get("service", "")
+        region = result.get("region", "")
+        service_node_id = f"service-{region}-{service}-{session_id}"
+        await update_node_status(service_node_id, "completed")
+
+        # Update agent nodes
+        for agent_type, agent_result in result.get("results", {}).items():
+          agent_node_id = f"agent-{region}-{service}-{agent_type}-{session_id}"
+          agent_status = "completed" if agent_result.get("status") == "completed" else "error"
+          await update_node_status(agent_node_id, agent_status, agent_result)
+
+      await update_node_status(runner_node_id, "completed")
+      await add_transcript_entry(runner_node_id, "system",
+        f"Completed {len(results)} services")
+
+    except asyncio.TimeoutError:
+      logger.error(f"Runner {runner_id} timed out")
+      await add_transcript_entry(runner_node_id, "error", "Runner timed out")
+      await update_node_status(runner_node_id, "error")
+    except Exception as e:
+      logger.error(f"Error on runner {runner_id}: {e}")
+      await update_node_status(runner_node_id, "error")
+      await add_transcript_entry(runner_node_id, "error", str(e))
+    finally:
+      try:
+        await runner.stop_worker(worker_name)
+      except Exception:
+        pass
+
+    return results
+
+  # Run all runners in parallel
+  futures = [run_on_runner(i, runners[i], target_batches[i]) for i in range(num_runners)]
+  all_results = await asyncio.gather(*futures, return_exceptions=True)
+
+  # Flatten results
+  flattened = []
+  for batch in all_results:
+    if isinstance(batch, list):
+      flattened.extend(batch)
+    elif isinstance(batch, Exception):
+      logger.error(f"Runner batch failed: {batch}")
+
+  # Update region nodes to completed
+  for region in SWARM_REGIONS:
+    region_id = f"region-{region}-{session_id}"
+    await update_node_status(region_id, "completed")
+
+  return flattened
+
+
+async def run_local_swarm_diagnosis(node, targets, session_id: str, root_id: str):
+  """Fallback local diagnosis when no runners available (limited scale)."""
+  await add_transcript_entry(root_id, "system", "Running limited local diagnosis (no distributed runners)")
+
+  # Only process first 3 services as a sample
+  sample_targets = targets[:3]
+  results = []
+
+  worker = DiagnosticWorker()
+  worker.node = node
+
+  for target in sample_targets:
+    service_node_id = target["node_id"]
+    await update_node_status(service_node_id, "running")
+
+    # Create agent nodes
+    for agent_type, _ in SWARM_AGENT_TYPES:
+      agent_node_id = f"agent-{target['region']}-{target['service']}-{agent_type}-{session_id}"
+      await add_node(agent_node_id, agent_type, "diagnostic-agent", service_node_id)
+      await update_node_status(agent_node_id, "running")
+
+    result = await worker.run_service_diagnosis(target)
+    results.append(result)
+
+    # Update nodes
+    await update_node_status(service_node_id, "completed")
+    for agent_type, agent_result in result.get("results", {}).items():
+      agent_node_id = f"agent-{target['region']}-{target['service']}-{agent_type}-{session_id}"
+      agent_status = "completed" if agent_result.get("status") == "completed" else "error"
+      await update_node_status(agent_node_id, agent_status, agent_result)
+
+  # Mark remaining targets as skipped
+  for target in targets[3:]:
+    await update_node_status(target["node_id"], "pending")
+
+  return results
+
+
 def determine_specialist_agents(problem: str, analysis: str) -> list:
   """Determine which specialist agents to run based on the problem and analysis."""
   agents = []
@@ -1571,6 +1885,232 @@ async def test_credential(reference: str):
     "result": result,
     "success": "Successfully" in result
   }
+
+
+# === Swarm Diagnosis Endpoints ===
+
+@app.post("/diagnose/swarm")
+async def diagnose_swarm(request: DiagnoseRequest, node: NodeDep):
+  """Start a swarm diagnosis with 150+ parallel agents across multiple runners.
+
+  This is the Phase 10 demo endpoint that shows massive parallelism:
+  - 3 regions × 10 services = 30 investigation targets
+  - 5 diagnostic agents per service = 150+ agents
+  - Distributed across 5 runner pods
+  """
+  session_id = secrets.token_hex(8)
+  root_id = f"investigation-{session_id}"
+
+  sessions[session_id] = {
+    "id": session_id,
+    "status": "swarm_diagnosis",
+    "phase": "distributed_diagnosis",
+    "problem": request.problem,
+    "environment": request.environment,
+    "context": request.context or {},
+    "created_at": datetime.utcnow().isoformat(),
+    "root_node_id": root_id,
+    "mode": "swarm",
+  }
+
+  # Reset graph and create root node
+  await reset_graph()
+  await add_node(root_id, "Swarm Investigation", "root", meta={
+    "problem": request.problem,
+    "environment": request.environment,
+    "session_id": session_id,
+    "mode": "swarm",
+  })
+  await update_node_status(root_id, "running")
+  graph_state["status"] = "running"
+
+  async def stream_swarm_diagnosis():
+    synthesis_agent_name = None
+    diagnosis_start_time = datetime.utcnow()
+
+    try:
+      yield make_event("swarm_started",
+        session_id=session_id,
+        status="swarm_diagnosis",
+        regions=SWARM_REGIONS,
+        services=SWARM_SERVICES,
+        agents_per_service=len(SWARM_AGENT_TYPES),
+        total_targets=len(SWARM_REGIONS) * len(SWARM_SERVICES),
+        total_agents=len(SWARM_REGIONS) * len(SWARM_SERVICES) * len(SWARM_AGENT_TYPES),
+        progress=0
+      )
+
+      await add_transcript_entry(root_id, "system",
+        f"Starting swarm diagnosis: {len(SWARM_REGIONS)} regions × {len(SWARM_SERVICES)} services × {len(SWARM_AGENT_TYPES)} agents = {len(SWARM_REGIONS) * len(SWARM_SERVICES) * len(SWARM_AGENT_TYPES)} total agents")
+
+      # Run distributed diagnosis across all regions/services
+      results = await run_distributed_diagnosis(node, request.problem, session_id, root_id)
+
+      yield make_event("swarm_collection_complete",
+        session_id=session_id,
+        results_count=len(results),
+        progress=70
+      )
+
+      await add_transcript_entry(root_id, "system", f"Collected results from {len(results)} services")
+
+      # Create synthesis agent to combine all findings
+      yield make_event("synthesis_started",
+        session_id=session_id,
+        findings_count=len(results),
+        progress=75
+      )
+
+      synthesis_node_id = f"synthesis-{session_id}"
+      await add_node(synthesis_node_id, "Synthesis Agent", "synthesis", root_id, meta={
+        "findings_count": len(results),
+      })
+      await update_node_status(synthesis_node_id, "running")
+      await add_transcript_entry(synthesis_node_id, "system", f"Synthesizing findings from {len(results)} services...")
+
+      synthesis_agent_name = f"swarm_synthesizer_{session_id}_{secrets.token_hex(4)}"
+      agent = await Agent.start(
+        node=node,
+        name=synthesis_agent_name,
+        instructions="""You are a senior SRE synthesizing diagnostic findings from a large-scale parallel investigation.
+
+Multiple diagnostic agents have analyzed services across different regions. Your job is to:
+1. Identify common patterns across regions/services
+2. Determine the root cause of the incident
+3. Prioritize remediation steps
+4. Suggest monitoring improvements
+
+Be concise but thorough. Focus on actionable insights.""",
+        model=Model("claude-sonnet-4-5"),
+      )
+
+      # Build synthesis prompt with aggregated findings
+      findings_summary = []
+      for result in results[:20]:  # Limit to first 20 for synthesis
+        service = result.get("service", "unknown")
+        region = result.get("region", "unknown")
+        service_results = result.get("results", {})
+
+        issues = []
+        for agent_type, agent_result in service_results.items():
+          if agent_result.get("status") != "completed":
+            issues.append(f"{agent_type}: {agent_result.get('status', 'unknown')}")
+          finding = agent_result.get("finding", "")
+          if finding and "error" in finding.lower() or "issue" in finding.lower() or "problem" in finding.lower():
+            issues.append(f"{agent_type}: {finding[:100]}")
+
+        if issues:
+          findings_summary.append(f"**{service} ({region})**: {'; '.join(issues)}")
+
+      synthesis_message = f"""Synthesize the diagnosis for this production incident.
+
+**Problem**: {request.problem}
+**Environment**: {request.environment}
+
+**Investigation Scale**:
+- {len(SWARM_REGIONS)} regions investigated
+- {len(SWARM_SERVICES)} services per region
+- {len(SWARM_AGENT_TYPES)} diagnostic agents per service
+- Total: {len(results)} services analyzed with {len(results) * len(SWARM_AGENT_TYPES)} agent findings
+
+**Key Findings Summary**:
+{chr(10).join(findings_summary) if findings_summary else "No critical issues detected across services."}
+
+Based on this large-scale investigation, provide:
+1. Root cause analysis
+2. Immediate remediation steps
+3. Long-term prevention measures
+4. Recommended monitoring improvements"""
+
+      diagnosis_text = ""
+      try:
+        async for response in agent.send_stream(synthesis_message, timeout=SYNTHESIS_TIMEOUT):
+          snippet = response.snippet
+          text = extract_text_from_snippet(snippet)
+          if text:
+            diagnosis_text += text
+            yield make_event("text", text=text)
+      except asyncio.TimeoutError:
+        diagnosis_text += "\n\n[WARNING: Synthesis timed out, partial results shown]"
+        yield make_event("text", text="\n\n[WARNING: Synthesis timed out]")
+
+      # Update session and graph
+      sessions[session_id]["diagnosis"] = diagnosis_text
+      sessions[session_id]["status"] = "completed"
+      sessions[session_id]["phase"] = "diagnosis_complete"
+      sessions[session_id]["completed_at"] = datetime.utcnow().isoformat() + "Z"
+      sessions[session_id]["swarm_results"] = results
+
+      await update_node_status(synthesis_node_id, "completed", {"diagnosis": diagnosis_text})
+      await add_transcript_entry(synthesis_node_id, "model", diagnosis_text[:500] + "..." if len(diagnosis_text) > 500 else diagnosis_text)
+      await update_node_status(root_id, "completed")
+
+      total_duration = (datetime.utcnow() - diagnosis_start_time).total_seconds()
+      await add_transcript_entry(root_id, "system", f"Swarm diagnosis complete in {round(total_duration, 1)}s with {len(results) * len(SWARM_AGENT_TYPES)} agents")
+      graph_state["status"] = "completed"
+
+      yield make_event("swarm_complete",
+        session_id=session_id,
+        status="completed",
+        services_analyzed=len(results),
+        total_agents=len(results) * len(SWARM_AGENT_TYPES),
+        duration_seconds=round(total_duration, 2),
+        progress=100
+      )
+
+    except Exception as e:
+      logger.error(f"Error in swarm diagnosis: {str(e)}")
+      import traceback
+      logger.error(f"Traceback: {traceback.format_exc()}")
+      sessions[session_id]["status"] = "error"
+      sessions[session_id]["phase"] = "swarm_failed"
+      sessions[session_id]["message"] = str(e)
+
+      await update_node_status(root_id, "error")
+      await add_transcript_entry(root_id, "error", f"Swarm diagnosis failed: {str(e)}")
+      graph_state["status"] = "completed"
+
+      yield make_event("error",
+        session_id=session_id,
+        message=str(e)
+      )
+
+    finally:
+      if synthesis_agent_name:
+        try:
+          await Agent.stop(node, synthesis_agent_name)
+        except Exception as cleanup_error:
+          logger.warning(f"Failed to cleanup agent {synthesis_agent_name}: {cleanup_error}")
+
+  return StreamingResponse(stream_swarm_diagnosis(), media_type="application/x-ndjson")
+
+
+@app.get("/runners")
+async def get_runners(node: NodeDep):
+  """List all available runner nodes."""
+  runners = await Zone.nodes(node, filter="runner")
+  return JSONResponse(content={
+    "runners": [r.name for r in runners],
+    "count": len(runners),
+  })
+
+
+@app.get("/runners/workers")
+async def get_runner_workers(node: NodeDep):
+  """List all workers on all runners."""
+  runners = await Zone.nodes(node, filter="runner")
+  workers = []
+  for runner in runners:
+    try:
+      runner_workers = await runner.list_workers()
+      for w in runner_workers:
+        workers.append({
+          "worker_name": w.get("name", "unknown"),
+          "runner_name": runner.name,
+        })
+    except Exception as e:
+      logger.warning(f"Failed to list workers on {runner.name}: {e}")
+  return JSONResponse(content={"workers": workers})
 
 
 # === Start Node ===

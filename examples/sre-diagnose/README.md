@@ -2,7 +2,7 @@
 
 An Autonomy app that enables developers to diagnose infrastructure problems using autonomous diagnostic agents with secure credential retrieval via human-in-the-loop approval.
 
-**Version**: 0.6.0
+**Version**: 0.7.0
 
 ## Overview
 
@@ -10,6 +10,7 @@ This app demonstrates:
 
 - **Two-Phase Diagnosis Flow**: Analysis → Approval → Diagnosis
 - **Specialized Diagnostic Agents**: Database, Cloud, and Kubernetes specialists
+- **Agent Swarm Scaling**: 150+ parallel agents across distributed runner pods
 - **Agent Visualization**: Real-time D3.js force-directed graph showing all agents
 - **Mock Diagnostic Tools**: Realistic tool responses for testing
 - **Human-in-the-Loop Approval**: Requests permission before accessing credentials
@@ -18,6 +19,7 @@ This app demonstrates:
 - **Cursor Hooks Integration**: Deep integration with Cursor IDE
 - **Production-Ready Features**: Timeouts, retry logic, session management
 - **Dual 1Password Modes**: Mock server for development, real SDK for production
+- **Distributed Processing**: 5 runner pods for parallel diagnosis at scale
 
 ## Quick Start
 
@@ -50,9 +52,45 @@ curl https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/
 curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/approve/{session_id} \
   -H "Content-Type: application/json" \
   -d '{"approved": true}'
+
+# Start swarm diagnosis (150+ agents)
+curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/diagnose/swarm \
+  -H "Content-Type: application/json" \
+  -d '{"problem": "Production API latency spike across all regions", "environment": "prod"}'
+
+# List available runners
+curl https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/runners
 ```
 
 ## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ZONE: srediag                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         MAIN POD (public)                           │   │
+│  │  ┌─────────────────────────────────┐  ┌────────────────────────┐    │   │
+│  │  │          main container         │  │   mock-1password       │    │   │
+│  │  │    FastAPI + Orchestrator       │  │   Credential Server    │    │   │
+│  │  │    D3.js Dashboard              │  │                        │    │   │
+│  │  └─────────────────────────────────┘  └────────────────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    RUNNER PODS (clones: 5)                          │   │
+│  │                                                                     │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │   │
+│  │  │ Runner 1 │  │ Runner 2 │  │ Runner 3 │  │ Runner 4 │  │Runner 5│ │   │
+│  │  │ Workers  │  │ Workers  │  │ Workers  │  │ Workers  │  │Workers │ │   │
+│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └────────┘ │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Diagnosis Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -107,6 +145,65 @@ curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.c
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Agent Swarm (Phase 10)
+
+The swarm diagnosis mode spawns 150+ parallel agents across 5 distributed runner pods to investigate production incidents at scale.
+
+### Swarm Architecture
+
+```
+Investigation Root
+├── Runner 1 (handling us-east-1 services)
+├── Runner 2 (handling us-west-2 services)
+├── Runner 3 (handling eu-west-1 services)
+├── Runner 4-5 (overflow/parallel processing)
+│
+├── us-east-1 (Region)
+│   ├── api-gateway
+│   │   ├── database-agent
+│   │   ├── cache-agent
+│   │   ├── network-agent
+│   │   ├── resources-agent
+│   │   └── logs-agent
+│   ├── user-service (5 agents)
+│   ├── order-service (5 agents)
+│   └── ... (10 services × 5 agents = 50 agents)
+│
+├── us-west-2 (Region) - 50 agents
+├── eu-west-1 (Region) - 50 agents
+│
+└── Synthesis Agent (combines all findings)
+```
+
+### Scale Math
+
+- **3 regions** × **10 services** = 30 investigation targets
+- **5 diagnostic agents** per service = **150 base agents**
+- Plus runners and synthesis = **150+ total agents**
+
+### Using Swarm Mode
+
+1. Open the dashboard
+2. Enter a problem description (or use the default)
+3. Click **🐝 Swarm (150+ agents)** button
+4. Watch the graph populate with agents across all regions
+5. See results synthesized from all findings
+
+### Swarm API
+
+```bash
+# Start swarm diagnosis
+curl -X POST https://...srediag.cluster.autonomy.computer/diagnose/swarm \
+  -H "Content-Type: application/json" \
+  -d '{"problem": "Production API latency spike across all regions", "environment": "prod"}'
+
+# List runners
+curl https://...srediag.cluster.autonomy.computer/runners
+
+# List workers on runners
+curl https://...srediag.cluster.autonomy.computer/runners/workers
+```
+
 ## Agent Visualization
 
 The dashboard includes a real-time D3.js force-directed graph that visualizes all agents in a diagnosis session:
@@ -116,10 +213,11 @@ The dashboard includes a real-time D3.js force-directed graph that visualizes al
 | Type | Color | Description |
 |------|-------|-------------|
 | Root | Purple | Investigation root node |
-| Diagnostic Agent | Green | Specialist agents (Database, Cloud, K8s) |
+| Region | Cyan | Geographic region (us-east-1, etc.) |
+| Service | Blue | Service being investigated |
+| Runner | Teal | Runner pods executing workers |
+| Diagnostic Agent | Green | Specialist agents (Database, Cloud, K8s, etc.) |
 | Synthesis | Pink | Synthesis agent that combines findings |
-| Runner | Teal | Runner pods (Phase 10) |
-| Service | Blue | Service nodes (Phase 10) |
 
 ### Status Colors
 

@@ -654,7 +654,12 @@
                 <option value="dev">Development</option>
               </select>
             </div>
-            <button type="submit" class="btn btn-primary">Start Diagnosis</button>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <button type="submit" class="btn btn-primary">Start Diagnosis</button>
+              <button type="button" id="swarm-btn" class="btn btn-secondary" onclick="startSwarmDiagnosis()">
+                🐝 Swarm (150+ agents)
+              </button>
+            </div>
           </form>
         </div>
 
@@ -913,13 +918,20 @@
 
       // === Graph Visualization Functions ===
 
+      let graphInitialized = false;
+
       function initGraph() {
         const container = document.getElementById("graph-container");
         const svg = d3.select("#graph-svg");
-        const width = container.clientWidth;
-        const height = container.clientHeight;
+
+        // Use default dimensions if container not visible yet
+        let width = container.clientWidth || 400;
+        let height = container.clientHeight || 400;
 
         svg.attr("viewBox", [0, 0, width, height]);
+
+        // Clear any existing content
+        svg.selectAll("*").remove();
 
         // Create groups for links and nodes
         svg.append("g").attr("class", "links");
@@ -934,7 +946,7 @@
           });
         svg.call(zoom);
 
-        // Initialize force simulation
+        // Initialize force simulation with adjusted forces for large graphs
         simulation = d3
           .forceSimulation()
           .force(
@@ -942,12 +954,27 @@
             d3
               .forceLink()
               .id((d) => d.id)
-              .distance(80),
+              .distance(50),
           )
-          .force("charge", d3.forceManyBody().strength(-200))
+          .force("charge", d3.forceManyBody().strength(-100))
           .force("center", d3.forceCenter(width / 2, height / 2))
-          .force("collision", d3.forceCollide().radius(40))
+          .force("collision", d3.forceCollide().radius(20))
           .on("tick", ticked);
+
+        graphInitialized = true;
+      }
+
+      function reinitGraphIfNeeded() {
+        const container = document.getElementById("graph-container");
+        const svg = d3.select("#graph-svg");
+        const width = container.clientWidth || 400;
+        const height = container.clientHeight || 400;
+
+        if (width > 0 && height > 0 && simulation) {
+          svg.attr("viewBox", [0, 0, width, height]);
+          simulation.force("center", d3.forceCenter(width / 2, height / 2));
+          simulation.alpha(0.3).restart();
+        }
       }
 
       function ticked() {
@@ -967,21 +994,32 @@
           .attr("transform", (d) => `translate(${d.x}, ${d.y})`);
       }
 
-      function getNodeRadius(node) {
-        switch (node.type) {
+      function getNodeRadius(d) {
+        // Smaller radii for large graphs
+        const nodeCount = graphNodes.length;
+        const scale = nodeCount > 100 ? 0.6 : nodeCount > 50 ? 0.8 : 1;
+
+        let baseRadius;
+        switch (d.type) {
           case "root":
-            return 24;
-          case "synthesis":
-            return 18;
+            baseRadius = 20;
+            break;
+          case "region":
+            baseRadius = 15;
+            break;
           case "runner":
-            return 16;
-          case "diagnostic-agent":
-            return 12;
-          case "sub-agent":
-            return 10;
+            baseRadius = 12;
+            break;
+          case "service":
+            baseRadius = 10;
+            break;
+          case "synthesis":
+            baseRadius = 15;
+            break;
           default:
-            return 14;
+            baseRadius = 6;
         }
+        return baseRadius * scale;
       }
 
       function updateGraph(newNodes, newEdges) {
@@ -1167,6 +1205,8 @@
 
       function startGraphPolling() {
         if (graphPollInterval) clearInterval(graphPollInterval);
+        // Reinitialize graph when starting polling (panel just became visible)
+        setTimeout(reinitGraphIfNeeded, 100);
         graphPollInterval = setInterval(() => {
           fetchGraphData();
           fetchActivityFeed();
@@ -1183,6 +1223,10 @@
       function toggleGraphPanel() {
         const panel = document.getElementById("graph-panel");
         panel.classList.toggle("visible");
+        // Reinitialize graph when panel becomes visible
+        if (panel.classList.contains("visible")) {
+          setTimeout(reinitGraphIfNeeded, 100);
+        }
       }
 
       // Fetch sessions
@@ -1710,6 +1754,13 @@
       // Initialize graph on page load
       document.addEventListener("DOMContentLoaded", () => {
         initGraph();
+        // Also reinit when window resizes
+        window.addEventListener("resize", () => {
+          const panel = document.getElementById("graph-panel");
+          if (panel.classList.contains("visible")) {
+            reinitGraphIfNeeded();
+          }
+        });
       });
 
       // Fetch version from health endpoint
@@ -1722,6 +1773,69 @@
           }
         } catch (e) {
           console.warn("Failed to fetch version");
+        }
+      }
+
+      // Start swarm diagnosis (150+ agents)
+      async function startSwarmDiagnosis() {
+        const problem =
+          document.getElementById("problem").value || "Production API experiencing latency spikes across all regions";
+        const environment = document.getElementById("environment").value;
+
+        try {
+          addLog("🐝 Starting swarm diagnosis with 150+ agents...", "info");
+          const response = await fetch(`${API_BASE}/diagnose/swarm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ problem, environment }),
+          });
+
+          // Stream the response
+          await streamResponse(response, (data) => {
+            if (data.type === "swarm_started") {
+              currentSessionId = data.session_id;
+              document.getElementById("session-detail").style.display = "block";
+              document.getElementById("detail-session-id").textContent = data.session_id;
+
+              // Show session banner
+              showSessionBanner(data.session_id);
+              initStreamingOutput();
+
+              // Start graph polling and show graph panel
+              startGraphPolling();
+              document.getElementById("graph-panel").classList.add("visible");
+
+              addLog(`🐝 Swarm started: ${data.total_agents} agents across ${data.total_targets} targets`, "info");
+              updatePhaseProgress("diagnosis", "diagnosing");
+              updateProgress(data.progress || 0, `Spawning ${data.total_agents} agents...`);
+              fetchSessions();
+
+              // Hide approval section for swarm (no credentials needed)
+              document.getElementById("approval-section").style.display = "none";
+            } else if (data.type === "swarm_collection_complete") {
+              addLog(`📊 Collected results from ${data.results_count} services`, "info");
+              updateProgress(data.progress || 70, "Synthesizing findings...");
+            } else if (data.type === "synthesis_started") {
+              addLog(`🧠 Synthesis agent combining ${data.findings_count} findings`, "info");
+              updateProgress(data.progress || 75, "Synthesizing...");
+            } else if (data.type === "swarm_complete") {
+              flushTypewriterBuffer();
+              hideStreamingCursor();
+              addLog(`✅ Swarm complete: ${data.total_agents} agents in ${data.duration_seconds}s`, "info");
+              updatePhaseProgress("diagnosis_complete", "completed");
+              updateProgress(100, "Complete");
+              fetchSessions();
+            } else if (data.type === "error") {
+              addLog(`❌ Error: ${data.message}`, "error");
+            } else if (data.text) {
+              // Stream synthesis text with typewriter effect
+              if (!data.text.match(/^\d{4}-\d{2}-\d{2}/)) {
+                queueTypewriterText(data.text);
+              }
+            }
+          });
+        } catch (error) {
+          addLog(`Swarm diagnosis failed: ${error.message}`, "error");
         }
       }
 
