@@ -701,9 +701,9 @@
             } else if (data.type === "error") {
               addLog(`❌ Error: ${data.message}`, "error");
             } else if (data.text) {
-              // Streaming text content - show abbreviated
+              // Streaming text content - show abbreviated (skip timestamps)
               const preview = data.text.replace(/\n/g, " ").substring(0, 60);
-              if (preview.trim()) {
+              if (preview.trim() && !preview.match(/^\d{4}-\d{2}-\d{2}/)) {
                 addLog(`📝 ${preview}${data.text.length > 60 ? "..." : ""}`, "info");
               }
             }
@@ -730,6 +730,7 @@
 
           // Stream the resumed agent response
           let credentialCount = 0;
+          let specialistCount = 0;
           await streamResponse(response, (data) => {
             if (data.type === "approval_accepted") {
               addLog("✅ Credentials approved - Phase 2: Retrieving credentials...", "info");
@@ -745,6 +746,18 @@
             } else if (data.type === "diagnosis_started") {
               addLog(`🔧 Starting diagnosis with ${data.credentials_retrieved} credentials...`, "info");
               updatePhaseProgress("diagnosis", "diagnosing");
+            } else if (data.type === "specialists_selected") {
+              const specialists = data.specialists || [];
+              addLog(`🤖 Running ${specialists.length} specialist agents: ${specialists.join(", ")}`, "info");
+            } else if (data.type === "specialist_complete") {
+              specialistCount++;
+              const agentName = data.agent?.replace("_specialist", "") || "unknown";
+              const icon = data.status === "completed" ? "✅" : "⚠️";
+              addLog(`${icon} Specialist #${specialistCount} (${agentName}): ${data.status}`, "info");
+            } else if (data.type === "specialist_error") {
+              addLog(`❌ Specialist error: ${data.error}`, "error");
+            } else if (data.type === "synthesis_started") {
+              addLog("🧪 Synthesizing findings from all specialists...", "info");
             } else if (data.type === "diagnosis_complete") {
               addLog("✅ Diagnosis complete!", "info");
               updatePhaseProgress("diagnosis_complete", "completed");
@@ -753,7 +766,7 @@
             } else if (data.type === "error") {
               addLog(`❌ Error: ${data.message}`, "error");
             } else if (data.text) {
-              // Show diagnosis output
+              // Show diagnosis output (skip timestamps)
               const preview = data.text.replace(/\n/g, " ").substring(0, 80);
               if (preview.trim() && !preview.match(/^\d{4}-\d{2}-\d{2}/)) {
                 addLog(`📋 ${preview}${data.text.length > 80 ? "..." : ""}`, "info");
