@@ -1217,7 +1217,7 @@ class DiagnosticWorker:
       throttle_max_seconds_to_wait_in_queue=180.0,
       throttle_max_retry_attempts=3,
       throttle_initial_seconds_between_retry_attempts=1.0,
-      request_timeout=60.0,
+      request_timeout=90.0,
     )
 
     results = {}
@@ -1232,13 +1232,13 @@ class DiagnosticWorker:
 Provide a brief assessment (2-3 sentences) of the {agent_type} health for this service.
 Report any issues found or confirm healthy status.""",
           model=model,
-          max_execution_time=60.0,
-          max_iterations=3,
+          max_execution_time=90.0,
+          max_iterations=10,
         )
 
         try:
           message = f"Diagnose {agent_type} health for {service_name} in {region}. Check for any issues related to the production latency spike."
-          responses = await agent.send(message, timeout=45)
+          responses = await agent.send(message, timeout=60)
           finding = responses[-1].content.text if responses else "No response"
           results[agent_type] = {
             "status": "completed",
@@ -1275,20 +1275,41 @@ Report any issues found or confirm healthy status.""",
   async def handle_message(self, context, message):
     """Handle batch of services to diagnose."""
     import json as json_module
+    import asyncio
 
     request = json_module.loads(message)
     services = request.get("services", [])
     runner_id = request.get("runner_id", "unknown")
 
-    results = []
-    for service_info in services:
-      result = await self.run_service_diagnosis(service_info)
-      results.append(result)
+    # Process all services in parallel for faster completion
+    tasks = [self.run_service_diagnosis(service_info) for service_info in services]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Filter out exceptions and convert to proper results
+    valid_results = []
+    for i, result in enumerate(results):
+      if isinstance(result, Exception):
+        # Create error result for failed services
+        service_info = services[i]
+        valid_results.append({
+          "service": service_info.get("service", "unknown"),
+          "region": service_info.get("region", "unknown"),
+          "node_id": service_info.get("node_id", "unknown"),
+          "results": {
+            "database": {"status": "error", "finding": str(result)[:200]},
+            "cache": {"status": "error", "finding": str(result)[:200]},
+            "network": {"status": "error", "finding": str(result)[:200]},
+            "resources": {"status": "error", "finding": str(result)[:200]},
+            "logs": {"status": "error", "finding": str(result)[:200]},
+          },
+        })
+      else:
+        valid_results.append(result)
 
     # Return all results at once
     await context.reply(json_module.dumps({
       "runner_id": runner_id,
-      "results": results,
+      "results": valid_results,
     }))
 
 
@@ -1381,8 +1402,17 @@ async def run_distributed_diagnosis(node, problem: str, session_id: str, root_id
         "runner_id": runner_id,
       })
 
-      # Use runner.send_and_receive for proper remote worker communication
-      reply_json = await runner.send_and_receive(worker_name, request_data, timeout=600)
+      # Use runner.send_and_receive with explicit asyncio.wait_for as backup timeout
+      # The inner timeout=300 is for the send_and_receive, outer wait_for is a hard limit
+      try:
+        reply_json = await asyncio.wait_for(
+          runner.send_and_receive(worker_name, request_data, timeout=300),
+          timeout=360  # Hard outer timeout slightly longer than inner
+        )
+      except asyncio.TimeoutError:
+        logger.error(f"Runner {runner_id} timed out (asyncio.wait_for)")
+        raise
+
       msg = json.loads(reply_json)
       results = msg.get("results", [])
 
