@@ -1184,13 +1184,119 @@ SWARM_SERVICES = [
 
 
 class DiagnosticWorker:
-  """Worker that runs on remote runners to execute diagnostic agents for services."""
+  """Worker that runs on remote runners to execute diagnostic agents for services.
 
-  async def run_service_diagnosis(self, service_info: dict) -> dict:
-    """Run multiple diagnostic agents for a single service."""
-    # Import inside method for remote execution
-    from autonomy import Agent, Model
+  Timeout Philosophy: Allow agents to complete complex work
+  ---------------------------------------------------------
+  Agents are actors (Ockam workers in Rust/Tokio). With parallel execution,
+  runner time ≈ max(agent times), not sum. So generous agent timeouts don't
+  cause runner timeouts - the original problem was sequential execution.
+
+  Timeouts are set to allow:
+  - Capable models (claude-sonnet, opus) that may take 30-90s per call
+  - Multiple autonomous iterations (thinking → acting → thinking...)
+  - Complex diagnostic work, not just simple single-turn queries
+
+  Timeout Hierarchy:
+  1. LLM request timeout (300s) - Generous for capable models
+  2. Throttle queue timeout (300s) - Match request timeout
+  3. Agent max_execution_time (600s) - Framework default; allows 10+ iterations
+  4. Runner timeout (900s) - Generous; achievable with parallel execution
+  """
+
+  async def run_single_agent(
+    self,
+    agent_type: str,
+    instructions: str,
+    service_name: str,
+    region: str,
+    model: "Model",
+  ) -> dict:
+    """Run a single diagnostic agent. Designed for parallel execution.
+
+    Args:
+      agent_type: Type of agent (database, cache, network, etc.)
+      instructions: Agent-specific diagnostic instructions
+      service_name: Name of service being diagnosed
+      region: Region where service runs
+      model: Shared Model instance with throttling
+
+    Returns:
+      Dict with agent_type, status, and finding
+    """
+    from autonomy import Agent
     import secrets as secrets_module
+    import asyncio
+
+    agent_name = f"swarm_{agent_type}_{service_name}_{secrets_module.token_hex(4)}"
+
+    try:
+      # Start agent with generous timeouts to allow completion of complex work
+      agent = await Agent.start(
+        node=self.node,
+        instructions=f"""You are a {agent_type} diagnostic agent for the {service_name} service in {region}.
+{instructions}
+
+Provide a brief assessment (2-3 sentences) of the {agent_type} health for this service.
+Report any issues found or confirm healthy status.""",
+        model=model,
+        # Use framework defaults for max_iterations (1000) and max_execution_time (600s)
+        # This allows agents to do complex multi-step work with capable models
+      )
+
+      try:
+        message = f"Diagnose {agent_type} health for {service_name} in {region}. Check for any issues related to the production latency spike."
+        # No explicit timeout - let agent max_execution_time (600s) handle it
+        # This allows agents to take multiple autonomous steps if needed
+        responses = await agent.send(message)
+        finding = responses[-1].content.text if responses else "No response"
+        return {
+          "agent_type": agent_type,
+          "status": "completed",
+          "finding": finding[:500]
+        }
+      except asyncio.TimeoutError:
+        return {
+          "agent_type": agent_type,
+          "status": "timeout",
+          "finding": "Agent timed out"
+        }
+      except Exception as agent_err:
+        return {
+          "agent_type": agent_type,
+          "status": "error",
+          "finding": str(agent_err)[:200]
+        }
+      finally:
+        try:
+          await Agent.stop(self.node, agent_name)
+        except Exception:
+          pass
+
+    except asyncio.TimeoutError:
+      return {
+        "agent_type": agent_type,
+        "status": "timeout",
+        "finding": "Agent failed to start"
+      }
+    except Exception as start_err:
+      return {
+        "agent_type": agent_type,
+        "status": "error",
+        "finding": f"Failed to start agent: {str(start_err)[:100]}"
+      }
+
+  async def run_service_diagnosis(self, service_info: dict, model: "Model") -> dict:
+    """Run multiple diagnostic agents for a single service IN PARALLEL.
+
+    Args:
+      service_info: Dict with service, region, node_id, session_id
+      model: Shared Model instance (single throttle queue for all agents)
+
+    Key insight: Agents are actors (Ockam workers in Rust/Tokio runtime), not Python threads.
+    The Model's throttle queue handles LLM request backpressure, so we don't need a semaphore.
+    All agents can fire requests simultaneously - the throttle queue manages concurrency.
+    """
     import asyncio
 
     # Agent types for swarm diagnosis
@@ -1205,64 +1311,29 @@ class DiagnosticWorker:
     service_name = service_info["service"]
     region = service_info["region"]
     node_id = service_info["node_id"]
-    session_id = service_info.get("session_id", "unknown")
 
-    # Configure model with throttling for high-scale batch processing
-    model = Model(
-      "nova-micro-v1",
-      throttle=True,
-      throttle_requests_per_minute=100,
-      throttle_max_requests_in_progress=10,
-      throttle_max_requests_waiting_in_queue=500,
-      throttle_max_seconds_to_wait_in_queue=180.0,
-      throttle_max_retry_attempts=3,
-      throttle_initial_seconds_between_retry_attempts=1.0,
-      request_timeout=90.0,
-    )
+    # Run ALL agents for this service in PARALLEL
+    # Agents are actors - they don't block Python's event loop
+    # The throttle queue (throttle_max_requests_in_progress) handles LLM concurrency
+    agent_tasks = [
+      self.run_single_agent(agent_type, instructions, service_name, region, model)
+      for agent_type, instructions in agent_configs
+    ]
+    agent_results = await asyncio.gather(*agent_tasks, return_exceptions=True)
 
+    # Convert results to expected format
     results = {}
-    for agent_type, instructions in agent_configs:
-      agent_name = f"swarm_{agent_type}_{service_name}_{secrets_module.token_hex(4)}"
-      try:
-        agent = await Agent.start(
-          node=self.node,
-          instructions=f"""You are a {agent_type} diagnostic agent for the {service_name} service in {region}.
-{instructions}
-
-Provide a brief assessment (2-3 sentences) of the {agent_type} health for this service.
-Report any issues found or confirm healthy status.""",
-          model=model,
-          max_execution_time=90.0,
-          max_iterations=10,
-        )
-
-        try:
-          message = f"Diagnose {agent_type} health for {service_name} in {region}. Check for any issues related to the production latency spike."
-          responses = await agent.send(message, timeout=60)
-          finding = responses[-1].content.text if responses else "No response"
-          results[agent_type] = {
-            "status": "completed",
-            "finding": finding[:500]  # Limit finding size
-          }
-        except asyncio.TimeoutError:
-          results[agent_type] = {
-            "status": "timeout",
-            "finding": "Agent timed out"
-          }
-        except Exception as agent_err:
-          results[agent_type] = {
-            "status": "error",
-            "finding": str(agent_err)[:200]
-          }
-        finally:
-          try:
-            await Agent.stop(self.node, agent_name, timeout=5.0)
-          except Exception:
-            pass
-      except Exception as start_err:
+    for i, result in enumerate(agent_results):
+      agent_type = agent_configs[i][0]
+      if isinstance(result, Exception):
         results[agent_type] = {
           "status": "error",
-          "finding": f"Failed to start agent: {str(start_err)[:100]}"
+          "finding": f"Unexpected error: {str(result)[:150]}"
+        }
+      else:
+        results[result["agent_type"]] = {
+          "status": result["status"],
+          "finding": result["finding"]
         }
 
     return {
@@ -1273,16 +1344,45 @@ Report any issues found or confirm healthy status.""",
     }
 
   async def handle_message(self, context, message):
-    """Handle batch of services to diagnose."""
+    """Handle batch of services to diagnose.
+
+    Agents are actors (Ockam workers in Rust/Tokio runtime), so we don't need
+    a semaphore to limit concurrency. All 30 agents fire in parallel, and the
+    Model's throttle queue coordinates LLM requests to the gateway.
+
+    Timeout philosophy: Allow agents to complete complex work
+    - Generous timeouts accommodate capable models (sonnet, opus)
+    - Agents may take multiple autonomous steps
+    - With parallel execution, runner time ≈ max(agent times)
+    - 900s runner timeout is achievable because agents run in parallel
+    """
     import json as json_module
     import asyncio
+    from autonomy import Model
 
     request = json_module.loads(message)
     services = request.get("services", [])
     runner_id = request.get("runner_id", "unknown")
 
-    # Process all services in parallel for faster completion
-    tasks = [self.run_service_diagnosis(service_info) for service_info in services]
+    # Create ONE shared Model instance for ALL agents in this batch.
+    # No semaphore needed - agents are actors, throttle queue handles backpressure.
+    model = Model(
+      "nova-micro-v1",
+      throttle=True,
+      # All 30 agents fire concurrently - no client-side queuing
+      throttle_max_requests_in_progress=30,
+      # Generous timeouts to allow capable models to complete complex work
+      throttle_max_seconds_to_wait_in_queue=300.0,
+      request_timeout=300.0,
+      # Retries for transient failures
+      throttle_max_retry_attempts=3,
+      throttle_initial_seconds_between_retry_attempts=2.0,
+      throttle_max_seconds_between_retry_attempts=30.0,
+    )
+
+    # No semaphore needed - agents are actors, throttle queue handles backpressure
+    # All services process in parallel, all agents within services process in parallel
+    tasks = [self.run_service_diagnosis(service_info, model) for service_info in services]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Filter out exceptions and convert to proper results
@@ -1402,12 +1502,15 @@ async def run_distributed_diagnosis(node, problem: str, session_id: str, root_id
         "runner_id": runner_id,
       })
 
-      # Use runner.send_and_receive with explicit asyncio.wait_for as backup timeout
-      # The inner timeout=300 is for the send_and_receive, outer wait_for is a hard limit
+      # Generous runner timeout to allow agents to complete complex work
+      #
+      # With parallel execution, runner time ≈ max(agent times), not sum
+      # Agent max_execution_time is 600s (framework default)
+      # Runner timeout 900s provides buffer for overhead + retries
       try:
         reply_json = await asyncio.wait_for(
-          runner.send_and_receive(worker_name, request_data, timeout=300),
-          timeout=360  # Hard outer timeout slightly longer than inner
+          runner.send_and_receive(worker_name, request_data, timeout=900),
+          timeout=960  # Hard outer timeout with cleanup buffer
         )
       except asyncio.TimeoutError:
         logger.error(f"Runner {runner_id} timed out (asyncio.wait_for)")
@@ -1437,10 +1540,24 @@ async def run_distributed_diagnosis(node, problem: str, session_id: str, root_id
       logger.error(f"Runner {runner_id} timed out")
       await add_transcript_entry(runner_node_id, "error", "Runner timed out")
       await update_node_status(runner_node_id, "error")
+      # Mark all child nodes as error when runner times out
+      for service_info in batch:
+        service_node_id = service_info["node_id"]
+        await update_node_status(service_node_id, "error")
+        for agent_type, _ in SWARM_AGENT_TYPES:
+          agent_node_id = f"agent-{service_info['region']}-{service_info['service']}-{agent_type}-{session_id}"
+          await update_node_status(agent_node_id, "error", {"status": "error", "finding": "Runner timed out"})
     except Exception as e:
       logger.error(f"Error on runner {runner_id}: {e}")
       await update_node_status(runner_node_id, "error")
       await add_transcript_entry(runner_node_id, "error", str(e))
+      # Mark all child nodes as error when runner fails
+      for service_info in batch:
+        service_node_id = service_info["node_id"]
+        await update_node_status(service_node_id, "error")
+        for agent_type, _ in SWARM_AGENT_TYPES:
+          agent_node_id = f"agent-{service_info['region']}-{service_info['service']}-{agent_type}-{session_id}"
+          await update_node_status(agent_node_id, "error", {"status": "error", "finding": str(e)[:200]})
     finally:
       try:
         await runner.stop_worker(worker_name)
