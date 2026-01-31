@@ -1,16 +1,18 @@
 # SRE Incident Diagnosis
 
-An Autonomy app that enables developers to diagnose infrastructure problems directly from Cursor IDE using autonomous diagnostic agents with secure credential retrieval via human-in-the-loop approval.
+An Autonomy app that enables developers to diagnose infrastructure problems using autonomous diagnostic agents with secure credential retrieval via human-in-the-loop approval.
 
 ## Overview
 
 This app demonstrates:
 
-- **Orchestrator Agent**: Analyzes incident descriptions and coordinates diagnosis
+- **Two-Phase Diagnosis Flow**: Analysis → Approval → Diagnosis
+- **Specialized Diagnostic Agents**: Database, Cloud, and Kubernetes specialists
+- **Mock Diagnostic Tools**: Realistic tool responses for testing
 - **Human-in-the-Loop Approval**: Requests permission before accessing credentials
-- **Secure Credential Flow**: Credentials never enter the LLM conversation
-- **Cursor Hooks Integration**: Deep integration with Cursor IDE for seamless diagnosis
+- **Secure Credential Flow**: Credentials retrieved from mock 1Password, never exposed to LLM
 - **Real-time Streaming**: Live updates as diagnosis progresses
+- **Cursor Hooks Integration**: Deep integration with Cursor IDE
 
 ## Quick Start
 
@@ -25,124 +27,135 @@ The app will be available at:
 - **Dashboard**: https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer
 - **API**: https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/health
 
-### 2. Use from Cursor IDE
-
-Copy the `.cursor` folder to your project or home directory:
+### 2. Test the API
 
 ```bash
-# Project-level (for a specific project)
-cp -r .cursor /path/to/your/project/
+# Health check
+curl https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/health
 
-# Or user-level (global, for all projects)
-cp -r .cursor ~/.cursor
+# Start diagnosis (Phase 1: Analysis)
+curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/diagnose \
+  -H "Content-Type: application/json" \
+  -d '{"problem": "Database connection pool exhausted", "environment": "prod"}'
+
+# Check session status
+curl https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/sessions
+
+# Approve and run diagnosis (Phase 2)
+curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/approve/{session_id} \
+  -H "Content-Type: application/json" \
+  -d '{"approved": true}'
 ```
-
-Restart Cursor to load the hooks.
-
-### 3. Trigger Diagnosis
-
-In Cursor, you can now ask the agent to diagnose infrastructure issues:
-
-```
-"Can you diagnose why our database connections are failing in production?"
-```
-
-The Cursor hook will intercept the diagnosis request and guide the agent to use the SRE Diagnose API.
-
-## Cursor Hooks Integration
-
-This app includes Cursor hooks that provide deep integration with the diagnosis workflow.
-
-### Hook Configuration
-
-The `.cursor/hooks.json` file defines three hooks:
-
-| Hook | Purpose |
-|------|---------|
-| `sessionStart` | Sets up SRE Diagnose environment variables and context |
-| `beforeShellExecution` | Intercepts `sre-diagnose` commands and routes to the API |
-| `stop` | Logs session activity for auditing |
-
-### Available Commands
-
-Once hooks are installed, you can use these commands in Cursor:
-
-```bash
-# Diagnose an infrastructure issue
-sre-diagnose "Database connection failures in production"
-
-# Alternative command
-diagnose-infra "High latency on API gateway"
-```
-
-The hook will intercept these commands and guide the agent to use the SRE Diagnose API.
-
-### Environment Variables
-
-The `sessionStart` hook sets these environment variables:
-
-| Variable | Description |
-|----------|-------------|
-| `SRE_DIAGNOSE_URL` | URL of the SRE Diagnose API |
-| `SRE_SESSION_ID` | Cursor conversation ID for correlation |
-
-You can override `SRE_DIAGNOSE_URL` in your environment to point to a different instance.
-
-### Audit Logs
-
-Session activity is logged to `/tmp/sre-diagnose/`:
-
-- `sessions.log` - Session start events
-- `commands.log` - Intercepted commands
-- `audit.log` - All hook events
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         CURSOR IDE                              │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Cursor Hooks (.cursor/hooks.json)                        │  │
-│  │  • sessionStart: Set up SRE context                       │  │
-│  │  • beforeShellExecution: Intercept diagnose commands      │  │
-│  │  • stop: Audit logging                                    │  │
-│  └─────────────────────────┬─────────────────────────────────┘  │
-│                            │                                    │
-│  Developer: "Diagnose database connection failures"             │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ POST /diagnose
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     AUTONOMY ZONE                               │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                    MAIN POD                               │  │
-│  │  ┌─────────────┐    ┌──────────────┐                      │  │
-│  │  │  FastAPI    │───▶│ Orchestrator │                      │  │
-│  │  │  Server     │    │    Agent     │                      │  │
-│  │  │             │    │              │                      │  │
-│  │  │  /diagnose  │    │ ask_user_for │                      │  │
-│  │  │  /approve   │◀───│ _input       │                      │  │
-│  │  │  /status    │    │              │                      │  │
-│  │  └─────────────┘    └──────────────┘                      │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              DIAGNOSIS FLOW                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PHASE 1: ANALYSIS                                                          │
+│  ┌─────────────┐                                                            │
+│  │  Analysis   │ → Identifies problem type, root causes, needed credentials │
+│  │   Agent     │ → Extracts op:// credential references from response       │
+│  └─────────────┘                                                            │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌─────────────┐                                                            │
+│  │  APPROVAL   │ ← User approves/denies credential access                   │
+│  │  REQUIRED   │                                                            │
+│  └─────────────┘                                                            │
+│         │                                                                   │
+│         ▼                                                                   │
+│  PHASE 2: DIAGNOSIS                                                         │
+│  ┌─────────────┐                                                            │
+│  │  Credential │ → Retrieves approved credentials from mock 1Password       │
+│  │  Retrieval  │                                                            │
+│  └─────────────┘                                                            │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌─────────────────────────────────────────────────┐                        │
+│  │         SPECIALIST AGENTS (run in parallel)     │                        │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │                        │
+│  │  │ Database │  │  Cloud   │  │  Kubernetes  │   │                        │
+│  │  │Specialist│  │Specialist│  │  Specialist  │   │                        │
+│  │  └──────────┘  └──────────┘  └──────────────┘   │                        │
+│  │       │             │              │            │                        │
+│  │       ▼             ▼              ▼            │                        │
+│  │  ┌──────────────────────────────────────────┐   │                        │
+│  │  │           DIAGNOSTIC TOOLS               │   │                        │
+│  │  │  • query_db_connections                  │   │                        │
+│  │  │  • query_slow_queries                    │   │                        │
+│  │  │  • get_cloudwatch_metrics                │   │                        │
+│  │  │  • check_instance_health                 │   │                        │
+│  │  │  • check_kubernetes_pods                 │   │                        │
+│  │  │  • get_application_logs                  │   │                        │
+│  │  └──────────────────────────────────────────┘   │                        │
+│  └─────────────────────────────────────────────────┘                        │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌─────────────┐                                                            │
+│  │  Synthesis  │ → Combines all specialist findings into final diagnosis    │
+│  │   Agent     │ → Provides root cause, remediation, and monitoring advice  │
+│  └─────────────┘                                                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Specialist Agents
+
+The system automatically selects which specialist agents to run based on the problem description:
+
+| Agent | Triggers | Tools Used |
+|-------|----------|------------|
+| **Database Specialist** | "database", "db", "connection pool", "query", "sql", "timeout" | `query_db_connections`, `query_slow_queries` |
+| **Cloud Specialist** | "aws", "ec2", "cloudwatch", "cpu", "memory", "instance" | `get_cloudwatch_metrics`, `check_instance_health` |
+| **Kubernetes Specialist** | "kubernetes", "k8s", "pod", "container", "crashloop", "oom" | `check_kubernetes_pods`, `get_application_logs` |
+
+## Mock Diagnostic Tools
+
+All tools return realistic mock data for testing:
+
+### Database Tools
+- **query_db_connections**: Connection pool statistics (active, idle, waiting)
+- **query_slow_queries**: Slow query analysis with execution times
+
+### Cloud Tools
+- **get_cloudwatch_metrics**: CPU, memory, network, disk metrics
+- **check_instance_health**: EC2/RDS instance status and health checks
+
+### Kubernetes Tools
+- **check_kubernetes_pods**: Pod status, restarts, resource usage
+- **get_application_logs**: Recent error logs with trace IDs
+
+## Available Credentials (Mock 1Password)
+
+The mock 1Password server provides these credentials:
+
+| Reference | Description |
+|-----------|-------------|
+| `op://Infrastructure/prod-db/password` | Production database password |
+| `op://Infrastructure/prod-db/username` | Production database username |
+| `op://Infrastructure/prod-db/host` | Production database host |
+| `op://Infrastructure/staging-db/password` | Staging database password |
+| `op://Infrastructure/staging-db/username` | Staging database username |
+| `op://Infrastructure/aws-cloudwatch/access-key` | CloudWatch access key |
+| `op://Infrastructure/aws-cloudwatch/secret-key` | CloudWatch secret key |
+| `op://Infrastructure/k8s-prod/token` | Kubernetes production token |
+| `op://Infrastructure/datadog/api-key` | Datadog API key |
 
 ## API Reference
 
 ### POST /diagnose
 
-Start a new diagnostic session with streaming response.
+Start a new diagnostic session (Phase 1: Analysis).
 
 **Request:**
 ```json
 {
-  "problem": "Database connection failures in production",
+  "problem": "Database connection pool exhausted",
   "environment": "prod",
-  "context": {
-    "service": "api-gateway",
-    "region": "us-west-2"
-  }
+  "context": {"service": "api-gateway"}
 }
 ```
 
@@ -150,43 +163,34 @@ Start a new diagnostic session with streaming response.
 ```json
 {"type": "session_start", "session_id": "abc123", "status": "analyzing"}
 {"type": "text", "text": "## Incident Classification\n..."}
-{"type": "approval_required", "session_id": "abc123", "status": "waiting_for_approval"}
+{"type": "approval_required", "session_id": "abc123", "status": "waiting_for_approval", "requested_credentials": ["op://..."]}
 ```
 
 ### POST /approve/{session_id}
 
-Approve or deny credential access request.
+Approve credential access and run Phase 2: Diagnosis.
 
 **Request:**
 ```json
-{
-  "approved": true,
-  "message": "Approved for read-only database access"
-}
+{"approved": true}
 ```
 
-**Streaming Response (if approved):**
+**Streaming Response:**
 ```json
 {"type": "approval_accepted", "session_id": "abc123", "status": "approved"}
-{"type": "text", "text": "Proceeding with diagnosis..."}
+{"type": "credential_retrieved", "reference": "op://...", "success": true}
+{"type": "diagnosis_started", "session_id": "abc123", "credentials_retrieved": 5}
+{"type": "specialists_selected", "session_id": "abc123", "specialists": ["database", "cloud"]}
+{"type": "specialist_complete", "agent": "database_specialist", "status": "completed"}
+{"type": "specialist_complete", "agent": "cloud_specialist", "status": "completed"}
+{"type": "synthesis_started", "session_id": "abc123"}
+{"type": "text", "text": "# Final Diagnosis..."}
 {"type": "diagnosis_complete", "session_id": "abc123", "status": "completed"}
 ```
 
 ### GET /status/{session_id}
 
-Get the current status of a diagnostic session.
-
-**Response:**
-```json
-{
-  "session_id": "abc123",
-  "status": "waiting_for_approval",
-  "phase": "waiting_for_approval",
-  "created_at": "2024-01-15T10:30:00Z",
-  "analysis": "## Incident Classification\n...",
-  "approval_prompt": "To proceed with diagnosis, I need access to..."
-}
-```
+Get session status with analysis and credentials retrieved.
 
 ### GET /sessions
 
@@ -194,100 +198,57 @@ List all diagnostic sessions.
 
 ### DELETE /sessions/{session_id}
 
-Delete a session and clean up resources.
+Delete a session.
 
 ### GET /health
 
-Health check endpoint.
+Health check including mock 1Password status.
 
-## Workflow
+## Cursor IDE Integration
 
-1. **User describes problem** in Cursor or via API
-2. **Orchestrator Agent analyzes** the incident and identifies:
-   - Type of incident (database, network, cloud, etc.)
-   - Potential root causes
-   - Required credentials for investigation
-3. **Agent requests approval** using `ask_user_for_input`
-4. **User approves/denies** via API or dashboard
-5. **If approved**, agent proceeds with deeper diagnosis
-6. **Results returned** to the user
-
-## Testing
+Copy the `.cursor` folder to your project for IDE integration:
 
 ```bash
-# Health check
-curl https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/health
+cp -r .cursor /path/to/your/project/
+```
 
-# Start diagnosis (with streaming)
-curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/diagnose \
-  -H "Content-Type: application/json" \
-  -d '{"problem": "Database connection timeout", "environment": "prod"}'
-
-# Check status
-curl https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/status/{session_id}
-
-# Approve credential access
-curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/approve/{session_id} \
-  -H "Content-Type: application/json" \
-  -d '{"approved": true}'
+Then use natural language to trigger diagnosis:
+```
+"Can you diagnose why our database connections are failing in production?"
 ```
 
 ## Project Structure
 
 ```
 sre-diagnose/
-├── autonomy.yaml              # Zone configuration
+├── autonomy.yaml              # Zone configuration (main + onepass containers)
 ├── README.md                  # This file
-├── .cursor/
-│   ├── hooks.json             # Cursor hooks configuration
-│   └── hooks/
-│       ├── session-init.sh    # Session initialization hook
-│       ├── sre-diagnose.sh    # Diagnose command interceptor
-│       └── audit.sh           # Audit logging hook
-└── images/
-    └── main/
-        ├── Dockerfile         # Container image
-        ├── main.py            # FastAPI server + agents
-        └── index.html         # Status dashboard
+├── .cursor/                   # Cursor hooks integration
+│   ├── hooks.json
+│   └── hooks/*.sh
+├── images/
+│   ├── main/
+│   │   ├── Dockerfile
+│   │   ├── main.py           # FastAPI + agents + diagnostic tools
+│   │   └── index.html        # Dashboard
+│   └── mock-1password/
+│       ├── Dockerfile
+│       └── server.py         # Mock 1Password Connect server
+└── planning/
+    ├── ARCHITECTURE.md
+    └── IMPLEMENTATION_PLAN.md
 ```
 
-## Troubleshooting
+## Implementation Status
 
-### Hooks not working
-
-1. Ensure hooks are in the correct location:
-   - Project: `<project>/.cursor/hooks.json`
-   - User: `~/.cursor/hooks.json`
-
-2. Check scripts are executable:
-   ```bash
-   chmod +x .cursor/hooks/*.sh
-   ```
-
-3. Restart Cursor to reload hooks
-
-4. Check the Hooks output channel in Cursor (View → Output → Hooks)
-
-### API not responding
-
-1. Check zone status:
-   ```bash
-   autonomy zone status
-   ```
-
-2. Check health endpoint:
-   ```bash
-   curl https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.computer/health
-   ```
-
-3. Redeploy if needed:
-   ```bash
-   autonomy zone deploy
-   ```
+- [x] **Phase 1**: Foundation (MVP) - Basic orchestrator, streaming, dashboard
+- [x] **Phase 2**: Mock 1Password & Credential Flow - Secure credential retrieval
+- [x] **Phase 3**: Diagnostic Tools & Specialized Agents - Parallel diagnosis
+- [ ] **Phase 4**: Polish & Production Readiness
+- [ ] **Phase 5**: Distributed Processing (Optional)
 
 ## References
 
-- [Autonomy Documentation](https://autonomy.computer/docs)
-- [Cursor Hooks Documentation](https://cursor.com/docs/agent/hooks.md)
 - [Architecture Document](planning/ARCHITECTURE.md)
 - [Implementation Plan](planning/IMPLEMENTATION_PLAN.md)
+- [1Password Connect API Reference](planning/1PASSWORD_CONNECT_REFERENCE.md)
