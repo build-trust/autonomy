@@ -16,12 +16,31 @@ import json
 import secrets
 import httpx
 import re
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sre-diagnose")
+
+# === Configuration Constants ===
+
+VERSION = "0.4.0"
+
+# Timeouts (in seconds)
+ANALYSIS_TIMEOUT = 120
+SPECIALIST_TIMEOUT = 90
+SYNTHESIS_TIMEOUT = 120
+CREDENTIAL_TIMEOUT = 10
+
+# Retry configuration
+CREDENTIAL_RETRY_ATTEMPTS = 3
+CREDENTIAL_RETRY_DELAY = 1.0  # seconds
+
+# Session configuration
+SESSION_EXPIRY_HOURS = 24
+MAX_SESSIONS = 100
 
 
 # === Request/Response Models ===
@@ -59,47 +78,96 @@ class StatusResponse(BaseModel):
 sessions: dict = {}
 
 # HTTP client for calling mock 1Password server
-http_client = httpx.AsyncClient(timeout=30.0)
+http_client = httpx.AsyncClient(timeout=CREDENTIAL_TIMEOUT)
 
 # Mock 1Password server URL (running in same pod)
 MOCK_1PASSWORD_URL = "http://localhost:8080"
 
 
+# === Helper Functions ===
+
+def make_event(event_type: str, **kwargs) -> str:
+  """Create a JSON event with timestamp."""
+  event = {
+    "type": event_type,
+    "timestamp": datetime.utcnow().isoformat() + "Z",
+    **kwargs
+  }
+  return json.dumps(event) + "\n"
+
+
+async def cleanup_expired_sessions():
+  """Remove sessions older than SESSION_EXPIRY_HOURS."""
+  now = datetime.utcnow()
+  expired = []
+  for session_id, session in sessions.items():
+    created = datetime.fromisoformat(session["created_at"].replace("Z", ""))
+    if now - created > timedelta(hours=SESSION_EXPIRY_HOURS):
+      expired.append(session_id)
+  for session_id in expired:
+    del sessions[session_id]
+    logger.info(f"Cleaned up expired session: {session_id}")
+  return len(expired)
+
+
+def enforce_session_limit():
+  """Remove oldest sessions if limit exceeded."""
+  if len(sessions) >= MAX_SESSIONS:
+    # Sort by created_at and remove oldest
+    sorted_sessions = sorted(
+      sessions.items(),
+      key=lambda x: x[1]["created_at"]
+    )
+    to_remove = len(sessions) - MAX_SESSIONS + 1
+    for session_id, _ in sorted_sessions[:to_remove]:
+      del sessions[session_id]
+      logger.info(f"Removed old session due to limit: {session_id}")
+
+
 # === Credential Retrieval Function ===
 
-async def retrieve_credential(reference: str, session: dict) -> str:
+async def retrieve_credential(reference: str, session: dict) -> tuple[bool, str]:
   """
-  Retrieve a credential from 1Password.
-  Returns the result message and stores credential in session.
+  Retrieve a credential from 1Password with retry logic.
+  Returns (success, message) tuple and stores credential in session.
   """
   # Normalize reference
   if not reference.startswith("op://"):
     reference = f"op://{reference}"
 
-  try:
-    response = await http_client.get(f"{MOCK_1PASSWORD_URL}/secrets/{reference}")
+  last_error = None
+  for attempt in range(CREDENTIAL_RETRY_ATTEMPTS):
+    try:
+      response = await http_client.get(f"{MOCK_1PASSWORD_URL}/secrets/{reference}")
 
-    if response.status_code == 200:
-      data = response.json()
-      # Store credential in session (for later use by diagnostic tools)
-      if "credentials" not in session:
-        session["credentials"] = {}
-      session["credentials"][reference] = data["value"]
+      if response.status_code == 200:
+        data = response.json()
+        # Store credential in session (for later use by diagnostic tools)
+        if "credentials" not in session:
+          session["credentials"] = {}
+        session["credentials"][reference] = data["value"]
 
-      # Track which credentials have been retrieved
-      if "credentials_retrieved" not in session:
-        session["credentials_retrieved"] = []
-      if reference not in session["credentials_retrieved"]:
-        session["credentials_retrieved"].append(reference)
+        # Track which credentials have been retrieved
+        if "credentials_retrieved" not in session:
+          session["credentials_retrieved"] = []
+        if reference not in session["credentials_retrieved"]:
+          session["credentials_retrieved"].append(reference)
 
-      return f"Successfully retrieved: {reference}"
-    elif response.status_code == 404:
-      return f"Not found: {reference}"
-    else:
-      return f"Error (HTTP {response.status_code}): {reference}"
+        return True, f"Successfully retrieved: {reference}"
+      elif response.status_code == 404:
+        return False, f"Not found: {reference}"
+      else:
+        last_error = f"HTTP {response.status_code}"
 
-  except httpx.RequestError as e:
-    return f"Connection error: {str(e)}"
+    except httpx.RequestError as e:
+      last_error = str(e)
+      logger.warning(f"Credential retrieval attempt {attempt + 1} failed: {e}")
+
+    # Wait before retry (except on last attempt)
+    if attempt < CREDENTIAL_RETRY_ATTEMPTS - 1:
+      await asyncio.sleep(CREDENTIAL_RETRY_DELAY * (attempt + 1))
+
+  return False, f"Failed after {CREDENTIAL_RETRY_ATTEMPTS} attempts: {last_error}"
 
 
 # === Mock Diagnostic Tools ===
@@ -470,7 +538,7 @@ Focus on getting unhealthy pods back to running state."""
 app = FastAPI(
   title="SRE Incident Diagnosis",
   description="Diagnose infrastructure problems with autonomous agents",
-  version="0.3.0"
+  version=VERSION
 )
 
 
@@ -497,7 +565,8 @@ async def health():
     content={
       "status": "healthy",
       "service": "sre-diagnose",
-      "version": "0.3.0",
+      "version": VERSION,
+      "active_sessions": len(sessions),
       "dependencies": {
         "mock-1password": onepass_status
       }
@@ -535,6 +604,9 @@ def extract_credential_refs(text: str) -> list:
 @app.post("/diagnose")
 async def diagnose(request: DiagnoseRequest, node: NodeDep):
   """Start a new diagnostic session - Phase 1: Analysis."""
+  # Enforce session limits
+  enforce_session_limit()
+
   session_id = str(uuid.uuid4())[:8]
   agent_name = f"analyzer_{session_id}_{secrets.token_hex(4)}"
 
@@ -579,20 +651,24 @@ Provide your analysis including the specific credentials needed for investigatio
     full_analysis = ""
 
     try:
-      yield json.dumps({
-        "type": "session_start",
-        "session_id": session_id,
-        "status": "analyzing"
-      }) + "\n"
+      yield make_event("session_start",
+        session_id=session_id,
+        status="analyzing",
+        phase="analysis",
+        progress=0
+      )
 
       # Stream the agent's analysis
-      async for response in agent.send_stream(message, timeout=120):
-        snippet = response.snippet
-        text = extract_text_from_snippet(snippet)
+      try:
+        async for response in agent.send_stream(message, timeout=ANALYSIS_TIMEOUT):
+          snippet = response.snippet
+          text = extract_text_from_snippet(snippet)
 
-        if text:
-          full_analysis += text
-          yield json.dumps({"type": "text", "text": text}) + "\n"
+          if text:
+            full_analysis += text
+            yield make_event("text", text=text)
+      except asyncio.TimeoutError:
+        raise Exception(f"Analysis timed out after {ANALYSIS_TIMEOUT} seconds")
 
       # Store analysis
       session["analysis"] = full_analysis
@@ -605,31 +681,32 @@ Provide your analysis including the specific credentials needed for investigatio
       session["status"] = "waiting_for_approval"
       session["phase"] = "awaiting_approval"
 
-      yield json.dumps({
-        "type": "approval_required",
-        "session_id": session_id,
-        "status": "waiting_for_approval",
-        "requested_credentials": requested_creds,
-        "message": f"Analysis complete. {len(requested_creds)} credentials requested. Approve to continue."
-      }) + "\n"
+      yield make_event("approval_required",
+        session_id=session_id,
+        status="waiting_for_approval",
+        requested_credentials=requested_creds,
+        message=f"Analysis complete. {len(requested_creds)} credentials requested. Approve to continue.",
+        progress=100
+      )
 
     except Exception as e:
       logger.error(f"Error in analysis: {str(e)}")
+      import traceback
+      logger.error(f"Traceback: {traceback.format_exc()}")
       session["status"] = "error"
       session["phase"] = "analysis_failed"
       session["message"] = str(e)
-      yield json.dumps({
-        "type": "error",
-        "session_id": session_id,
-        "message": str(e)
-      }) + "\n"
+      yield make_event("error",
+        session_id=session_id,
+        message=str(e)
+      )
 
     finally:
       # Clean up analysis agent
       try:
         await Agent.stop(node, agent_name)
-      except Exception:
-        pass
+      except Exception as cleanup_error:
+        logger.warning(f"Failed to cleanup agent {agent_name}: {cleanup_error}")
 
   return StreamingResponse(stream_response(), media_type="application/x-ndjson")
 
@@ -639,6 +716,7 @@ Provide your analysis including the specific credentials needed for investigatio
 async def run_db_diagnosis(node: Node, session: dict, credentials: dict) -> dict:
   """Run database-focused diagnosis with specialized agent."""
   agent_name = f"db_diag_{session['id']}_{secrets.token_hex(4)}"
+  start_time = datetime.utcnow()
 
   try:
     agent = await Agent.start(
@@ -660,33 +738,41 @@ Original problem: {session.get('problem')}
 Use your tools to gather diagnostic data and provide your analysis."""
 
     findings = ""
-    async for response in agent.send_stream(message, timeout=90):
-      text = extract_text_from_snippet(response.snippet)
-      if text:
-        findings += text
+    try:
+      async for response in agent.send_stream(message, timeout=SPECIALIST_TIMEOUT):
+        text = extract_text_from_snippet(response.snippet)
+        if text:
+          findings += text
+    except asyncio.TimeoutError:
+      findings += f"\n\n[WARNING: Analysis timed out after {SPECIALIST_TIMEOUT}s]"
 
+    duration = (datetime.utcnow() - start_time).total_seconds()
     return {
       "agent": "database_specialist",
       "status": "completed",
-      "findings": findings
+      "findings": findings,
+      "duration_seconds": round(duration, 2)
     }
   except Exception as e:
     logger.error(f"DB diagnosis error: {e}")
+    duration = (datetime.utcnow() - start_time).total_seconds()
     return {
       "agent": "database_specialist",
       "status": "error",
-      "findings": f"Error running database diagnosis: {str(e)}"
+      "findings": f"Error running database diagnosis: {str(e)}",
+      "duration_seconds": round(duration, 2)
     }
   finally:
     try:
       await Agent.stop(node, agent_name)
-    except Exception:
-      pass
+    except Exception as cleanup_error:
+      logger.warning(f"Failed to cleanup agent {agent_name}: {cleanup_error}")
 
 
 async def run_cloud_diagnosis(node: Node, session: dict, credentials: dict) -> dict:
   """Run cloud infrastructure diagnosis with specialized agent."""
   agent_name = f"cloud_diag_{session['id']}_{secrets.token_hex(4)}"
+  start_time = datetime.utcnow()
 
   try:
     agent = await Agent.start(
@@ -708,33 +794,41 @@ Original problem: {session.get('problem')}
 Use your tools to gather diagnostic data and provide your analysis."""
 
     findings = ""
-    async for response in agent.send_stream(message, timeout=90):
-      text = extract_text_from_snippet(response.snippet)
-      if text:
-        findings += text
+    try:
+      async for response in agent.send_stream(message, timeout=SPECIALIST_TIMEOUT):
+        text = extract_text_from_snippet(response.snippet)
+        if text:
+          findings += text
+    except asyncio.TimeoutError:
+      findings += f"\n\n[WARNING: Analysis timed out after {SPECIALIST_TIMEOUT}s]"
 
+    duration = (datetime.utcnow() - start_time).total_seconds()
     return {
       "agent": "cloud_specialist",
       "status": "completed",
-      "findings": findings
+      "findings": findings,
+      "duration_seconds": round(duration, 2)
     }
   except Exception as e:
     logger.error(f"Cloud diagnosis error: {e}")
+    duration = (datetime.utcnow() - start_time).total_seconds()
     return {
       "agent": "cloud_specialist",
       "status": "error",
-      "findings": f"Error running cloud diagnosis: {str(e)}"
+      "findings": f"Error running cloud diagnosis: {str(e)}",
+      "duration_seconds": round(duration, 2)
     }
   finally:
     try:
       await Agent.stop(node, agent_name)
-    except Exception:
-      pass
+    except Exception as cleanup_error:
+      logger.warning(f"Failed to cleanup agent {agent_name}: {cleanup_error}")
 
 
 async def run_k8s_diagnosis(node: Node, session: dict, credentials: dict) -> dict:
   """Run Kubernetes diagnosis with specialized agent."""
   agent_name = f"k8s_diag_{session['id']}_{secrets.token_hex(4)}"
+  start_time = datetime.utcnow()
 
   try:
     agent = await Agent.start(
@@ -756,28 +850,35 @@ Original problem: {session.get('problem')}
 Use your tools to gather diagnostic data and provide your analysis."""
 
     findings = ""
-    async for response in agent.send_stream(message, timeout=90):
-      text = extract_text_from_snippet(response.snippet)
-      if text:
-        findings += text
+    try:
+      async for response in agent.send_stream(message, timeout=SPECIALIST_TIMEOUT):
+        text = extract_text_from_snippet(response.snippet)
+        if text:
+          findings += text
+    except asyncio.TimeoutError:
+      findings += f"\n\n[WARNING: Analysis timed out after {SPECIALIST_TIMEOUT}s]"
 
+    duration = (datetime.utcnow() - start_time).total_seconds()
     return {
       "agent": "kubernetes_specialist",
       "status": "completed",
-      "findings": findings
+      "findings": findings,
+      "duration_seconds": round(duration, 2)
     }
   except Exception as e:
     logger.error(f"K8s diagnosis error: {e}")
+    duration = (datetime.utcnow() - start_time).total_seconds()
     return {
       "agent": "kubernetes_specialist",
       "status": "error",
-      "findings": f"Error running Kubernetes diagnosis: {str(e)}"
+      "findings": f"Error running Kubernetes diagnosis: {str(e)}",
+      "duration_seconds": round(duration, 2)
     }
   finally:
     try:
       await Agent.stop(node, agent_name)
-    except Exception:
-      pass
+    except Exception as cleanup_error:
+      logger.warning(f"Failed to cleanup agent {agent_name}: {cleanup_error}")
 
 
 def determine_specialist_agents(problem: str, analysis: str) -> list:
@@ -841,34 +942,51 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
   session["phase"] = "credential_retrieval"
 
   async def stream_diagnosis():
+    synthesis_agent_name = None
+    diagnosis_start_time = datetime.utcnow()
+
     try:
-      yield json.dumps({
-        "type": "approval_accepted",
-        "session_id": session_id,
-        "status": "approved"
-      }) + "\n"
+      yield make_event("approval_accepted",
+        session_id=session_id,
+        status="approved",
+        progress=0
+      )
 
       # Retrieve all requested credentials
       requested = session.get("requested_credentials", [])
-      for ref in requested:
-        result = await retrieve_credential(ref, session)
-        success = "Successfully" in result
-        yield json.dumps({
-          "type": "credential_retrieved",
-          "reference": ref,
-          "success": success
-        }) + "\n"
+      total_creds = len(requested)
+      successful_creds = 0
+      failed_creds = []
+
+      for i, ref in enumerate(requested):
+        success, result = await retrieve_credential(ref, session)
+        if success:
+          successful_creds += 1
+        else:
+          failed_creds.append(ref)
+
+        yield make_event("credential_retrieved",
+          reference=ref,
+          success=success,
+          message=result,
+          progress=int((i + 1) / total_creds * 20) if total_creds > 0 else 20
+        )
         logger.info(f"Credential retrieval: {result}")
+
+      # Log warning if some credentials failed
+      if failed_creds:
+        logger.warning(f"Failed to retrieve {len(failed_creds)} credentials: {failed_creds}")
 
       # Update status
       session["status"] = "diagnosing"
       session["phase"] = "diagnosis"
 
-      yield json.dumps({
-        "type": "diagnosis_started",
-        "session_id": session_id,
-        "credentials_retrieved": len(session.get("credentials_retrieved", []))
-      }) + "\n"
+      yield make_event("diagnosis_started",
+        session_id=session_id,
+        credentials_retrieved=successful_creds,
+        credentials_failed=len(failed_creds),
+        progress=20
+      )
 
       # Build diagnosis prompt with context from analysis
       creds_summary = ", ".join(session.get("credentials_retrieved", [])) or "none"
@@ -878,14 +996,13 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
         session.get("analysis", "")
       )
 
-      yield json.dumps({
-        "type": "specialists_selected",
-        "session_id": session_id,
-        "specialists": specialists
-      }) + "\n"
+      yield make_event("specialists_selected",
+        session_id=session_id,
+        specialists=specialists,
+        progress=25
+      )
 
       # Run specialist agents in parallel
-      import asyncio
       specialist_tasks = []
       credentials = session.get("credentials", {})
 
@@ -897,33 +1014,45 @@ async def approve(session_id: str, request: ApproveRequest, node: NodeDep):
         elif specialist == "kubernetes":
           specialist_tasks.append(run_k8s_diagnosis(node, session, credentials))
 
-      # Run all specialists in parallel
-      specialist_results = await asyncio.gather(*specialist_tasks, return_exceptions=True)
+      # Run all specialists in parallel with overall timeout
+      try:
+        specialist_results = await asyncio.wait_for(
+          asyncio.gather(*specialist_tasks, return_exceptions=True),
+          timeout=SPECIALIST_TIMEOUT * 1.5  # Allow 50% extra for parallel execution
+        )
+      except asyncio.TimeoutError:
+        logger.error("Specialist agents timed out")
+        specialist_results = [
+          {"agent": "specialists", "status": "timeout", "findings": "Specialist agents timed out"}
+        ]
 
       # Collect findings from specialists
       all_findings = []
+      completed_count = 0
       for result in specialist_results:
         if isinstance(result, Exception):
-          yield json.dumps({
-            "type": "specialist_error",
-            "error": str(result)
-          }) + "\n"
+          yield make_event("specialist_error",
+            error=str(result)
+          )
         else:
           all_findings.append(result)
-          yield json.dumps({
-            "type": "specialist_complete",
-            "agent": result.get("agent"),
-            "status": result.get("status")
-          }) + "\n"
+          completed_count += 1
+          yield make_event("specialist_complete",
+            agent=result.get("agent"),
+            status=result.get("status"),
+            duration_seconds=result.get("duration_seconds"),
+            progress=25 + int(completed_count / len(specialist_tasks) * 35) if specialist_tasks else 60
+          )
 
       # Store specialist findings
       session["specialist_findings"] = all_findings
 
       # Now run synthesizer agent to combine findings
-      yield json.dumps({
-        "type": "synthesis_started",
-        "session_id": session_id
-      }) + "\n"
+      yield make_event("synthesis_started",
+        session_id=session_id,
+        findings_count=len(all_findings),
+        progress=60
+      )
 
       # Create synthesis agent to combine all findings
       synthesis_agent_name = f"synthesizer_{session_id}_{secrets.token_hex(4)}"
@@ -960,27 +1089,35 @@ Focus on:
 3. Long-term prevention measures
 4. Monitoring improvements"""
 
-      # Stream diagnosis
+      # Stream diagnosis with timeout handling
       diagnosis_text = ""
-      async for response in agent.send_stream(diagnosis_message, timeout=120):
-        snippet = response.snippet
-        text = extract_text_from_snippet(snippet)
+      try:
+        async for response in agent.send_stream(diagnosis_message, timeout=SYNTHESIS_TIMEOUT):
+          snippet = response.snippet
+          text = extract_text_from_snippet(snippet)
 
-        if text:
-          diagnosis_text += text
-          yield json.dumps({"type": "text", "text": text}) + "\n"
+          if text:
+            diagnosis_text += text
+            yield make_event("text", text=text)
+      except asyncio.TimeoutError:
+        diagnosis_text += "\n\n[WARNING: Synthesis timed out, partial results shown]"
+        yield make_event("text", text="\n\n[WARNING: Synthesis timed out]")
 
       # Update session with diagnosis
       session["diagnosis"] = diagnosis_text
       session["status"] = "completed"
       session["phase"] = "diagnosis_complete"
+      session["completed_at"] = datetime.utcnow().isoformat() + "Z"
 
-      yield json.dumps({
-        "type": "diagnosis_complete",
-        "session_id": session_id,
-        "status": "completed",
-        "credentials_retrieved": session.get("credentials_retrieved", [])
-      }) + "\n"
+      total_duration = (datetime.utcnow() - diagnosis_start_time).total_seconds()
+      yield make_event("diagnosis_complete",
+        session_id=session_id,
+        status="completed",
+        credentials_retrieved=session.get("credentials_retrieved", []),
+        specialists_run=len(all_findings),
+        duration_seconds=round(total_duration, 2),
+        progress=100
+      )
 
     except Exception as e:
       logger.error(f"Error in diagnosis: {str(e)}")
@@ -989,18 +1126,18 @@ Focus on:
       session["status"] = "error"
       session["phase"] = "diagnosis_failed"
       session["message"] = str(e)
-      yield json.dumps({
-        "type": "error",
-        "session_id": session_id,
-        "message": str(e)
-      }) + "\n"
+      yield make_event("error",
+        session_id=session_id,
+        message=str(e)
+      )
 
     finally:
       # Clean up synthesis agent
-      try:
-        await Agent.stop(node, synthesis_agent_name)
-      except Exception:
-        pass
+      if synthesis_agent_name:
+        try:
+          await Agent.stop(node, synthesis_agent_name)
+        except Exception as cleanup_error:
+          logger.warning(f"Failed to cleanup agent {synthesis_agent_name}: {cleanup_error}")
 
   return StreamingResponse(stream_diagnosis(), media_type="application/x-ndjson")
 
@@ -1049,7 +1186,17 @@ async def delete_session(session_id: str):
     return JSONResponse(content={"error": "Session not found"}, status_code=404)
 
   del sessions[session_id]
-  return {"status": "deleted", "session_id": session_id}
+  return JSONResponse(content={"message": f"Session {session_id} deleted"})
+
+
+@app.post("/sessions/cleanup")
+async def cleanup_sessions():
+  """Clean up expired sessions."""
+  cleaned = await cleanup_expired_sessions()
+  return JSONResponse(content={
+    "message": f"Cleaned up {cleaned} expired sessions",
+    "remaining_sessions": len(sessions)
+  })
 
 
 # === Debug Endpoints ===

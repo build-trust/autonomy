@@ -279,6 +279,53 @@
         padding: 40px;
         color: #8b949e;
       }
+      .progress-bar-container {
+        background: #21262d;
+        border-radius: 4px;
+        height: 8px;
+        margin: 12px 0;
+        overflow: hidden;
+      }
+      .progress-bar {
+        background: linear-gradient(90deg, #238636, #3fb950);
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+      }
+      .progress-text {
+        font-size: 12px;
+        color: #8b949e;
+        margin-top: 4px;
+      }
+      .duration-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        background: #21262d;
+        border-radius: 4px;
+        font-size: 11px;
+        color: #8b949e;
+        margin-left: 8px;
+      }
+      .auto-refresh-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        font-size: 13px;
+        color: #8b949e;
+      }
+      .auto-refresh-toggle input {
+        width: 16px;
+        height: 16px;
+      }
+      .version-badge {
+        font-size: 11px;
+        color: #8b949e;
+        padding: 2px 6px;
+        background: #21262d;
+        border-radius: 4px;
+        margin-left: 8px;
+      }
       .grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -319,7 +366,7 @@
   </head>
   <body>
     <div class="container">
-      <h1>🔧 SRE Incident Diagnosis</h1>
+      <h1>🔧 SRE Incident Diagnosis <span class="version-badge" id="version-badge">v0.4.0</span></h1>
       <p class="subtitle">Autonomous infrastructure diagnosis with secure credential access</p>
 
       <div class="grid">
@@ -350,7 +397,13 @@
           <ul id="sessions-list" class="sessions-list">
             <li class="empty-state">No active sessions</li>
           </ul>
-          <button id="refresh-btn" class="btn btn-secondary" style="margin-top: 12px">Refresh</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px">
+            <button id="refresh-btn" class="btn btn-secondary">Refresh</button>
+            <label class="auto-refresh-toggle">
+              <input type="checkbox" id="auto-refresh-toggle" checked />
+              Auto-refresh
+            </label>
+          </div>
         </div>
       </div>
 
@@ -359,6 +412,15 @@
         <div>
           <span class="status-badge" id="detail-status"></span>
           <span id="detail-phase" style="margin-left: 12px; color: #8b949e"></span>
+          <span class="duration-badge" id="detail-duration" style="display: none"></span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="progress-container" style="display: none">
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+          </div>
+          <div class="progress-text" id="progress-text">Initializing...</div>
         </div>
 
         <!-- Two-Phase Progress Indicator -->
@@ -428,6 +490,28 @@
       const API_BASE = "";
       let currentSessionId = null;
       let pollInterval = null;
+      let autoRefreshEnabled = true;
+      let currentProgress = 0;
+
+      // Update progress bar
+      function updateProgress(percent, text) {
+        currentProgress = percent;
+        const container = document.getElementById("progress-container");
+        const bar = document.getElementById("progress-bar");
+        const textEl = document.getElementById("progress-text");
+
+        container.style.display = percent < 100 ? "block" : "none";
+        bar.style.width = `${percent}%`;
+        if (text) textEl.textContent = text;
+      }
+
+      // Format duration
+      function formatDuration(seconds) {
+        if (seconds < 60) return `${seconds.toFixed(1)}s`;
+        const mins = Math.floor(seconds / 60);
+        const secs = (seconds % 60).toFixed(0);
+        return `${mins}m ${secs}s`;
+      }
 
       // Format timestamp
       function formatTime(date) {
@@ -608,7 +692,12 @@
       // Start polling for updates
       function startPolling() {
         if (pollInterval) clearInterval(pollInterval);
-        pollInterval = setInterval(updateSessionDetail, 2000);
+        if (autoRefreshEnabled) {
+          pollInterval = setInterval(() => {
+            updateSessionDetail();
+            fetchSessions();
+          }, 2000);
+        }
       }
 
       // Stop polling
@@ -685,6 +774,7 @@
               document.getElementById("session-detail").style.display = "block";
               document.getElementById("detail-session-id").textContent = data.session_id;
               updatePhaseProgress("analysis", "analyzing");
+              updateProgress(data.progress || 0, "Analyzing problem...");
               fetchSessions();
             } else if (data.type === "approval_required") {
               addLog(`🔐 Analysis complete - ${data.requested_credentials?.length || 0} credentials requested`, "warn");
@@ -692,6 +782,7 @@
               document.getElementById("approval-message").textContent =
                 `The agent needs access to ${data.requested_credentials?.length || 0} credentials to complete diagnosis:`;
               updatePhaseProgress("awaiting_approval", "waiting_for_approval");
+              updateProgress(data.progress || 100, "Waiting for approval...");
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "session_complete") {
@@ -735,6 +826,7 @@
             if (data.type === "approval_accepted") {
               addLog("✅ Credentials approved - Phase 2: Retrieving credentials...", "info");
               updatePhaseProgress("credential_retrieval", "retrieving_credentials");
+              updateProgress(data.progress || 0, "Retrieving credentials...");
             } else if (data.type === "credential_retrieved") {
               credentialCount++;
               const icon = data.success ? "🔑" : "❌";
@@ -744,23 +836,39 @@
                 data.success ? "info" : "error",
               );
             } else if (data.type === "diagnosis_started") {
-              addLog(`🔧 Starting diagnosis with ${data.credentials_retrieved} credentials...`, "info");
+              const failedNote = data.credentials_failed > 0 ? ` (${data.credentials_failed} failed)` : "";
+              addLog(`🔧 Starting diagnosis with ${data.credentials_retrieved} credentials${failedNote}...`, "info");
               updatePhaseProgress("diagnosis", "diagnosing");
+              updateProgress(data.progress || 20, "Starting specialist agents...");
             } else if (data.type === "specialists_selected") {
               const specialists = data.specialists || [];
               addLog(`🤖 Running ${specialists.length} specialist agents: ${specialists.join(", ")}`, "info");
+              updateProgress(data.progress || 25, `Running ${specialists.length} specialists in parallel...`);
             } else if (data.type === "specialist_complete") {
               specialistCount++;
               const agentName = data.agent?.replace("_specialist", "") || "unknown";
               const icon = data.status === "completed" ? "✅" : "⚠️";
-              addLog(`${icon} Specialist #${specialistCount} (${agentName}): ${data.status}`, "info");
+              const durationInfo = data.duration_seconds ? ` (${data.duration_seconds}s)` : "";
+              addLog(`${icon} Specialist #${specialistCount} (${agentName}): ${data.status}${durationInfo}`, "info");
+              updateProgress(data.progress || 50, `Specialist ${specialistCount} complete...`);
             } else if (data.type === "specialist_error") {
               addLog(`❌ Specialist error: ${data.error}`, "error");
             } else if (data.type === "synthesis_started") {
-              addLog("🧪 Synthesizing findings from all specialists...", "info");
+              addLog(`🧪 Synthesizing findings from ${data.findings_count || "all"} specialists...`, "info");
+              updateProgress(data.progress || 60, "Synthesizing findings...");
             } else if (data.type === "diagnosis_complete") {
-              addLog("✅ Diagnosis complete!", "info");
+              const durationInfo = data.duration_seconds ? ` in ${formatDuration(data.duration_seconds)}` : "";
+              addLog(`✅ Diagnosis complete${durationInfo}!`, "info");
               updatePhaseProgress("diagnosis_complete", "completed");
+              updateProgress(100, "Complete!");
+
+              // Show duration badge
+              if (data.duration_seconds) {
+                const durationBadge = document.getElementById("detail-duration");
+                durationBadge.textContent = `Duration: ${formatDuration(data.duration_seconds)}`;
+                durationBadge.style.display = "inline-block";
+              }
+
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "error") {
@@ -801,8 +909,33 @@
       // Refresh button
       document.getElementById("refresh-btn").addEventListener("click", fetchSessions);
 
+      // Auto-refresh toggle
+      document.getElementById("auto-refresh-toggle").addEventListener("change", (e) => {
+        autoRefreshEnabled = e.target.checked;
+        if (autoRefreshEnabled && currentSessionId) {
+          startPolling();
+        } else {
+          stopPolling();
+        }
+        addLog(autoRefreshEnabled ? "Auto-refresh enabled" : "Auto-refresh disabled", "info");
+      });
+
+      // Fetch version from health endpoint
+      async function fetchVersion() {
+        try {
+          const response = await fetch(`${API_BASE}/health`);
+          const data = await response.json();
+          if (data.version) {
+            document.getElementById("version-badge").textContent = `v${data.version}`;
+          }
+        } catch (e) {
+          console.warn("Failed to fetch version");
+        }
+      }
+
       // Initial load
       fetchSessions();
+      fetchVersion();
     </script>
   </body>
 </html>

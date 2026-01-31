@@ -2,6 +2,8 @@
 
 An Autonomy app that enables developers to diagnose infrastructure problems using autonomous diagnostic agents with secure credential retrieval via human-in-the-loop approval.
 
+**Version**: 0.4.0
+
 ## Overview
 
 This app demonstrates:
@@ -11,8 +13,9 @@ This app demonstrates:
 - **Mock Diagnostic Tools**: Realistic tool responses for testing
 - **Human-in-the-Loop Approval**: Requests permission before accessing credentials
 - **Secure Credential Flow**: Credentials retrieved from mock 1Password, never exposed to LLM
-- **Real-time Streaming**: Live updates as diagnosis progresses
+- **Real-time Streaming**: Live updates with progress indicators
 - **Cursor Hooks Integration**: Deep integration with Cursor IDE
+- **Production-Ready Features**: Timeouts, retry logic, session management
 
 ## Quick Start
 
@@ -244,8 +247,68 @@ sre-diagnose/
 - [x] **Phase 1**: Foundation (MVP) - Basic orchestrator, streaming, dashboard
 - [x] **Phase 2**: Mock 1Password & Credential Flow - Secure credential retrieval
 - [x] **Phase 3**: Diagnostic Tools & Specialized Agents - Parallel diagnosis
-- [ ] **Phase 4**: Polish & Production Readiness
+- [x] **Phase 4**: Polish & Production Readiness - Error handling, timeouts, progress tracking
 - [ ] **Phase 5**: Distributed Processing (Optional)
+
+## Configuration
+
+Key configuration constants in `main.py`:
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `ANALYSIS_TIMEOUT` | 120s | Timeout for analysis phase |
+| `SPECIALIST_TIMEOUT` | 90s | Timeout for each specialist agent |
+| `SYNTHESIS_TIMEOUT` | 120s | Timeout for synthesis phase |
+| `CREDENTIAL_RETRY_ATTEMPTS` | 3 | Retries for credential retrieval |
+| `SESSION_EXPIRY_HOURS` | 24h | Session auto-cleanup after |
+| `MAX_SESSIONS` | 100 | Maximum concurrent sessions |
+
+## Troubleshooting
+
+### Common Issues
+
+**Session stuck in "analyzing" state**
+- Check if the analysis agent timed out (default 120s)
+- View logs at the Autonomy logs endpoint
+- The session will show status "error" if the agent failed
+
+**Credentials not being retrieved**
+- Verify the mock 1Password server is running: `curl http://localhost:8080/health`
+- Check that the credential reference exists in the mock server
+- Retrieval retries 3 times with exponential backoff
+
+**Specialist agents timing out**
+- Each specialist has a 90-second timeout
+- Partial results are returned if timeout occurs
+- Check the `duration_seconds` field in responses
+
+**Dashboard not updating**
+- Ensure auto-refresh is enabled (checkbox in Active Sessions)
+- Manual refresh: click the Refresh button
+- Check browser console for API errors
+
+### Debug Endpoints
+
+```bash
+# View all sessions
+curl https://<zone-url>/sessions
+
+# Get session details
+curl https://<zone-url>/status/{session_id}
+
+# Check credentials stored (without values)
+curl https://<zone-url>/debug/sessions/{session_id}/credentials
+
+# Clean up expired sessions
+curl -X POST https://<zone-url>/sessions/cleanup
+```
+
+### Viewing Logs
+
+Access the Autonomy logs portal for detailed agent execution logs:
+```
+https://<zone-url>/logs
+```
 
 ## References
 
