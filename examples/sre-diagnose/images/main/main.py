@@ -4,6 +4,12 @@ Provides HTTP API for incident diagnosis with human-in-the-loop credential appro
 Uses a two-phase approach:
 1. Analysis phase: Agent analyzes problem and identifies needed credentials
 2. Diagnosis phase: After approval, new agent runs diagnosis with credentials
+
+Supports two 1Password modes:
+- mock: Uses local mock 1Password server (default, for development)
+- sdk: Uses real 1Password SDK with service account (for production)
+
+Set ONEPASSWORD_MODE=sdk and OP_SERVICE_ACCOUNT_TOKEN for production use.
 """
 
 from autonomy import Agent, HttpServer, Model, Node, NodeDep, Tool
@@ -17,6 +23,7 @@ import secrets
 import httpx
 import re
 import asyncio
+import os
 from datetime import datetime, timedelta
 import logging
 
@@ -24,9 +31,38 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sre-diagnose")
 
+# === 1Password Configuration ===
+
+# Mode: "mock" (default) or "sdk"
+ONEPASSWORD_MODE = os.environ.get("ONEPASSWORD_MODE", "mock").lower()
+
+# 1Password SDK client (initialized lazily for sdk mode)
+_op_client = None
+
+async def get_onepassword_client():
+  """Get or create the 1Password SDK client (lazy initialization)."""
+  global _op_client
+  if _op_client is None and ONEPASSWORD_MODE == "sdk":
+    try:
+      from onepassword import Client
+      token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
+      if not token:
+        raise ValueError("OP_SERVICE_ACCOUNT_TOKEN environment variable is required for sdk mode")
+      _op_client = await Client.authenticate(
+        auth=token,
+        integration_name="sre-diagnose",
+        integration_version=VERSION
+      )
+      logger.info("1Password SDK client initialized successfully")
+    except ImportError:
+      raise ImportError("onepassword-sdk package not installed. Run: pip install onepassword-sdk")
+  return _op_client
+
+logger.info(f"1Password mode: {ONEPASSWORD_MODE}")
+
 # === Configuration Constants ===
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 # Timeouts (in seconds)
 ANALYSIS_TIMEOUT = 120
@@ -77,10 +113,10 @@ class StatusResponse(BaseModel):
 
 sessions: dict = {}
 
-# HTTP client for calling mock 1Password server
+# HTTP client for calling mock 1Password server (only used in mock mode)
 http_client = httpx.AsyncClient(timeout=CREDENTIAL_TIMEOUT)
 
-# Mock 1Password server URL (running in same pod)
+# Mock 1Password server URL (running in same pod, only used in mock mode)
 MOCK_1PASSWORD_URL = "http://localhost:8080"
 
 
@@ -124,11 +160,54 @@ def enforce_session_limit():
       logger.info(f"Removed old session due to limit: {session_id}")
 
 
-# === Credential Retrieval Function ===
+# === Credential Retrieval Functions ===
 
-async def retrieve_credential(reference: str, session: dict) -> tuple[bool, str]:
+async def retrieve_credential_sdk(reference: str, session: dict) -> tuple[bool, str]:
   """
-  Retrieve a credential from 1Password with retry logic.
+  Retrieve a credential from 1Password using the official SDK.
+  Returns (success, message) tuple and stores credential in session.
+  """
+  # Normalize reference
+  if not reference.startswith("op://"):
+    reference = f"op://{reference}"
+
+  last_error = None
+  for attempt in range(CREDENTIAL_RETRY_ATTEMPTS):
+    try:
+      client = await get_onepassword_client()
+      if client is None:
+        return False, "1Password SDK client not initialized"
+
+      # Use the SDK to resolve the secret reference
+      value = await client.secrets.resolve(reference)
+
+      # Store credential in session (for later use by diagnostic tools)
+      if "credentials" not in session:
+        session["credentials"] = {}
+      session["credentials"][reference] = value
+
+      # Track which credentials have been retrieved
+      if "credentials_retrieved" not in session:
+        session["credentials_retrieved"] = []
+      if reference not in session["credentials_retrieved"]:
+        session["credentials_retrieved"].append(reference)
+
+      return True, f"Successfully retrieved: {reference}"
+
+    except Exception as e:
+      last_error = str(e)
+      logger.warning(f"SDK credential retrieval attempt {attempt + 1} failed: {e}")
+
+    # Wait before retry (except on last attempt)
+    if attempt < CREDENTIAL_RETRY_ATTEMPTS - 1:
+      await asyncio.sleep(CREDENTIAL_RETRY_DELAY * (attempt + 1))
+
+  return False, f"Failed after {CREDENTIAL_RETRY_ATTEMPTS} attempts: {last_error}"
+
+
+async def retrieve_credential_mock(reference: str, session: dict) -> tuple[bool, str]:
+  """
+  Retrieve a credential from the mock 1Password server.
   Returns (success, message) tuple and stores credential in session.
   """
   # Normalize reference
@@ -161,13 +240,26 @@ async def retrieve_credential(reference: str, session: dict) -> tuple[bool, str]
 
     except httpx.RequestError as e:
       last_error = str(e)
-      logger.warning(f"Credential retrieval attempt {attempt + 1} failed: {e}")
+      logger.warning(f"Mock credential retrieval attempt {attempt + 1} failed: {e}")
 
     # Wait before retry (except on last attempt)
     if attempt < CREDENTIAL_RETRY_ATTEMPTS - 1:
       await asyncio.sleep(CREDENTIAL_RETRY_DELAY * (attempt + 1))
 
   return False, f"Failed after {CREDENTIAL_RETRY_ATTEMPTS} attempts: {last_error}"
+
+
+async def retrieve_credential(reference: str, session: dict) -> tuple[bool, str]:
+  """
+  Retrieve a credential from 1Password with retry logic.
+  Returns (success, message) tuple and stores credential in session.
+
+  Uses SDK mode (real 1Password) or mock mode based on ONEPASSWORD_MODE env var.
+  """
+  if ONEPASSWORD_MODE == "sdk":
+    return await retrieve_credential_sdk(reference, session)
+  else:
+    return await retrieve_credential_mock(reference, session)
 
 
 # === Mock Diagnostic Tools ===
@@ -552,14 +644,30 @@ async def index():
 async def health():
   """Health check endpoint."""
   onepass_status = "unknown"
-  try:
-    response = await http_client.get(f"{MOCK_1PASSWORD_URL}/health")
-    if response.status_code == 200:
-      onepass_status = "healthy"
-    else:
-      onepass_status = f"unhealthy (HTTP {response.status_code})"
-  except httpx.RequestError as e:
-    onepass_status = f"unreachable ({type(e).__name__})"
+  onepass_mode = ONEPASSWORD_MODE
+
+  if ONEPASSWORD_MODE == "sdk":
+    # Check if SDK client can be initialized
+    try:
+      client = await get_onepassword_client()
+      if client is not None:
+        onepass_status = "healthy (sdk)"
+      else:
+        onepass_status = "not configured (missing OP_SERVICE_ACCOUNT_TOKEN)"
+    except ImportError:
+      onepass_status = "error (onepassword-sdk not installed)"
+    except Exception as e:
+      onepass_status = f"error ({type(e).__name__}: {str(e)[:50]})"
+  else:
+    # Check mock 1Password server
+    try:
+      response = await http_client.get(f"{MOCK_1PASSWORD_URL}/health")
+      if response.status_code == 200:
+        onepass_status = "healthy (mock)"
+      else:
+        onepass_status = f"unhealthy (HTTP {response.status_code})"
+    except httpx.RequestError as e:
+      onepass_status = f"unreachable ({type(e).__name__})"
 
   return JSONResponse(
     content={
@@ -567,8 +675,9 @@ async def health():
       "service": "sre-diagnose",
       "version": VERSION,
       "active_sessions": len(sessions),
+      "onepassword_mode": onepass_mode,
       "dependencies": {
-        "mock-1password": onepass_status
+        "onepassword": onepass_status
       }
     },
     status_code=200

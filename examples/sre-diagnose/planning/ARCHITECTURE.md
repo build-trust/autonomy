@@ -27,8 +27,9 @@ This system enables developers to diagnose infrastructure problems by running au
 │                                                                            │
 │  ┌──────────────┐    ┌─────────────────────┐    ┌───────────────────────┐  │
 │  │  Developer   │───▶│   Cursor Agent      │───▶│    Cursor Hooks       │  │
-│  │  (on-call)   │    │   (Claude)          │    │  • sessionStart       │  │
-│  └──────────────┘    │                     │    │  • audit logging      │  │
+│  │  (on-call)   │    │   (Claude)          │    │  • session-start      │  │
+│  └──────────────┘    │                     │    │  • pre-tool-call      │  │
+│                      │                     │    │  • post-tool-call     │  │
 │        ▲             │  "Diagnose DB       │    └───────────────────────┘  │
 │        │             │   issues in prod"   │                               │
 │        │             └──────────┬──────────┘                               │
@@ -269,10 +270,17 @@ op://Services/email-service/smtp-password
 
 Located in `.cursor/` directory for IDE integration.
 
+**Hooks Configuration (`.cursor/hooks.json`):**
+| Hook | Trigger | Purpose |
+|------|---------|---------|
+| `session-start` | New conversation | Sets `SRE_DIAGNOSE_URL` env var and provides context |
+| `pre-tool-call` | Before terminal commands | Intercepts `sre-diagnose` commands and routes to API |
+| `post-tool-call` | After tool execution | Logs activity for auditing |
+
 **Purpose:**
-- Validate environment is properly configured
-- Audit tool calls for security compliance
 - Provide context to Cursor Agent about SRE capabilities
+- Intercept `sre-diagnose` commands and guide to API usage
+- Audit tool calls for security compliance
 
 ## Specialist Agent Selection
 
@@ -367,14 +375,21 @@ pods:
     containers:
       - name: main
         image: main
+        env:
+          # 1Password mode: "mock" (default) or "sdk" (production)
+          - ONEPASSWORD_MODE: "mock"
+          # Uncomment for production:
+          # - ONEPASSWORD_MODE: "sdk"
+          # - OP_SERVICE_ACCOUNT_TOKEN: secrets.OP_SERVICE_ACCOUNT_TOKEN
       - name: onepass
         image: mock-1password
 ```
 
 **Key Points:**
 - Single pod architecture (no runner pods in current implementation)
-- `onepass` container accessible via `localhost:8080` from main container
+- `onepass` container accessible via `localhost:8080` from main container (mock mode)
 - Public endpoint exposed for external access
+- Supports dual 1Password modes: `mock` (development) and `sdk` (production)
 
 ## Security Considerations
 
@@ -394,35 +409,29 @@ pods:
 2. Analysis agent cannot trigger credential retrieval
 3. Session-based access (manual cleanup for now)
 
-## Future Enhancements
+## Implementation Status
 
-### Phase 4: Polish & Production Readiness
-- [ ] Error handling and timeouts for agent operations
-- [ ] Progress percentages in streaming updates
-- [ ] Session cleanup and expiration
-- [ ] Comprehensive logging
+### Completed
+- [x] **Phase 1**: Foundation (MVP) - Basic orchestrator, streaming, dashboard
+- [x] **Phase 2**: Mock 1Password & Credential Flow - Secure credential retrieval
+- [x] **Phase 3**: Diagnostic Tools & Specialized Agents - Parallel diagnosis
+- [x] **Phase 4**: Polish & Production Readiness - Error handling, timeouts, progress tracking
+- [x] **Phase 5**: Real 1Password Integration - SDK support for production use
+- [x] **Cursor Hooks**: IDE integration with session-start, pre-tool-call, post-tool-call
 
-### Phase 5: Distributed Processing (Optional)
-- [ ] Runner pods for true parallel execution
-- [ ] Worker distribution across pods
-- [ ] Horizontal scaling for large incidents
-
-### Phase 6: Real Integrations
-- [ ] Real 1Password Connect integration
-- [ ] Real database diagnostic tools
-- [ ] Real AWS/CloudWatch integration
-- [ ] Real Kubernetes API integration
+### Future Enhancements
+- [ ] **Distributed Processing**: Runner pods for true parallel execution
+- [ ] **Real Diagnostic Tools**: Actual database, AWS, Kubernetes integrations
+- [ ] **Persistent Sessions**: Database-backed session storage
 
 ## References
 
 ### Autonomy Documentation
-- [Creating Autonomy Apps](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app.md)
-- [Custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis.md)
-- [Tools](https://autonomy.computer/docs/_for-coding-agents/tools.md)
-
-### Cursor Documentation
-- [Cursor Hooks](https://cursor.com/docs/agent/hooks.md)
+- [Creating Autonomy Apps](https://autonomy.computer/docs/_for-coding-agents/create-a-new-autonomy-app)
+- [Custom APIs](https://autonomy.computer/docs/_for-coding-agents/create-custom-apis)
+- [Tools](https://autonomy.computer/docs/_for-coding-agents/tools)
 
 ### 1Password Documentation
-- [1Password Connect](https://developer.1password.com/docs/connect/)
-- [1Password Connect API Reference](https://developer.1password.com/docs/connect/connect-api-reference/)
+- [1Password SDKs](https://developer.1password.com/docs/sdks/)
+- [Service Accounts](https://developer.1password.com/docs/service-accounts/)
+- [Load Secrets with SDKs](https://developer.1password.com/docs/sdks/load-secrets/)

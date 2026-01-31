@@ -655,91 +655,109 @@ Please read the implementation plan and continue from Phase 6.
 
 ---
 
-## Phase 6: Cursor Hooks Integration
+## Phase 6: Cursor Hooks Integration ✅ COMPLETED
 
 **Goal**: Deep integration with Cursor via hooks
 
-### Task 5.1: Create Cursor Hooks Configuration
+### Task 6.1: Create Cursor Hooks Configuration ✅
 
-Create hooks.json and hook scripts.
+Created hooks.json and hook scripts in `.cursor/` directory.
 
-**Create:**
+**Created:**
 ```
-autonomy/examples/sre-diagnose/cursor-hooks/
+autonomy/examples/sre-diagnose/.cursor/
 ├── hooks.json
 └── hooks/
-    ├── sre-session-init.sh
-    ├── audit-mcp.sh
-    └── cleanup-session.sh
+    ├── session-init.sh
+    ├── sre-diagnose.sh
+    └── audit.sh
 ```
 
-**Commit:** `git commit -m "sre-diagnose: add Cursor hooks configuration"`
-
----
-
-### Task 5.2: Implement Session Hooks
-
-Implement the actual hook logic.
-
-**sre-session-init.sh:**
-- Validate environment
-- Inject Autonomy cluster info
-- Set up session context
-
-**audit-mcp.sh:**
-- Log MCP tool calls
-- Track credential access
-
-**cleanup-session.sh:**
-- Clean up Autonomy sessions
-
-**Commit:** `git commit -m "sre-diagnose: implement Cursor hook scripts"`
-
----
-
-### Task 5.3: Document Cursor Integration
-
-Write documentation for setting up Cursor integration.
-
-**Add to README.md:**
-- How to install hooks
-- Example prompts
-- Troubleshooting
-
-**Commit:** `git commit -m "sre-diagnose: document Cursor integration"`
-
----
-
-### PHASE 5 HANDOVER PROMPT
-
-```
-Continue building the SRE Incident Diagnosis Autonomy app.
-
-## Context
-- Project location: autonomy/examples/sre-diagnose
-- Architecture doc: autonomy/examples/sre-diagnose/planning/ARCHITECTURE.md
-- Implementation plan: autonomy/examples/sre-diagnose/planning/IMPLEMENTATION_PLAN.md
-
-## Completed
-- Phase 1: Foundation (MVP) ✓
-- Phase 2: Mock 1Password & Credential Flow ✓
-- Phase 3: Diagnostic Tools ✓
-- Phase 4: Distributed Processing ✓
-- Phase 5: Cursor Hooks Integration ✓
-
-## Next Step
-- Phase 6: Polish & Production Readiness
-
-Please read the implementation plan and continue from Phase 6.
+**hooks.json:**
+```json
+{
+  "version": 1,
+  "hooks": {
+    "session-start": [{"command": ".cursor/hooks/session-init.sh"}],
+    "pre-tool-call": [{"command": ".cursor/hooks/sre-diagnose.sh", "matcher": "run_terminal_cmd"}],
+    "post-tool-call": [{"command": ".cursor/hooks/audit.sh"}]
+  }
+}
 ```
 
 ---
 
-## Phase 8: Real Diagnostic Tools (Optional)
+### Task 6.2: Implement Session Hooks ✅
 
-**Goal**: Error handling, streaming, dashboard, documentation
+**session-init.sh:**
+- Sets `SRE_DIAGNOSE_URL` and `SRE_SESSION_ID` environment variables
+- Provides context about SRE Diagnose API capabilities
 
-### Task 6.1: Error Handling & Timeouts
+**sre-diagnose.sh:**
+- Intercepts `sre-diagnose` and `diagnose-infra` commands
+- Blocks shell execution and provides API guidance
+- Returns `{"decision": "block", "instructions": "..."}` for diagnosis commands
+
+**audit.sh:**
+- Logs tool calls to `/tmp/sre-diagnose/audit.log`
+- Fire-and-forget (returns `{}`)
+
+---
+
+### Task 6.3: Document Cursor Integration ✅
+
+Added to README.md:
+- How to copy `.cursor` folder to projects
+- Hook configuration table
+- Usage examples with natural language and command patterns
+- Environment variables set by hooks
+
+---
+
+## Phase 7: Real 1Password Integration ✅ COMPLETED
+
+**Goal**: Replace mock 1Password server with real SDK integration
+
+### Task 7.1: Research 1Password Options ✅
+
+Evaluated three options:
+1. **1Password Connect Server** - Requires additional containers, complex setup
+2. **1Password CLI** - Shell-based, less reliable
+3. **1Password Python SDK** ✅ - Chosen approach, native Python integration
+
+### Task 7.2: Implement Dual-Mode Support ✅
+
+**Changes:**
+- Added `onepassword-sdk` to `requirements.txt`
+- Added `ONEPASSWORD_MODE` environment variable (`mock` or `sdk`)
+- Implemented `retrieve_credential_sdk()` using official SDK
+- Implemented `retrieve_credential_mock()` for development
+- Updated `/health` endpoint to show 1Password mode and status
+- Created `secrets.yaml.example` with setup instructions
+- Added `.gitignore` to exclude `secrets.yaml`
+
+**Code structure:**
+```python
+async def retrieve_credential(reference: str, session: dict) -> tuple[bool, str]:
+    if ONEPASSWORD_MODE == "sdk":
+        return await retrieve_credential_sdk(reference, session)
+    else:
+        return await retrieve_credential_mock(reference, session)
+```
+
+### Task 7.3: Update Documentation ✅
+
+- Updated README.md with 1Password Integration section
+- Rewrote `1PASSWORD_CONNECT_REFERENCE.md` with SDK details
+- Documented both mock and SDK modes
+
+---
+
+## Phase 8: Real Diagnostic Tools (Optional - Future)
+
+**Goal**: Replace mock diagnostic tools with real integrations
+
+### Task 8.1: Error Handling & Timeouts
 
 - Add comprehensive error handling
 - Implement retry logic
@@ -912,14 +930,13 @@ The `runner` pod is only added in Phase 5 for optional scale-out.
 | Phase 1: Foundation | 2-3 hours | None |
 | Phase 2: Mock 1Password HTTP Server | 2-3 hours | Phase 1 |
 | Phase 3: Diagnostic Tools & Agents (Single Pod) | 3-4 hours | Phase 2 |
-| Phase 4: Polish & Production Readiness | 2-3 hours | Phase 3 |
-| Phase 5: Distributed Processing (Optional) | 3-4 hours | Phase 4 |
-| Phase 6: Cursor Hooks | 2-3 hours | Phase 1 |
-| Phase 7: Real 1Password Integration | 2-3 hours | Phase 2 |
-| Phase 6: Polish | 4-6 hours | All previous |
-| Phase 7: Real 1Password | 2-4 hours | Phase 6 |
+| Phase 4: Polish & Production Readiness | 2-3 hours | Phase 3 | ✅ |
+| Phase 5: Distributed Processing (Optional) | - | - | Skipped |
+| Phase 6: Cursor Hooks | 2-3 hours | Phase 1 | ✅ |
+| Phase 7: Real 1Password Integration | 2-3 hours | Phase 2 | ✅ |
+| Phase 8: Real Diagnostic Tools (Optional) | 4-6 hours | All previous | Future |
 
-**Total: ~20-30 hours** across multiple sessions
+**Total Completed: ~15-20 hours** across multiple sessions
 
 ---
 

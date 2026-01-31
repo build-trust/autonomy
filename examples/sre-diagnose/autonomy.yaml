@@ -5,5 +5,12 @@ pods:
     containers:
       - name: main
         image: main
+        env:
+          # 1Password mode: "mock" (default) or "sdk" (production)
+          # Set to "sdk" and provide OP_SERVICE_ACCOUNT_TOKEN for real 1Password
+          - ONEPASSWORD_MODE: "mock"
+          # Uncomment for production use with real 1Password:
+          # - ONEPASSWORD_MODE: "sdk"
+          # - OP_SERVICE_ACCOUNT_TOKEN: secrets.OP_SERVICE_ACCOUNT_TOKEN
       - name: onepass
         image: mock-1password

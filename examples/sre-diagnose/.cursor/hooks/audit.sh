@@ -1,17 +1,18 @@
 #!/bin/bash
 # audit.sh - Audit hook for SRE Diagnose sessions
 #
-# This hook runs when a Cursor task completes.
-# It logs session activity for auditing and analytics.
+# This hook runs after tool calls complete.
+# It logs activity for auditing and analytics.
+
+set -euo pipefail
 
 # Read JSON input from stdin
 json_input=$(cat)
 
-# Extract session details
-conversation_id=$(echo "$json_input" | jq -r '.conversation_id // empty')
-generation_id=$(echo "$json_input" | jq -r '.generation_id // empty')
-status=$(echo "$json_input" | jq -r '.status // empty')
-hook_event_name=$(echo "$json_input" | jq -r '.hook_event_name // empty')
+# Extract details from the tool call result
+tool_name=$(echo "$json_input" | jq -r '.tool_name // "unknown"')
+tool_result=$(echo "$json_input" | jq -r '.tool_result // empty' | head -c 200)
+exit_code=$(echo "$json_input" | jq -r '.exit_code // "N/A"')
 
 # Create timestamp
 timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -21,10 +22,10 @@ mkdir -p /tmp/sre-diagnose
 
 # Write audit log entry
 cat << EOF >> /tmp/sre-diagnose/audit.log
-[$timestamp] event=$hook_event_name conversation=$conversation_id generation=$generation_id status=$status
+[$timestamp] tool=$tool_name exit_code=$exit_code result_preview=${tool_result:0:100}
 EOF
 
-# Output empty JSON (fire-and-forget hook)
+# Output empty JSON (no modifications needed for post-tool-call)
 echo '{}'
 
 exit 0

@@ -362,6 +362,59 @@
       .log-error {
         color: #f85149;
       }
+      .session-banner {
+        background: linear-gradient(135deg, #1a1f35 0%, #0d1117 100%);
+        border: 2px solid #1f6feb;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 16px;
+        display: none;
+      }
+      .session-banner .session-id-large {
+        font-family: monospace;
+        font-size: 18px;
+        font-weight: bold;
+        color: #58a6ff;
+      }
+      .session-banner .session-label {
+        font-size: 12px;
+        color: #8b949e;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+      }
+      .streaming-output {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 16px;
+        margin-top: 16px;
+        font-size: 14px;
+        line-height: 1.6;
+        min-height: 100px;
+        max-height: 400px;
+        overflow-y: auto;
+        display: none;
+      }
+      .streaming-output .cursor {
+        display: inline-block;
+        width: 8px;
+        height: 16px;
+        background: #58a6ff;
+        animation: blink 1s infinite;
+        vertical-align: text-bottom;
+        margin-left: 2px;
+      }
+      @keyframes blink {
+        0%,
+        50% {
+          opacity: 1;
+        }
+        51%,
+        100% {
+          opacity: 0;
+        }
+      }
     </style>
   </head>
   <body>
@@ -408,11 +461,22 @@
       </div>
 
       <div class="card" id="session-detail" style="display: none">
+        <!-- Session Banner - Shows prominently at the top -->
+        <div class="session-banner" id="session-banner">
+          <div class="session-label">Session ID</div>
+          <div class="session-id-large" id="banner-session-id"></div>
+        </div>
+
         <h2>Session Details: <span id="detail-session-id"></span></h2>
         <div>
           <span class="status-badge" id="detail-status"></span>
           <span id="detail-phase" style="margin-left: 12px; color: #8b949e"></span>
           <span class="duration-badge" id="detail-duration" style="display: none"></span>
+        </div>
+
+        <!-- Streaming Output with Typewriter Effect -->
+        <div class="streaming-output" id="streaming-output">
+          <span id="streaming-text"></span><span class="cursor" id="streaming-cursor"></span>
         </div>
 
         <!-- Progress Bar -->
@@ -492,6 +556,12 @@
       let pollInterval = null;
       let autoRefreshEnabled = true;
       let currentProgress = 0;
+
+      // Typewriter state
+      let typewriterQueue = [];
+      let isTyping = false;
+      let streamingBuffer = "";
+      const TYPEWRITER_DELAY = 8; // ms per character
 
       // Update progress bar
       function updateProgress(percent, text) {
@@ -720,6 +790,115 @@
           .replace(/\n/g, "<br>");
       }
 
+      // Show session banner
+      function showSessionBanner(sessionId) {
+        const banner = document.getElementById("session-banner");
+        const bannerSessionId = document.getElementById("banner-session-id");
+        banner.style.display = "block";
+        bannerSessionId.textContent = sessionId;
+      }
+
+      // Initialize streaming output
+      function initStreamingOutput() {
+        const output = document.getElementById("streaming-output");
+        const textEl = document.getElementById("streaming-text");
+        const cursor = document.getElementById("streaming-cursor");
+        output.style.display = "block";
+        textEl.innerHTML = "";
+        streamingBuffer = "";
+        typewriterQueue = [];
+        cursor.style.display = "inline-block";
+      }
+
+      // Hide streaming cursor
+      function hideStreamingCursor() {
+        document.getElementById("streaming-cursor").style.display = "none";
+      }
+
+      // Add text to typewriter queue and process
+      function queueTypewriterText(text) {
+        // Buffer the text fragments
+        streamingBuffer += text;
+
+        // Check for complete sentences or significant chunks
+        // Split on sentence endings, newlines, or after accumulating enough text
+        const sentenceEndings = /([.!?]\s+|\n\n|\n(?=[A-Z#*\-\d]))/g;
+        let match;
+        let lastIndex = 0;
+
+        while ((match = sentenceEndings.exec(streamingBuffer)) !== null) {
+          const sentence = streamingBuffer.substring(lastIndex, match.index + match[0].length);
+          if (sentence.trim()) {
+            typewriterQueue.push(sentence);
+          }
+          lastIndex = match.index + match[0].length;
+        }
+
+        // Keep the incomplete part in the buffer
+        streamingBuffer = streamingBuffer.substring(lastIndex);
+
+        // If buffer is getting long without sentence breaks, flush it
+        if (streamingBuffer.length > 100) {
+          typewriterQueue.push(streamingBuffer);
+          streamingBuffer = "";
+        }
+
+        // Start processing queue if not already typing
+        if (!isTyping) {
+          processTypewriterQueue();
+        }
+      }
+
+      // Flush remaining buffer
+      function flushTypewriterBuffer() {
+        if (streamingBuffer.trim()) {
+          typewriterQueue.push(streamingBuffer);
+          streamingBuffer = "";
+        }
+        if (!isTyping && typewriterQueue.length > 0) {
+          processTypewriterQueue();
+        }
+      }
+
+      // Process typewriter queue with character-by-character effect
+      async function processTypewriterQueue() {
+        if (isTyping || typewriterQueue.length === 0) return;
+
+        isTyping = true;
+        const textEl = document.getElementById("streaming-text");
+        const output = document.getElementById("streaming-output");
+
+        while (typewriterQueue.length > 0) {
+          const text = typewriterQueue.shift();
+
+          for (const char of text) {
+            // Handle special characters for formatting
+            if (char === "\n") {
+              textEl.innerHTML += "<br>";
+            } else if (char === "#" && textEl.innerHTML.endsWith("<br>")) {
+              textEl.innerHTML += '<span style="color: #58a6ff; font-weight: bold;">#</span>';
+            } else if (char === "*") {
+              textEl.innerHTML += '<span style="color: #d29922;">*</span>';
+            } else {
+              textEl.innerHTML += char.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            }
+
+            // Scroll to bottom
+            output.scrollTop = output.scrollHeight;
+
+            // Variable delay - faster for spaces, slower for punctuation
+            let delay = TYPEWRITER_DELAY;
+            if (char === " ") delay = TYPEWRITER_DELAY / 2;
+            else if (".!?".includes(char)) delay = TYPEWRITER_DELAY * 3;
+            else if (",;:".includes(char)) delay = TYPEWRITER_DELAY * 2;
+
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        }
+
+        isTyping = false;
+      }
+
       // Stream NDJSON response
       async function streamResponse(response, onChunk) {
         const reader = response.body.getReader();
@@ -769,14 +948,21 @@
           // Stream the response
           await streamResponse(response, (data) => {
             if (data.type === "session_start") {
-              addLog(`🚀 Session ${data.session_id} started - Phase 1: Analysis`, "info");
               currentSessionId = data.session_id;
               document.getElementById("session-detail").style.display = "block";
               document.getElementById("detail-session-id").textContent = data.session_id;
+
+              // Show session banner prominently
+              showSessionBanner(data.session_id);
+              initStreamingOutput();
+
+              addLog(`🚀 Session ${data.session_id} started - Phase 1: Analysis`, "info");
               updatePhaseProgress("analysis", "analyzing");
               updateProgress(data.progress || 0, "Analyzing problem...");
               fetchSessions();
             } else if (data.type === "approval_required") {
+              flushTypewriterBuffer();
+              hideStreamingCursor();
               addLog(`🔐 Analysis complete - ${data.requested_credentials?.length || 0} credentials requested`, "warn");
               document.getElementById("approval-section").style.display = "block";
               document.getElementById("approval-message").textContent =
@@ -786,16 +972,17 @@
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "session_complete") {
+              flushTypewriterBuffer();
+              hideStreamingCursor();
               addLog("✅ Analysis complete", "info");
               updateSessionDetail();
               fetchSessions();
             } else if (data.type === "error") {
               addLog(`❌ Error: ${data.message}`, "error");
             } else if (data.text) {
-              // Streaming text content - show abbreviated (skip timestamps)
-              const preview = data.text.replace(/\n/g, " ").substring(0, 60);
-              if (preview.trim() && !preview.match(/^\d{4}-\d{2}-\d{2}/)) {
-                addLog(`📝 ${preview}${data.text.length > 60 ? "..." : ""}`, "info");
+              // Stream text with typewriter effect (skip timestamps)
+              if (!data.text.match(/^\d{4}-\d{2}-\d{2}/)) {
+                queueTypewriterText(data.text);
               }
             }
           });
@@ -822,6 +1009,10 @@
           // Stream the resumed agent response
           let credentialCount = 0;
           let specialistCount = 0;
+
+          // Re-initialize streaming output for diagnosis phase
+          initStreamingOutput();
+
           await streamResponse(response, (data) => {
             if (data.type === "approval_accepted") {
               addLog("✅ Credentials approved - Phase 2: Retrieving credentials...", "info");
@@ -857,6 +1048,8 @@
               addLog(`🧪 Synthesizing findings from ${data.findings_count || "all"} specialists...`, "info");
               updateProgress(data.progress || 60, "Synthesizing findings...");
             } else if (data.type === "diagnosis_complete") {
+              flushTypewriterBuffer();
+              hideStreamingCursor();
               const durationInfo = data.duration_seconds ? ` in ${formatDuration(data.duration_seconds)}` : "";
               addLog(`✅ Diagnosis complete${durationInfo}!`, "info");
               updatePhaseProgress("diagnosis_complete", "completed");
@@ -874,10 +1067,9 @@
             } else if (data.type === "error") {
               addLog(`❌ Error: ${data.message}`, "error");
             } else if (data.text) {
-              // Show diagnosis output (skip timestamps)
-              const preview = data.text.replace(/\n/g, " ").substring(0, 80);
-              if (preview.trim() && !preview.match(/^\d{4}-\d{2}-\d{2}/)) {
-                addLog(`📋 ${preview}${data.text.length > 80 ? "..." : ""}`, "info");
+              // Stream text with typewriter effect (skip timestamps)
+              if (!data.text.match(/^\d{4}-\d{2}-\d{2}/)) {
+                queueTypewriterText(data.text);
               }
             }
           });

@@ -1,18 +1,18 @@
 {
   "version": 1,
   "hooks": {
-    "sessionStart": [
+    "session-start": [
       {
         "command": ".cursor/hooks/session-init.sh"
       }
     ],
-    "beforeShellExecution": [
+    "pre-tool-call": [
       {
         "command": ".cursor/hooks/sre-diagnose.sh",
-        "matcher": "sre-diagnose|diagnose-infra"
+        "matcher": "run_terminal_cmd"
       }
     ],
-    "stop": [
+    "post-tool-call": [
       {
         "command": ".cursor/hooks/audit.sh"
       }

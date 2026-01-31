@@ -2,7 +2,7 @@
 
 An Autonomy app that enables developers to diagnose infrastructure problems using autonomous diagnostic agents with secure credential retrieval via human-in-the-loop approval.
 
-**Version**: 0.4.0
+**Version**: 0.5.0
 
 ## Overview
 
@@ -12,10 +12,11 @@ This app demonstrates:
 - **Specialized Diagnostic Agents**: Database, Cloud, and Kubernetes specialists
 - **Mock Diagnostic Tools**: Realistic tool responses for testing
 - **Human-in-the-Loop Approval**: Requests permission before accessing credentials
-- **Secure Credential Flow**: Credentials retrieved from mock 1Password, never exposed to LLM
+- **Secure Credential Flow**: Credentials retrieved from 1Password, never exposed to LLM
 - **Real-time Streaming**: Live updates with progress indicators
 - **Cursor Hooks Integration**: Deep integration with Cursor IDE
 - **Production-Ready Features**: Timeouts, retry logic, session management
+- **Dual 1Password Modes**: Mock server for development, real SDK for production
 
 ## Quick Start
 
@@ -72,8 +73,8 @@ curl -X POST https://a9eb812238f753132652ae09963a05e9-srediag.cluster.autonomy.c
 │         ▼                                                                   │
 │  PHASE 2: DIAGNOSIS                                                         │
 │  ┌─────────────┐                                                            │
-│  │  Credential │ → Retrieves approved credentials from mock 1Password       │
-│  │  Retrieval  │                                                            │
+│  │  Credential │ → Retrieves approved credentials from 1Password            │
+│  │  Retrieval  │   (mock server or real SDK based on configuration)         │
 │  └─────────────┘                                                            │
 │         │                                                                   │
 │         ▼                                                                   │
@@ -131,9 +132,89 @@ All tools return realistic mock data for testing:
 - **check_kubernetes_pods**: Pod status, restarts, resource usage
 - **get_application_logs**: Recent error logs with trace IDs
 
+## 1Password Integration
+
+This app supports two modes for credential retrieval:
+
+### Mode 1: Mock Server (Default - Development)
+
+The default mode uses a local mock 1Password server for development and testing. No configuration needed.
+
+```yaml
+# autonomy.yaml (default)
+env:
+  - ONEPASSWORD_MODE: "mock"
+```
+
+### Mode 2: Real 1Password SDK (Production)
+
+For production use, configure the app to use the official 1Password SDK with a service account.
+
+#### Setup Steps
+
+1. **Create a 1Password Service Account**
+   - Sign in to your 1Password account at https://my.1password.com
+   - Go to **Developer** > **Directory** > **Infrastructure Secrets Management**
+   - Create a new service account
+   - Grant access to vaults containing your infrastructure credentials
+   - Copy the service account token
+
+2. **Create secrets.yaml**
+   ```bash
+   cp secrets.yaml.example secrets.yaml
+   ```
+   
+   Edit `secrets.yaml`:
+   ```yaml
+   OP_SERVICE_ACCOUNT_TOKEN: "your-1password-service-account-token-here"
+   ```
+
+3. **Update autonomy.yaml**
+   ```yaml
+   containers:
+     - name: main
+       image: main
+       env:
+         - ONEPASSWORD_MODE: "sdk"
+         - OP_SERVICE_ACCOUNT_TOKEN: secrets.OP_SERVICE_ACCOUNT_TOKEN
+   ```
+
+4. **Deploy**
+   ```bash
+   autonomy zone deploy
+   ```
+
+#### Verify Integration
+
+```bash
+# Check health endpoint shows sdk mode
+curl -s https://<zone-url>/health | jq .
+
+# Expected response:
+# {
+#   "status": "healthy",
+#   "onepassword_mode": "sdk",
+#   "dependencies": {
+#     "onepassword": "healthy (sdk)"
+#   }
+# }
+```
+
+### Credential Reference Format
+
+Both modes use the standard 1Password secret reference format:
+
+```
+op://vault/item/field
+```
+
+Examples:
+- `op://Infrastructure/prod-db/password`
+- `op://Services/api-gateway/api-key`
+
 ## Available Credentials (Mock 1Password)
 
-The mock 1Password server provides these credentials:
+The mock 1Password server (development mode) provides these credentials:
 
 | Reference | Description |
 |-----------|-------------|
@@ -205,7 +286,21 @@ Delete a session.
 
 ### GET /health
 
-Health check including mock 1Password status.
+Health check including 1Password status.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "sre-diagnose",
+  "version": "0.5.0",
+  "active_sessions": 0,
+  "onepassword_mode": "mock",
+  "dependencies": {
+    "onepassword": "healthy (mock)"
+  }
+}
+```
 
 ## Cursor IDE Integration
 
@@ -215,31 +310,68 @@ Copy the `.cursor` folder to your project for IDE integration:
 cp -r .cursor /path/to/your/project/
 ```
 
-Then use natural language to trigger diagnosis:
+### Hooks Configuration
+
+The `.cursor/hooks.json` configures three hooks:
+
+| Hook | Trigger | Purpose |
+|------|---------|---------|
+| `session-start` | New conversation | Sets `SRE_DIAGNOSE_URL` env var and provides context |
+| `pre-tool-call` | Before terminal commands | Intercepts `sre-diagnose` commands and routes to API |
+| `post-tool-call` | After tool execution | Logs activity for auditing |
+
+### Usage
+
+Once the hooks are installed, use natural language to trigger diagnosis:
+
 ```
 "Can you diagnose why our database connections are failing in production?"
 ```
+
+Or use the `sre-diagnose` command pattern:
+
+```
+sre-diagnose database connection timeouts in production API
+```
+
+The hook will intercept this and guide the agent to use the SRE Diagnose API instead.
+
+### Environment Variables
+
+The hooks set these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `SRE_DIAGNOSE_URL` | API endpoint URL |
+| `SRE_SESSION_ID` | Cursor conversation ID for correlation |
 
 ## Project Structure
 
 ```
 sre-diagnose/
 ├── autonomy.yaml              # Zone configuration (main + onepass containers)
+├── secrets.yaml.example       # Template for 1Password service account token
+├── .gitignore                 # Excludes secrets.yaml from version control
 ├── README.md                  # This file
 ├── .cursor/                   # Cursor hooks integration
-│   ├── hooks.json
-│   └── hooks/*.sh
+│   ├── hooks.json             # Hook configuration (session-start, pre-tool-call, post-tool-call)
+│   └── hooks/
+│       ├── session-init.sh    # Sets SRE_DIAGNOSE_URL env var
+│       ├── sre-diagnose.sh    # Intercepts sre-diagnose commands
+│       └── audit.sh           # Logs tool calls for auditing
 ├── images/
 │   ├── main/
 │   │   ├── Dockerfile
 │   │   ├── main.py           # FastAPI + agents + diagnostic tools
-│   │   └── index.html        # Dashboard
+│   │   ├── requirements.txt  # Python deps (httpx, onepassword-sdk)
+│   │   └── index.html        # Dashboard with typewriter streaming
 │   └── mock-1password/
 │       ├── Dockerfile
-│       └── server.py         # Mock 1Password Connect server
+│       └── server.py         # Mock 1Password server (dev mode only)
 └── planning/
     ├── ARCHITECTURE.md
-    └── IMPLEMENTATION_PLAN.md
+    ├── IMPLEMENTATION_PLAN.md
+    └── 1PASSWORD_CONNECT_REFERENCE.md
 ```
 
 ## Implementation Status
@@ -248,9 +380,21 @@ sre-diagnose/
 - [x] **Phase 2**: Mock 1Password & Credential Flow - Secure credential retrieval
 - [x] **Phase 3**: Diagnostic Tools & Specialized Agents - Parallel diagnosis
 - [x] **Phase 4**: Polish & Production Readiness - Error handling, timeouts, progress tracking
-- [ ] **Phase 5**: Distributed Processing (Optional)
+- [x] **Phase 5**: Real 1Password Integration - SDK support for production use
+- [x] **Phase 6**: Cursor Hooks Integration - IDE integration with session-start, pre-tool-call, post-tool-call
+- [ ] **Phase 7**: Distributed Processing (Optional)
+- [ ] **Phase 8**: Real Diagnostic Tools (Optional)
 
 ## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ONEPASSWORD_MODE` | `mock` | 1Password mode: `mock` or `sdk` |
+| `OP_SERVICE_ACCOUNT_TOKEN` | - | 1Password service account token (required for `sdk` mode) |
+
+### Code Constants
 
 Key configuration constants in `main.py`:
 
@@ -272,10 +416,16 @@ Key configuration constants in `main.py`:
 - View logs at the Autonomy logs endpoint
 - The session will show status "error" if the agent failed
 
-**Credentials not being retrieved**
+**Credentials not being retrieved (mock mode)**
 - Verify the mock 1Password server is running: `curl http://localhost:8080/health`
 - Check that the credential reference exists in the mock server
 - Retrieval retries 3 times with exponential backoff
+
+**Credentials not being retrieved (sdk mode)**
+- Check health endpoint: `curl <zone-url>/health | jq .dependencies.onepassword`
+- Verify `OP_SERVICE_ACCOUNT_TOKEN` is set correctly
+- Ensure service account has access to the vault containing the credential
+- Check the credential reference format: `op://vault/item/field`
 
 **Specialist agents timing out**
 - Each specialist has a 90-second timeout
@@ -314,4 +464,4 @@ https://<zone-url>/logs
 
 - [Architecture Document](planning/ARCHITECTURE.md)
 - [Implementation Plan](planning/IMPLEMENTATION_PLAN.md)
-- [1Password Connect API Reference](planning/1PASSWORD_CONNECT_REFERENCE.md)
+- [1Password Integration Reference](planning/1PASSWORD_CONNECT_REFERENCE.md)
