@@ -6,6 +6,10 @@ description: "Deploy swarms of autonomous on-call agents that safely diagnose an
 
 [1Password and Autonomy collaborated](https://1password.com/blog/how-to-build-secure-agent-swarms-that-power-autonomous-systems) on AI SRE agents that safely diagnose and autonomously fix problems in production infrastructure. This guide shows you how to deploy them to your infra.
 
+Agent swarms require execution environments with explicit identity and strict boundaries. Autonomy treats agent identity and isolation as first-class concerns. Each agent has a unique cryptographic identity, and every action is attributable by design. In this guide, we show how agents authenticate as themselves, request access dynamically, and receive credentials from [1Password](https://1password.com/) that are scoped to intent, time-bound, and revocable.
+
+
+
 <Frame>
   <img src="/guides/images/autonomy-1password.gif"
       alt="OnCall Agent Swarm Visualization" />
