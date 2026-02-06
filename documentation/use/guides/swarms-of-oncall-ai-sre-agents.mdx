@@ -248,12 +248,19 @@ async def run_single_agent(self, agent_type, instructions, service_name, region,
   agent = await Agent.start(
     node=self.node,
     instructions=f"""You are a {agent_type} diagnostic agent for {service_name} in {region}.
-{instructions}
-Provide a brief assessment of the {agent_type} health for this service.""",
+      {instructions}
+      Provide a brief assessment of the {agent_type} health for this service.""",
     model=model,
   )
-  responses = await agent.send(f"Diagnose {agent_type} health for {service_name} in {region}.")
-  return {"agent_type": agent_type, "status": "completed", "finding": responses[-1].content.text}
+
+  message = f"Diagnose {agent_type} health for {service_name} in {region}."
+  responses = await agent.send(message)
+
+  return {
+    "agent_type": agent_type,
+    "status": "completed",
+    "finding": responses[-1].content.text
+  }
 ```
 
 After all diagnostic agents complete, a synthesis agent combines findings:
@@ -262,11 +269,14 @@ After all diagnostic agents complete, a synthesis agent combines findings:
 synthesis_agent = await Agent.start(
   node=self.node,
   instructions="""You are a senior SRE synthesizing diagnostic findings.
-Identify common patterns, determine root cause, and prioritize remediation.
-List any actions requiring WRITE access as "Actions Requiring Approval".""",
+    Identify common patterns, determine root cause, and prioritize remediation.
+    List any actions requiring WRITE access as "Actions Requiring Approval".""",
   model=Model("claude-sonnet-4-5"),
 )
-diagnosis = await synthesis_agent.send(f"Synthesize findings: {findings_summary}")
+
+diagnosis = await synthesis_agent.send(
+  f"Synthesize findings: {findings_summary}"
+)
 ```
 
 If the synthesis identifies remediation actions, the agent requests write credentials with individual human approval for each action.
