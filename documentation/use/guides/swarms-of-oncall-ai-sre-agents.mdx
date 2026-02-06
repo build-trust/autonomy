@@ -20,7 +20,7 @@ Go On-Call (Read Approval) → Monitor
 → Incident → Investigate (150+ agent swarm) → Write Approval → Remediate
 ```
 
-After the swarm identifies the root cause, it requests write credentials for specific remediation actions—kill runaway queries, disable a feature flag. Each write action requires separate human approval. Once approved, the swarm autonomously remediates the problem.
+After the swarm identifies the root cause, it requests write credentials for specific remediation actions:kill runaway queries, disable a feature flag. Each write action requires separate human approval. Once approved, the swarm autonomously remediates the problem.
 
 <iframe width="100%" height="450" frameborder="0" src="https://www.youtube.com/embed/ZXSKPnBnV3w" title="On-Call SRE Agents with 1Password and Autonomy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen />
 
@@ -161,7 +161,7 @@ class Monitor:
 
 **Two-phase credential approval.** The system uses a two-phase approach to balance investigation speed with security:
 
-**Phase 1: READ credentials** — When you go on-call, the agent requests read-only credentials to monitor infrastructure. These are approved once at activation and shared across all diagnostic agents when an incident occurs.
+**Phase 1: READ credentials** : When you go on-call, the agent requests read-only credentials to monitor infrastructure. These are approved once at activation and shared across all diagnostic agents when an incident occurs.
 
 ```python images/main/main.py
 # READ credentials needed for monitoring (requested at activation)
@@ -174,7 +174,7 @@ MONITORING_READ_CREDENTIALS = [
 ]
 ```
 
-**Phase 2: WRITE credentials** — After diagnosis, if the swarm identifies remediation actions (kill queries, disable feature flags), it requests write credentials for each specific action. These require individual human approval.
+**Phase 2: WRITE credentials** : After diagnosis, if the swarm identifies remediation actions (kill queries, disable feature flags), it requests write credentials for each specific action. These require individual human approval.
 
 ```python images/main/main.py
 # WRITE credentials - require separate approval per action
@@ -189,7 +189,7 @@ CREDENTIAL_CATEGORIES: Dict[str, CredentialCategory] = {
 }
 ```
 
-**Parallel diagnostic swarm.** Agents are actors in the Autonomy runtime—they don't block, allowing massive parallelism on a single machine. The investigation spawns specialized agents across regions and services:
+**Parallel diagnostic swarm.** Agents are actors in the Autonomy runtime:they don't block, allowing massive parallelism on a single machine. The investigation spawns specialized agents across regions and services:
 
 ```text
 Investigation Root
@@ -283,7 +283,7 @@ If the synthesis identifies remediation actions, the agent requests write creden
 
 The dashboard includes a real-time D3.js force-directed graph that visualizes all agents as they spawn, investigate, and complete their work.
 
-**POST /incidents** — Trigger an incident investigation with 150+ diagnostic agents.
+**POST /incidents** : Trigger an incident investigation with 150+ diagnostic agents.
 
 **Request:**
 
@@ -305,7 +305,7 @@ The dashboard includes a real-time D3.js force-directed graph that visualizes al
 }
 ```
 
-**GET /investigation/status** — Get the current investigation status.
+**GET /investigation/status** : Get the current investigation status.
 
 **Response:**
 
@@ -325,7 +325,7 @@ The dashboard includes a real-time D3.js force-directed graph that visualizes al
 }
 ```
 
-**POST /approve/{session_id}** — Approve or deny credential access for an investigation.
+**POST /approve/{session_id}** : Approve or deny credential access for an investigation.
 
 **Request:**
 
@@ -345,13 +345,13 @@ Additional endpoints for visualization (`/graph`), history (`/investigation/hist
 
 The example uses mock tools and manual triggers for demonstration. To adapt for your infrastructure:
 
-- **Connect your monitoring** — Replace the manual `/incidents` trigger with your observability stack. The `Monitor._monitor_loop()` can poll Prometheus, CloudWatch, or Datadog for anomalies.
+- **Connect your monitoring** : Replace the manual `/incidents` trigger with your observability stack. The `Monitor._monitor_loop()` can poll Prometheus, CloudWatch, or Datadog for anomalies.
 
-- **Implement real diagnostics** — Replace mock tool functions with actual infrastructure queries. For example, `query_db_connections` becomes a real PostgreSQL connection pool query, `get_cloudwatch_metrics` uses the AWS SDK.
+- **Implement real diagnostics** : Replace mock tool functions with actual infrastructure queries. For example, `query_db_connections` becomes a real PostgreSQL connection pool query, `get_cloudwatch_metrics` uses the AWS SDK.
 
-- **Map your infrastructure** — Update `REGIONS` and `SERVICES` to match your actual deployment topology. Add specialists for your stack (Redis, Kafka, etc.).
+- **Map your infrastructure** : Update `REGIONS` and `SERVICES` to match your actual deployment topology. Add specialists for your stack (Redis, Kafka, etc.).
 
-- **Configure 1Password** — Set up vaults with your infrastructure credentials. The read/write separation ensures diagnostic queries use read-only access while remediation requires explicit approval.
+- **Configure 1Password** : Set up vaults with your infrastructure credentials. The read/write separation ensures diagnostic queries use read-only access while remediation requires explicit approval.
 
 ---
 
