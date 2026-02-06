@@ -1,0 +1,15 @@
+name: oncall
+pods:
+  - name: main-pod
+    size: big
+    public: true
+    containers:
+      - name: main
+        image: main
+        env:
+          - ONEPASSWORD_MODE: "connect"
+          - OP_CONNECT_HOST: "http://localhost:8180"
+          - OP_CONNECT_TOKEN: secrets.OP_CONNECT_TOKEN
+
+      - name: op-connect
+        image: op-connect

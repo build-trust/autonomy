@@ -1,0 +1,743 @@
+# OnCall
+
+Incident response with autonomous diagnostic agents. Enables on-call engineers to diagnose infrastructure problems using 150+ parallel agents with secure credential retrieval via human-in-the-loop approval.
+
+**Version**: 0.7.0
+
+## Overview
+
+This app demonstrates:
+
+- **Long-Running Monitoring Agent**: Persistent agent that watches for anomalies and spawns investigations
+- **Two-Phase Diagnosis Flow**: Analysis → Approval → Diagnosis
+- **Specialized Diagnostic Agents**: Database, Cloud, and Kubernetes specialists
+- **Parallel Investigation**: 150+ diagnostic agents on a single pod
+- **Agent Visualization**: Real-time D3.js force-directed graph showing all agents
+- **Mock Diagnostic Tools**: Realistic tool responses for testing
+- **Human-in-the-Loop Approval**: Requests permission before accessing credentials
+- **Secure Credential Flow**: Credentials retrieved from 1Password, never exposed to LLM
+- **Real-time Streaming**: Live updates with progress indicators
+- **Cursor Hooks Integration**: Deep integration with Cursor IDE
+- **Production-Ready Features**: Timeouts, retry logic, session management
+- **Dual 1Password Modes**: Mock server for development, real SDK for production
+
+## Quick Start
+
+### 1. Deploy the Zone
+
+```bash
+cd autonomy/examples/oncall
+autonomy zone deploy
+```
+
+The app will be available at:
+- **Dashboard**: https://a9eb812238f753132652ae09963a05e9-oncall.cluster.autonomy.computer
+- **API**: https://a9eb812238f753132652ae09963a05e9-oncall.cluster.autonomy.computer/health
+
+### 2. Test the API
+
+```bash
+# Health check
+curl https://a9eb812238f753132652ae09963a05e9-oncall.cluster.autonomy.computer/health
+
+# Start diagnosis (Phase 1: Analysis)
+curl -X POST https://a9eb812238f753132652ae09963a05e9-oncall.cluster.autonomy.computer/diagnose \
+  -H "Content-Type: application/json" \
+  -d '{"problem": "Database connection pool exhausted", "environment": "prod"}'
+
+# Check session status
+curl https://a9eb812238f753132652ae09963a05e9-oncall.cluster.autonomy.computer/sessions
+
+# Approve and run diagnosis (Phase 2)
+curl -X POST https://a9eb812238f753132652ae09963a05e9-oncall.cluster.autonomy.computer/approve/{session_id} \
+  -H "Content-Type: application/json" \
+  -d '{"approved": true}'
+
+# Trigger incident investigation (150+ agents)
+curl -X POST https://a9eb812238f753132652ae09963a05e9-oncall.cluster.autonomy.computer/incidents \
+  -H "Content-Type: application/json" \
+  -d '{"anomaly_type": "cascading_failure", "severity": "critical"}'
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ZONE: oncall                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         MAIN POD (public)                           │   │
+│  │  ┌─────────────────────────────────┐  ┌────────────────────────┐    │   │
+│  │  │          main container         │  │   mock-1password       │    │   │
+│  │  │    FastAPI + Orchestrator       │  │   Credential Server    │    │   │
+│  │  │    D3.js Dashboard              │  │                        │    │   │
+│  │  │    150+ Diagnostic Agents       │  │                        │    │   │
+│  │  └─────────────────────────────────┘  └────────────────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+Agents are actors in the Autonomy runtime. They don't block - the runtime schedules
+them efficiently, allowing 150+ agents to run in parallel on a single machine.
+
+### Diagnosis Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              DIAGNOSIS FLOW                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PHASE 1: ANALYSIS                                                          │
+│  ┌─────────────┐                                                            │
+│  │  Analysis   │ → Identifies problem type, root causes, needed credentials │
+│  │   Agent     │ → Extracts op:// credential references from response       │
+│  └─────────────┘                                                            │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌─────────────┐                                                            │
+│  │  APPROVAL   │ ← User approves/denies credential access                   │
+│  │  REQUIRED   │                                                            │
+│  └─────────────┘                                                            │
+│         │                                                                   │
+│         ▼                                                                   │
+│  PHASE 2: DIAGNOSIS                                                         │
+│  ┌─────────────┐                                                            │
+│  │  Credential │ → Retrieves approved credentials from 1Password            │
+│  │  Retrieval  │   (mock server or real SDK based on configuration)         │
+│  └─────────────┘                                                            │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌─────────────────────────────────────────────────┐                        │
+│  │         SPECIALIST AGENTS (run in parallel)     │                        │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │                        │
+│  │  │ Database │  │  Cloud   │  │  Kubernetes  │   │                        │
+│  │  │Specialist│  │Specialist│  │  Specialist  │   │                        │
+│  │  └──────────┘  └──────────┘  └──────────────┘   │                        │
+│  │       │             │              │            │                        │
+│  │       ▼             ▼              ▼            │                        │
+│  │  ┌──────────────────────────────────────────┐   │                        │
+│  │  │           DIAGNOSTIC TOOLS               │   │                        │
+│  │  │  • query_db_connections                  │   │                        │
+│  │  │  • query_slow_queries                    │   │                        │
+│  │  │  • get_cloudwatch_metrics                │   │                        │
+│  │  │  • check_instance_health                 │   │                        │
+│  │  │  • check_kubernetes_pods                 │   │                        │
+│  │  │  • get_application_logs                  │   │                        │
+│  │  └──────────────────────────────────────────┘   │                        │
+│  └─────────────────────────────────────────────────┘                        │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌─────────────┐                                                            │
+│  │  Synthesis  │ → Combines all specialist findings into final diagnosis    │
+│  │   Agent     │ → Provides root cause, remediation, and monitoring advice  │
+│  └─────────────┘                                                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Monitoring Agent
+
+The MonitoringAgent is a long-running agent that starts when the app deploys and watches for anomalies. When an issue is detected, it automatically spawns a diagnostic investigation with 150+ agents.
+
+### How It Works
+
+1. **Persistent Monitoring**: The agent runs continuously from app startup
+2. **Anomaly Detection**: In production, it would watch Prometheus/CloudWatch metrics
+3. **Investigation Spawning**: When an anomaly is detected, it spawns 150+ diagnostic agents
+4. **State Tracking**: Tracks investigation state so Cursor hooks can connect to running investigations
+
+### Demo Mode
+
+For repeatable demos, use the `/incidents` endpoint to manually trigger an investigation:
+
+```bash
+# Trigger a cascading failure scenario
+curl -X POST https://YOUR-ZONE-URL/incidents \
+  -H "Content-Type: application/json" \
+  -d '{"anomaly_type": "cascading_failure", "severity": "critical"}'
+
+# Check investigation status
+curl https://YOUR-ZONE-URL/investigation/status
+
+# View investigation history
+curl https://YOUR-ZONE-URL/investigation/history
+```
+
+### Investigation Status
+
+The `/investigation/status` endpoint returns the current state of the diagnostic investigation:
+
+```json
+{
+  "active": true,
+  "investigation": {
+    "investigation_id": "abc123",
+    "status": "running",
+    "anomaly_type": "cascading_failure",
+    "anomaly_message": "Detected cascading failure...",
+    "agents_count": 150,
+    "session_id": "def456",
+    "created_at": "2024-01-15T10:30:00Z"
+  },
+  "message": "Investigation abc123 is running"
+}
+```
+
+### Investigation Lifecycle
+
+```
+idle → detecting → spawning → running → synthesizing → completed
+                                                    ↘ error
+```
+
+| Status | Description |
+|--------|-------------|
+| `idle` | No active investigation, watching for anomalies |
+| `detecting` | Anomaly detected, preparing diagnostic agents |
+| `spawning` | Creating agents and visualization nodes |
+| `running` | Diagnostic agents investigating in parallel |
+| `synthesizing` | Synthesis agent combining findings |
+| `completed` | Diagnosis complete, results available |
+| `error` | Something went wrong |
+
+## Parallel Investigation (Phase 10)
+
+The investigation mode spawns 150+ parallel diagnostic agents on a single pod to investigate production incidents at scale. Agents are actors in the Autonomy runtime - they don't block, allowing massive parallelism on a single machine.
+
+### Investigation Architecture
+
+```
+Investigation Root
+│
+├── us-east-1 (Region)
+│   ├── api-gateway
+│   │   ├── database-agent
+│   │   ├── cache-agent
+│   │   ├── network-agent
+│   │   ├── resources-agent
+│   │   └── logs-agent
+│   ├── user-service (5 agents)
+│   ├── order-service (5 agents)
+│   └── ... (10 services × 5 agents = 50 agents)
+│
+├── us-west-2 (Region) - 50 agents
+├── eu-west-1 (Region) - 50 agents
+│
+└── Synthesis Agent (combines all findings)
+```
+
+### Scale Math
+
+- **3 regions** × **10 services** = 30 investigation targets
+- **5 diagnostic agents** per service = **150 base agents**
+- Plus synthesis agent = **150+ total agents**
+
+### Using Swarm Mode
+
+1. Open the dashboard
+2. Enter a problem description (or use the default)
+3. Click **🐝 Swarm (150+ agents)** button
+4. Watch the graph populate with agents across all regions
+5. See results synthesized from all findings
+
+### Swarm API
+
+```bash
+# Start swarm diagnosis
+curl -X POST https://...srediag.cluster.autonomy.computer/diagnose/swarm \
+  -H "Content-Type: application/json" \
+  -d '{"problem": "Production API latency spike across all regions", "environment": "prod"}'
+```
+
+## Agent Visualization
+
+The dashboard includes a real-time D3.js force-directed graph that visualizes all agents in a diagnosis session:
+
+### Node Types and Colors
+
+| Type | Color | Description |
+|------|-------|-------------|
+| Root | Purple | Investigation root node |
+| Region | Cyan | Geographic region (us-east-1, etc.) |
+| Service | Blue | Service being investigated |
+| Diagnostic Agent | Green | Specialist agents (Database, Cloud, K8s, etc.) |
+| Synthesis | Pink | Synthesis agent that combines findings |
+
+### Status Colors
+
+| Status | Color | Description |
+|--------|-------|-------------|
+| Pending | Gray | Not yet started |
+| Running | Yellow | Currently executing (animated) |
+| Completed | Green | Successfully finished |
+| Error | Red | Failed with error |
+
+### Visualization API Endpoints
+
+```bash
+# Get current graph state
+curl https://...srediag.cluster.autonomy.computer/graph
+
+# Get report and transcript for a specific node
+curl https://...srediag.cluster.autonomy.computer/graph/report/{node_id}
+
+# Get activity feed
+curl https://...srediag.cluster.autonomy.computer/activity
+
+# Reset graph state
+curl -X POST https://...srediag.cluster.autonomy.computer/graph/reset
+```
+
+### Using the Graph Panel
+
+1. Click the **📊 Graph** button to toggle the visualization panel
+2. The graph automatically appears when starting a new diagnosis
+3. Click on nodes to see details (type, status, timestamps)
+4. The activity feed shows real-time agent events
+5. Stats show total agents, running, and completed counts
+
+## Specialist Agents
+
+The system automatically selects which specialist agents to run based on the problem description:
+
+| Agent | Triggers | Tools Used |
+|-------|----------|------------|
+| **Database Specialist** | "database", "db", "connection pool", "query", "sql", "timeout" | `query_db_connections`, `query_slow_queries` |
+| **Cloud Specialist** | "aws", "ec2", "cloudwatch", "cpu", "memory", "instance" | `get_cloudwatch_metrics`, `check_instance_health` |
+| **Kubernetes Specialist** | "kubernetes", "k8s", "pod", "container", "crashloop", "oom" | `check_kubernetes_pods`, `get_application_logs` |
+
+## Mock Diagnostic Tools
+
+All tools return realistic mock data for testing:
+
+### Database Tools
+- **query_db_connections**: Connection pool statistics (active, idle, waiting)
+- **query_slow_queries**: Slow query analysis with execution times
+
+### Cloud Tools
+- **get_cloudwatch_metrics**: CPU, memory, network, disk metrics
+- **check_instance_health**: EC2/RDS instance status and health checks
+
+### Kubernetes Tools
+- **check_kubernetes_pods**: Pod status, restarts, resource usage
+- **get_application_logs**: Recent error logs with trace IDs
+
+## 1Password Integration
+
+This app supports two modes for credential retrieval:
+
+### Mode 1: Mock Server (Default - Development)
+
+The default mode uses a local mock 1Password server for development and testing. No configuration needed.
+
+```yaml
+# autonomy.yaml (default)
+env:
+  - ONEPASSWORD_MODE: "mock"
+```
+
+### Mode 2: Real 1Password SDK (Production)
+
+For production use, configure the app to use the official 1Password SDK with a service account.
+
+#### Setup Steps
+
+1. **Create a 1Password Service Account**
+   - Sign in to your 1Password account at https://my.1password.com
+   - Go to **Developer** > **Directory** > **Infrastructure Secrets Management**
+   - Create a new service account
+   - Grant access to vaults containing your infrastructure credentials
+   - Copy the service account token
+
+2. **Create secrets.yaml**
+   ```bash
+   cp secrets.yaml.example secrets.yaml
+   ```
+   
+   Edit `secrets.yaml`:
+   ```yaml
+   OP_SERVICE_ACCOUNT_TOKEN: "your-1password-service-account-token-here"
+   ```
+
+3. **Update autonomy.yaml**
+   ```yaml
+   containers:
+     - name: main
+       image: main
+       env:
+         - ONEPASSWORD_MODE: "sdk"
+         - OP_SERVICE_ACCOUNT_TOKEN: secrets.OP_SERVICE_ACCOUNT_TOKEN
+   ```
+
+4. **Deploy**
+   ```bash
+   autonomy zone deploy
+   ```
+
+#### Verify Integration
+
+```bash
+# Check health endpoint shows sdk mode
+curl -s https://<zone-url>/health | jq .
+
+# Expected response:
+# {
+#   "status": "healthy",
+#   "onepassword_mode": "sdk",
+#   "dependencies": {
+#     "onepassword": "healthy (sdk)"
+#   }
+# }
+```
+
+### Credential Reference Format
+
+Both modes use the standard 1Password secret reference format:
+
+```
+op://vault/item/field
+```
+
+Examples:
+- `op://Infrastructure/prod-db/password`
+- `op://Services/api-gateway/api-key`
+
+## Available Credentials (Mock 1Password)
+
+The mock 1Password server (development mode) provides these credentials:
+
+| Reference | Description |
+|-----------|-------------|
+| `op://Infrastructure/prod-db/password` | Production database password |
+| `op://Infrastructure/prod-db/username` | Production database username |
+| `op://Infrastructure/prod-db/host` | Production database host |
+| `op://Infrastructure/staging-db/password` | Staging database password |
+| `op://Infrastructure/staging-db/username` | Staging database username |
+| `op://Infrastructure/aws-cloudwatch/access-key` | CloudWatch access key |
+| `op://Infrastructure/aws-cloudwatch/secret-key` | CloudWatch secret key |
+| `op://Infrastructure/k8s-prod/token` | Kubernetes production token |
+| `op://Infrastructure/datadog/api-key` | Datadog API key |
+
+## API Reference
+
+### POST /incidents
+
+Trigger an incident investigation (spawns 150+ diagnostic agents).
+
+**Request Body:**
+```json
+{
+  "anomaly_type": "cascading_failure",
+  "severity": "critical",
+  "message": "Optional custom message"
+}
+```
+
+**Anomaly Types:**
+- `cascading_failure` - Feature flag caused cascading failures (default demo scenario)
+- `high_error_rate` - Error rate exceeded threshold
+- `latency_spike` - P99 latency spike detected
+
+**Response:**
+```json
+{
+  "message": "Incident detected - diagnostic investigation started",
+  "investigation": {
+    "investigation_id": "abc123",
+    "status": "detecting",
+    "agents_count": 150,
+    ...
+  }
+}
+```
+
+### GET /investigation/status
+
+Get the current state of the diagnostic investigation.
+
+**Response:**
+```json
+{
+  "active": true,
+  "investigation": { ... },
+  "message": "Investigation abc123 is running"
+}
+```
+
+### GET /investigation/history
+
+Get history of past investigations for audit trail.
+
+**Response:**
+```json
+{
+  "current": { ... },
+  "history": [ ... ],
+  "total_investigations": 5
+}
+```
+
+### POST /diagnose
+
+Start a new diagnostic session (Phase 1: Analysis).
+
+**Request:**
+```json
+{
+  "problem": "Database connection pool exhausted",
+  "environment": "prod",
+  "context": {"service": "api-gateway"}
+}
+```
+
+**Streaming Response (NDJSON):**
+```json
+{"type": "session_start", "session_id": "abc123", "status": "analyzing"}
+{"type": "text", "text": "## Incident Classification\n..."}
+{"type": "approval_required", "session_id": "abc123", "status": "waiting_for_approval", "requested_credentials": ["op://..."]}
+```
+
+### POST /approve/{session_id}
+
+Approve credential access and run Phase 2: Diagnosis.
+
+**Request:**
+```json
+{"approved": true}
+```
+
+**Streaming Response:**
+```json
+{"type": "approval_accepted", "session_id": "abc123", "status": "approved"}
+{"type": "credential_retrieved", "reference": "op://...", "success": true}
+{"type": "diagnosis_started", "session_id": "abc123", "credentials_retrieved": 5}
+{"type": "specialists_selected", "session_id": "abc123", "specialists": ["database", "cloud"]}
+{"type": "specialist_complete", "agent": "database_specialist", "status": "completed"}
+{"type": "specialist_complete", "agent": "cloud_specialist", "status": "completed"}
+{"type": "synthesis_started", "session_id": "abc123"}
+{"type": "text", "text": "# Final Diagnosis..."}
+{"type": "diagnosis_complete", "session_id": "abc123", "status": "completed"}
+```
+
+### GET /status/{session_id}
+
+Get session status with analysis and credentials retrieved.
+
+### GET /sessions
+
+List all diagnostic sessions.
+
+### DELETE /sessions/{session_id}
+
+Delete a session.
+
+### GET /health
+
+Health check including 1Password status.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "sre-diagnose",
+  "version": "0.5.0",
+  "active_sessions": 0,
+  "onepassword_mode": "mock",
+  "dependencies": {
+    "onepassword": "healthy (mock)"
+  }
+}
+```
+
+## Cursor IDE Integration
+
+Copy the `.cursor` folder to your project for Cursor IDE integration:
+
+```bash
+cp -r autonomy/examples/oncall/.cursor /path/to/your/project/
+```
+
+### Hooks Configuration
+
+The `.cursor/hooks.json` configures four hooks:
+
+| Hook | Trigger | Purpose |
+|------|---------|---------|
+| `session-start` | New conversation | Checks for running investigations, provides context |
+| `user-message` | User sends message | Intercepts incident queries, routes to investigation |
+| `pre-tool-call` | Before terminal commands | Intercepts diagnosis commands, routes to API |
+| `post-tool-call` | After tool execution | Logs activity for auditing |
+
+### Investigation-Aware Session Initialization
+
+When you start a Cursor conversation, the `session-init.sh` hook:
+1. Checks `/investigation/status` for active investigations
+2. Sets environment variables: `ONCALL_INVESTIGATION_ACTIVE`, `ONCALL_INVESTIGATION_ID`, `ONCALL_INVESTIGATION_SESSION`
+3. Provides context about running or completed diagnoses
+
+If an investigation is running, you'll see:
+```
+🚨 ACTIVE INCIDENT INVESTIGATION
+
+A diagnostic investigation is currently running:
+- Investigation ID: abc123
+- Status: running
+- Agents: 150 parallel diagnostic agents
+```
+
+### Natural Language Queries
+
+The `investigation-query.sh` hook intercepts questions about production issues:
+
+```
+"What's happening with the production errors?"
+"What have the agents found so far?"
+"Show me the current diagnosis"
+"What's the status of the investigation?"
+```
+
+These queries automatically fetch and display the current investigation state and findings.
+
+### Usage
+
+Once the hooks are installed, use natural language to interact with investigations:
+
+```
+"Can you diagnose why our database connections are failing in production?"
+```
+
+Or use the `sre-diagnose` command pattern:
+
+```
+sre-diagnose database connection timeouts in production API
+```
+
+The hook will intercept this and guide the agent to use the SRE Diagnose API instead.
+
+### Environment Variables
+
+The hooks set these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `SRE_DIAGNOSE_URL` | API endpoint URL |
+| `SRE_SESSION_ID` | Cursor conversation ID for correlation |
+
+## Project Structure
+
+```
+sre-diagnose/
+├── autonomy.yaml              # Zone configuration (main + onepass containers)
+├── secrets.yaml.example       # Template for 1Password service account token
+├── .gitignore                 # Excludes secrets.yaml from version control
+├── README.md                  # This file
+├── .cursor/                   # Cursor hooks integration
+│   ├── hooks.json             # Hook configuration (session-start, pre-tool-call, post-tool-call)
+│   └── hooks/
+│       ├── session-init.sh    # Sets SRE_DIAGNOSE_URL env var
+│       ├── sre-diagnose.sh    # Intercepts sre-diagnose commands
+│       └── audit.sh           # Logs tool calls for auditing
+└── images/
+    ├── main/
+    │   ├── Dockerfile
+    │   ├── main.py           # FastAPI + agents + diagnostic tools
+    │   ├── requirements.txt  # Python deps (httpx, onepassword-sdk)
+    │   └── index.html        # Dashboard with typewriter streaming
+    └── mock-1password/
+        ├── Dockerfile
+        └── server.py         # Mock 1Password server (dev mode only)
+```
+
+## Implementation Status
+
+- [x] **Phase 1**: Foundation (MVP) - Basic orchestrator, streaming, dashboard
+- [x] **Phase 2**: Mock 1Password & Credential Flow - Secure credential retrieval
+- [x] **Phase 3**: Diagnostic Tools & Specialized Agents - Parallel diagnosis
+- [x] **Phase 4**: Polish & Production Readiness - Error handling, timeouts, progress tracking
+- [x] **Phase 5**: Real 1Password Integration - SDK support for production use
+- [x] **Phase 6**: Cursor Hooks Integration - IDE integration with session-start, pre-tool-call, post-tool-call
+- [ ] **Phase 7**: Distributed Processing (Optional)
+- [ ] **Phase 8**: Real Diagnostic Tools (Optional)
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ONEPASSWORD_MODE` | `mock` | 1Password mode: `mock` or `sdk` |
+| `OP_SERVICE_ACCOUNT_TOKEN` | - | 1Password service account token (required for `sdk` mode) |
+
+### Code Constants
+
+Key configuration constants in `main.py`:
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `ANALYSIS_TIMEOUT` | 120s | Timeout for analysis phase |
+| `SPECIALIST_TIMEOUT` | 90s | Timeout for each specialist agent |
+| `SYNTHESIS_TIMEOUT` | 120s | Timeout for synthesis phase |
+| `CREDENTIAL_RETRY_ATTEMPTS` | 3 | Retries for credential retrieval |
+| `SESSION_EXPIRY_HOURS` | 24h | Session auto-cleanup after |
+| `MAX_SESSIONS` | 100 | Maximum concurrent sessions |
+
+## Troubleshooting
+
+### Common Issues
+
+**Session stuck in "analyzing" state**
+- Check if the analysis agent timed out (default 120s)
+- View logs at the Autonomy logs endpoint
+- The session will show status "error" if the agent failed
+
+**Credentials not being retrieved (mock mode)**
+- Verify the mock 1Password server is running: `curl http://localhost:8080/health`
+- Check that the credential reference exists in the mock server
+- Retrieval retries 3 times with exponential backoff
+
+**Credentials not being retrieved (sdk mode)**
+- Check health endpoint: `curl <zone-url>/health | jq .dependencies.onepassword`
+- Verify `OP_SERVICE_ACCOUNT_TOKEN` is set correctly
+- Ensure service account has access to the vault containing the credential
+- Check the credential reference format: `op://vault/item/field`
+
+**Specialist agents timing out**
+- Each specialist has a 90-second timeout
+- Partial results are returned if timeout occurs
+- Check the `duration_seconds` field in responses
+
+**Dashboard not updating**
+- Ensure auto-refresh is enabled (checkbox in Active Sessions)
+- Manual refresh: click the Refresh button
+- Check browser console for API errors
+
+### Debug Endpoints
+
+```bash
+# View all sessions
+curl https://<zone-url>/sessions
+
+# Get session details
+curl https://<zone-url>/status/{session_id}
+
+# Check credentials stored (without values)
+curl https://<zone-url>/debug/sessions/{session_id}/credentials
+
+# Clean up expired sessions
+curl -X POST https://<zone-url>/sessions/cleanup
+```
+
+### Viewing Logs
+
+Access the Autonomy logs portal for detailed agent execution logs:
+```
+https://<zone-url>/logs
+```
+
+## References
+
+- [Architecture Document](planning/ARCHITECTURE.md)
+- [Implementation Plan](planning/IMPLEMENTATION_PLAN.md)
+- [1Password Integration Reference](planning/1PASSWORD_CONNECT_REFERENCE.md)

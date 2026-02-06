@@ -1,0 +1,3275 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OnCall - Incident Response</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: #ffffff;
+        color: #1e293b;
+        overflow: hidden;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      /* Full-screen graph container */
+      .graph-fullscreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: #ffffff;
+      }
+      #graph-svg {
+        width: 100%;
+        height: 100%;
+      }
+      .node circle {
+        stroke-width: 2px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .node:hover circle {
+        stroke-width: 4px;
+        filter: brightness(1.1) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+      }
+      .node.running circle {
+        /* No animation - removed shaking effect */
+      }
+      /* OnCall Agent - gentle heartbeat animation (only when active) */
+      .node.oncall-agent.active circle {
+        animation: heartbeat 2s ease-in-out infinite;
+        filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.4));
+      }
+      /* OnCall Agent - inactive state (light gray, no glow) */
+      .node.oncall-agent.inactive circle {
+        fill: #cbd5e1 !important;
+        animation: none;
+        filter: none;
+      }
+      .node.oncall-agent.inactive text {
+        fill: #94a3b8;
+      }
+      @keyframes heartbeat {
+        0%,
+        100% {
+          transform: scale(1);
+          filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.4));
+        }
+        50% {
+          transform: scale(1.06);
+          filter: drop-shadow(0 0 16px rgba(37, 99, 235, 0.6));
+        }
+      }
+      .node-label {
+        font-size: 9px;
+        fill: #64748b;
+        text-anchor: middle;
+        pointer-events: none;
+        opacity: 0.9;
+      }
+      .node-label.hidden {
+        display: none;
+      }
+      .link {
+        stroke-opacity: 0.3;
+        stroke-linecap: round;
+      }
+
+      /* Overlay Control Panel */
+      .control-panel {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        width: 400px;
+        max-width: calc(100vw - 40px);
+        background: rgba(255, 255, 255, 0.97);
+        backdrop-filter: blur(12px);
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 20px;
+        z-index: 100;
+        box-shadow:
+          0 4px 24px rgba(0, 0, 0, 0.08),
+          0 1px 2px rgba(0, 0, 0, 0.04);
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+      }
+      .control-panel::-webkit-scrollbar {
+        width: 6px;
+      }
+      .control-panel::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .control-panel::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+      }
+
+      /* Panel Header */
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .panel-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 600;
+        color: #0f172a;
+      }
+      .panel-title .emoji {
+        font-size: 20px;
+      }
+      .version-badge {
+        font-size: 10px;
+        color: #64748b;
+        padding: 2px 6px;
+        background: #f1f5f9;
+        border-radius: 4px;
+      }
+
+      /* Story Banner - Shows what triggered the investigation */
+      .story-banner {
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        border: 1px solid #bfdbfe;
+        border-radius: 10px;
+        padding: 14px;
+        margin-bottom: 16px;
+      }
+      .story-banner.active {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border-color: #fbbf24;
+      }
+      .story-banner.resolved {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border-color: #86efac;
+      }
+      .story-banner-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1e40af;
+        margin-bottom: 6px;
+      }
+      .story-banner.active .story-banner-header {
+        color: #92400e;
+      }
+      .story-banner.resolved .story-banner-header {
+        color: #166534;
+      }
+      .story-banner-text {
+        font-size: 12px;
+        color: #3b82f6;
+        line-height: 1.5;
+      }
+      .story-banner.active .story-banner-text {
+        color: #b45309;
+      }
+      .story-banner.resolved .story-banner-text {
+        color: #15803d;
+      }
+      .story-time {
+        font-weight: 500;
+        color: #1d4ed8;
+      }
+      .story-banner.active .story-time {
+        color: #92400e;
+      }
+      .story-banner.resolved .story-time {
+        color: #166534;
+      }
+
+      /* Anomaly Card */
+      .anomaly-card {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border: 1px solid #fecaca;
+        border-radius: 10px;
+        padding: 14px;
+        margin-bottom: 16px;
+        transition: all 0.3s ease;
+      }
+      .anomaly-card.recovered {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 1px solid #bbf7d0;
+      }
+      .anomaly-card.recovered .anomaly-header {
+        color: #166534;
+      }
+      .anomaly-card.recovered .anomaly-label {
+        color: #15803d;
+      }
+      .anomaly-card.recovered .anomaly-value {
+        color: #14532d;
+      }
+      .anomaly-card.recovered .anomaly-detail {
+        border-bottom: 1px solid rgba(34, 197, 94, 0.1);
+      }
+      .anomaly-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #991b1b;
+        margin-bottom: 8px;
+      }
+      .anomaly-detail {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(239, 68, 68, 0.1);
+      }
+      .anomaly-detail:last-child {
+        border-bottom: none;
+      }
+      .anomaly-label {
+        color: #b91c1c;
+      }
+      .anomaly-value {
+        color: #7f1d1d;
+        font-weight: 500;
+        font-family: monospace;
+      }
+
+      /* Inactive Status (agent not activated) */
+      .inactive-status {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .inactive-icon {
+        font-size: 40px;
+        margin-bottom: 12px;
+      }
+      .inactive-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 8px;
+      }
+      .inactive-description {
+        font-size: 13px;
+        color: #64748b;
+        margin-bottom: 20px;
+        line-height: 1.5;
+      }
+      .btn-activate {
+        background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+        color: white;
+        border: none;
+        padding: 14px 24px;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 100%;
+        justify-content: center;
+      }
+      .btn-activate:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      }
+      .btn-activate:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      /* Monitoring Status (idle state) */
+      .monitoring-status {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 1px solid #86efac;
+        border-radius: 10px;
+        padding: 14px;
+        margin-bottom: 16px;
+      }
+      .monitoring-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .monitoring-dot {
+        width: 10px;
+        height: 10px;
+        background: #22c55e;
+        border-radius: 50%;
+        animation: pulse-green 2s infinite;
+      }
+      @keyframes pulse-green {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+        }
+        50% {
+          box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+        }
+      }
+      .monitoring-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #166534;
+      }
+      .monitoring-details {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 10px;
+      }
+      .monitoring-stat {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+      }
+      .monitoring-stat .stat-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #166534;
+      }
+      .monitoring-stat .stat-label {
+        font-size: 12px;
+        color: #15803d;
+      }
+      .monitoring-meta {
+        font-size: 11px;
+        color: #16a34a;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(34, 197, 94, 0.2);
+      }
+      .monitoring-meta strong {
+        color: #166534;
+      }
+
+      /* Demo Controls */
+      .demo-controls {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px dashed #e2e8f0;
+      }
+      .demo-label {
+        font-size: 10px;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+        text-align: center;
+      }
+
+      /* Status Section */
+      .status-section {
+        margin-bottom: 16px;
+      }
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+      }
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        transition: all 0.3s ease;
+      }
+      .status-dot.idle {
+        background: #94a3b8;
+      }
+      .status-dot.detecting {
+        background: #f59e0b;
+        animation: pulse-dot 1.5s infinite;
+      }
+      .status-dot.spawning {
+        background: #f59e0b;
+        animation: pulse-dot 1s infinite;
+      }
+      .status-dot.running {
+        background: #3b82f6;
+        animation: pulse-dot 1s infinite;
+      }
+      .status-dot.synthesizing {
+        background: #8b5cf6;
+        animation: pulse-dot 1.2s infinite;
+      }
+      .status-dot.completed {
+        background: #22c55e;
+      }
+      .status-dot.error {
+        background: #ef4444;
+      }
+      .status-dot.waiting {
+        background: #f59e0b;
+        animation: pulse-dot 1s infinite;
+      }
+      @keyframes pulse-dot {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.5;
+          transform: scale(1.3);
+        }
+      }
+      .status-text {
+        font-size: 14px;
+        color: #1e293b;
+        font-weight: 500;
+      }
+      .status-text.muted {
+        color: #64748b;
+        font-weight: 400;
+      }
+
+      /* Info Grid */
+      .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .info-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px;
+      }
+      .info-item.full-width {
+        grid-column: span 2;
+      }
+      .info-label {
+        font-size: 10px;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+      }
+      .info-value {
+        font-size: 14px;
+        font-family: monospace;
+        color: #3b82f6;
+        word-break: break-all;
+      }
+      .info-value.large {
+        font-size: 24px;
+        font-weight: bold;
+      }
+
+      /* Investigation Timeline */
+      .timeline {
+        margin-bottom: 16px;
+        padding: 12px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+      }
+      .timeline-header {
+        font-size: 11px;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+      }
+      .timeline-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        position: relative;
+      }
+      .timeline-item:not(:last-child)::before {
+        content: "";
+        position: absolute;
+        left: 11px;
+        top: 28px;
+        bottom: -8px;
+        width: 2px;
+        background: #e2e8f0;
+      }
+      .timeline-item.completed:not(:last-child)::before {
+        background: #22c55e;
+      }
+      .timeline-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        flex-shrink: 0;
+        background: #f1f5f9;
+        border: 2px solid #e2e8f0;
+      }
+      .timeline-item.completed .timeline-icon {
+        background: #dcfce7;
+        border-color: #22c55e;
+      }
+      .timeline-item.active .timeline-icon {
+        background: #dbeafe;
+        border-color: #3b82f6;
+        animation: pulse-icon 1.5s infinite;
+      }
+      .timeline-item.pending .timeline-icon {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        opacity: 0.6;
+      }
+      @keyframes pulse-icon {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+        }
+        50% {
+          box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+        }
+      }
+      .timeline-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .timeline-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: #1e293b;
+      }
+      .timeline-item.pending .timeline-title {
+        color: #94a3b8;
+      }
+      .timeline-subtitle {
+        font-size: 11px;
+        color: #64748b;
+        margin-top: 2px;
+      }
+      .timeline-item.pending .timeline-subtitle {
+        color: #cbd5e1;
+      }
+
+      /* Approval Box - Base Styles */
+      .approval-box {
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        animation: glow 2s infinite;
+      }
+
+      /* READ Approval - Amber/Yellow theme */
+      .approval-box.read-approval {
+        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        border: 2px solid #f59e0b;
+      }
+      .approval-box.read-approval h3 {
+        color: #b45309;
+      }
+      .approval-box.read-approval .credential-list li {
+        color: #92400e;
+        background: rgba(245, 158, 11, 0.1);
+      }
+
+      /* WRITE Approval - Red/Orange theme - More serious */
+      .approval-box.write-approval {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border: 2px solid #ef4444;
+        animation: glow-red 1.5s infinite;
+      }
+      .approval-box.write-approval h3 {
+        color: #b91c1c;
+      }
+      .approval-box.write-approval .credential-list li {
+        color: #991b1b;
+        background: rgba(239, 68, 68, 0.1);
+      }
+      .approval-box.write-approval .write-warning {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        background: rgba(239, 68, 68, 0.1);
+        border-radius: 6px;
+        margin-bottom: 12px;
+        font-size: 12px;
+        color: #b91c1c;
+        font-weight: 500;
+      }
+
+      @keyframes glow {
+        0%,
+        100% {
+          box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+        }
+        50% {
+          box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+        }
+      }
+      @keyframes glow-red {
+        0%,
+        100% {
+          box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+        }
+        50% {
+          box-shadow: 0 0 30px rgba(239, 68, 68, 0.5);
+        }
+      }
+      .approval-box h3 {
+        font-size: 14px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .approval-box p {
+        font-size: 13px;
+        color: #475569;
+        margin-bottom: 12px;
+        line-height: 1.4;
+      }
+      .approval-box .action-description {
+        font-size: 13px;
+        color: #374151;
+        margin-bottom: 12px;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.03);
+        border-radius: 6px;
+        border-left: 3px solid #94a3b8;
+      }
+      .credential-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 12px 0;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .credential-list li {
+        font-family: monospace;
+        font-size: 11px;
+        padding: 6px 10px;
+        border-radius: 4px;
+        margin-bottom: 4px;
+      }
+      .approval-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      /* Credential Audit Trail */
+      .audit-trail {
+        margin-bottom: 16px;
+        padding: 12px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+      }
+      .audit-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .audit-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .audit-count {
+        font-size: 10px;
+        color: #94a3b8;
+        padding: 2px 6px;
+        background: #e2e8f0;
+        border-radius: 10px;
+      }
+      .audit-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 12px;
+      }
+      .audit-item:last-child {
+        border-bottom: none;
+      }
+      .audit-icon {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        flex-shrink: 0;
+      }
+      .audit-icon.approved {
+        background: #dcfce7;
+        color: #16a34a;
+      }
+      .audit-icon.denied {
+        background: #fee2e2;
+        color: #dc2626;
+      }
+      .audit-content {
+        flex: 1;
+        min-width: 0;
+      }
+      .audit-credential {
+        font-family: monospace;
+        font-size: 11px;
+        color: #1e293b;
+        word-break: break-all;
+      }
+      .audit-meta {
+        font-size: 10px;
+        color: #94a3b8;
+        margin-top: 2px;
+      }
+      .audit-badge {
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+      .audit-badge.read {
+        background: #dbeafe;
+        color: #1d4ed8;
+      }
+      .audit-badge.write {
+        background: #fee2e2;
+        color: #dc2626;
+      }
+
+      /* Root Cause Banner */
+      .root-cause-banner {
+        background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+        border: 2px solid #22c55e;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+
+      /* Remediation Progress Panel */
+      .remediation-progress-panel {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border: 2px solid #f59e0b;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        animation: pulse-border 2s ease-in-out infinite;
+      }
+      @keyframes pulse-border {
+        0%,
+        100% {
+          border-color: #f59e0b;
+        }
+        50% {
+          border-color: #d97706;
+        }
+      }
+      .remediation-progress-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #92400e;
+        margin-bottom: 12px;
+      }
+      .remediation-progress-message {
+        font-size: 13px;
+        color: #b45309;
+        margin-bottom: 12px;
+      }
+      .remediation-progress-bar-container {
+        background: rgba(255, 255, 255, 0.5);
+        border-radius: 8px;
+        height: 12px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .remediation-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #f59e0b 0%, #22c55e 100%);
+        border-radius: 8px;
+        transition: width 0.5s ease;
+      }
+      .remediation-error-rate {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.6);
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      .remediation-error-rate-label {
+        color: #92400e;
+        font-weight: 500;
+      }
+      .remediation-error-rate-value {
+        font-weight: 700;
+        font-size: 16px;
+        transition: color 0.3s ease;
+      }
+      .remediation-error-rate-value.high {
+        color: #dc2626;
+      }
+      .remediation-error-rate-value.medium {
+        color: #f59e0b;
+      }
+      .remediation-error-rate-value.low {
+        color: #22c55e;
+      }
+      .root-cause-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #166534;
+        margin-bottom: 8px;
+      }
+      .root-cause-text {
+        font-size: 13px;
+        color: #15803d;
+        line-height: 1.5;
+        margin-bottom: 12px;
+      }
+      .root-cause-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .remediation-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #166534;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.5);
+        border-radius: 6px;
+      }
+      .remediation-item.denied {
+        text-decoration: line-through;
+        opacity: 0.6;
+      }
+      .remediation-item.approved {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid #22c55e;
+      }
+
+      /* Buttons */
+      .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-primary {
+        background: #22c55e;
+        color: #fff;
+      }
+      .btn-primary:hover {
+        background: #16a34a;
+      }
+      .btn-danger {
+        background: #ef4444;
+        color: #fff;
+      }
+      .btn-danger:hover {
+        background: #dc2626;
+      }
+      .btn-trigger {
+        width: 100%;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #475569;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .btn-trigger:hover:not(:disabled) {
+        background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+        border-color: #3b82f6;
+        color: #3b82f6;
+      }
+      .btn-trigger:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .btn-trigger.running {
+        border-color: #3b82f6;
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        color: #1d4ed8;
+      }
+
+      /* Findings Section */
+      .findings-section {
+        margin-bottom: 16px;
+        display: none;
+      }
+      .findings-section.visible {
+        display: block;
+      }
+      .findings-header {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1e293b;
+        margin-bottom: 8px;
+      }
+      .finding {
+        padding: 10px;
+        background: #f8fafc;
+        border-left: 3px solid #3b82f6;
+        margin-bottom: 6px;
+        border-radius: 0 8px 8px 0;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #475569;
+      }
+      .finding-critical {
+        border-left-color: #ef4444;
+        background: #fef2f2;
+      }
+      .finding-warning {
+        border-left-color: #f59e0b;
+        background: #fffbeb;
+      }
+      .finding-info {
+        border-left-color: #3b82f6;
+        background: #eff6ff;
+      }
+
+      /* Graph Stats Overlay */
+      .graph-stats {
+        position: fixed;
+        bottom: 70px;
+        right: 20px;
+        display: flex;
+        gap: 20px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 12px 20px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        z-index: 100;
+      }
+      .graph-stat {
+        text-align: center;
+      }
+      .graph-stat-value {
+        font-size: 20px;
+        font-weight: bold;
+        color: #3b82f6;
+      }
+      .graph-stat-label {
+        font-size: 10px;
+        color: #64748b;
+        text-transform: uppercase;
+      }
+
+      /* Graph Legend */
+      .graph-legend {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 16px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 10px 16px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        z-index: 100;
+        white-space: nowrap;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #64748b;
+      }
+      .legend-color {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+
+      /* Node Tooltip */
+      .node-tooltip {
+        position: fixed;
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(10px);
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 12px;
+        z-index: 200;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        max-width: 250px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+      .node-tooltip.visible {
+        opacity: 1;
+      }
+      .node-tooltip h4 {
+        font-size: 13px;
+        color: #1e293b;
+        margin-bottom: 8px;
+      }
+      .node-tooltip .detail-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        padding: 2px 0;
+      }
+      .node-tooltip .detail-label {
+        color: #64748b;
+      }
+      .node-tooltip .detail-value {
+        color: #1e293b;
+        font-family: monospace;
+      }
+
+      /* Empty State */
+      .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: #64748b;
+      }
+      .empty-state .icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+      }
+      .empty-state h3 {
+        font-size: 16px;
+        color: #1e293b;
+        margin-bottom: 8px;
+      }
+      .empty-state p {
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      /* Duration Badge */
+      .duration-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        background: #22c55e;
+        border-radius: 4px;
+        font-size: 11px;
+        color: #fff;
+        margin-left: 8px;
+      }
+
+      /* Swarm Working Indicator */
+      .swarm-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        border: 1px solid #93c5fd;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 12px;
+        color: #1d4ed8;
+      }
+      .swarm-indicator .dot-wave {
+        display: flex;
+        gap: 3px;
+      }
+      .swarm-indicator .dot {
+        width: 6px;
+        height: 6px;
+        background: #3b82f6;
+        border-radius: 50%;
+        animation: wave 1.2s infinite;
+      }
+      .swarm-indicator .dot:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .swarm-indicator .dot:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes wave {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-4px);
+        }
+      }
+
+      /* Demo Buttons - Top Right */
+      .demo-buttons {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 1000;
+        display: flex;
+        gap: 8px;
+      }
+      .demo-btn {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 16px;
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        line-height: 1;
+      }
+      .demo-btn:hover {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+      }
+      .demo-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .demo-btn.danger {
+        color: #dc2626;
+      }
+      .demo-btn.danger:hover:not(:disabled) {
+        background: #fef2f2;
+        border-color: #fecaca;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Full-screen Graph -->
+    <div class="graph-fullscreen" id="graph-container">
+      <svg id="graph-svg"></svg>
+    </div>
+
+    <!-- Control Panel Overlay -->
+    <div class="control-panel" id="control-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span class="emoji">🔍</span>
+          <span>OnCall Agent</span>
+        </div>
+        <span class="version-badge" id="version-badge">v0.7.0</span>
+      </div>
+
+      <!-- Story Banner (hidden when idle) -->
+      <div class="story-banner" id="story-banner" style="display: none">
+        <div class="story-banner-header">
+          <span>🔍</span>
+          <span id="story-banner-title">Monitoring agent detected anomaly</span>
+        </div>
+        <div class="story-banner-text" id="story-banner-text">
+          Agents investigating across <strong>3 regions</strong>
+        </div>
+      </div>
+
+      <!-- Investigation Working Indicator (when investigation active) -->
+      <div class="swarm-indicator" id="swarm-indicator" style="display: none">
+        <div class="dot-wave">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+        <span id="swarm-text">Deploying agents...</span>
+      </div>
+
+      <!-- Anomaly Card (shown when anomaly detected) -->
+      <div class="anomaly-card" id="anomaly-card" style="display: none">
+        <div class="anomaly-header">
+          <span id="anomaly-icon">⚠️</span>
+          <span id="anomaly-title">Anomaly Detected</span>
+        </div>
+        <div class="anomaly-detail">
+          <span class="anomaly-label">Type</span>
+          <span class="anomaly-value" id="anomaly-type">Cascading Failure</span>
+        </div>
+        <div class="anomaly-detail">
+          <span class="anomaly-label">Affected Services</span>
+          <span class="anomaly-value" id="anomaly-services">api-gateway, user-service, order-service</span>
+        </div>
+        <div class="anomaly-detail">
+          <span class="anomaly-label">Error Rate</span>
+          <span class="anomaly-value" id="anomaly-error-rate">+340%</span>
+        </div>
+        <div class="anomaly-detail">
+          <span class="anomaly-label">Affected Regions</span>
+          <span class="anomaly-value" id="anomaly-regions">us-east-1, us-west-2, eu-west-1</span>
+        </div>
+      </div>
+
+      <!-- Inactive State Section (shown when agent not activated) -->
+      <div class="inactive-status" id="inactive-status">
+        <div class="inactive-icon">🤖</div>
+        <div class="inactive-title">OnCall Agent Ready</div>
+        <div class="inactive-description">
+          Activate the agent to start monitoring your infrastructure for anomalies.
+        </div>
+        <button class="btn btn-primary btn-activate" id="activate-btn" onclick="activateAgent()">
+          🚀 Activate OnCall Agent
+        </button>
+      </div>
+
+      <!-- Monitoring Status Section (shown when monitoring) -->
+      <div class="monitoring-status" id="monitoring-status" style="display: none">
+        <div class="monitoring-header">
+          <span class="monitoring-dot"></span>
+          <span class="monitoring-title">Active — Monitoring Infrastructure</span>
+        </div>
+        <div class="monitoring-details">
+          <div class="monitoring-stat">
+            <span class="stat-value">3</span>
+            <span class="stat-label">regions</span>
+          </div>
+          <div class="monitoring-stat">
+            <span class="stat-value">12</span>
+            <span class="stat-label">services</span>
+          </div>
+          <div class="monitoring-stat">
+            <span class="stat-value" id="anomaly-count">0</span>
+            <span class="stat-label">anomalies</span>
+          </div>
+        </div>
+        <div class="monitoring-meta">
+          <span>Last check: <strong id="last-check">just now</strong></span>
+        </div>
+      </div>
+
+      <!-- Status Section (shown during investigation) -->
+      <div class="status-section" id="status-section" style="display: none">
+        <div class="status-row">
+          <span class="status-dot idle" id="status-dot"></span>
+          <span class="status-text muted" id="status-text">Monitoring agent watching metrics...</span>
+        </div>
+      </div>
+
+      <!-- Investigation Timeline (hidden when idle) -->
+      <div class="timeline" id="investigation-timeline" style="display: none">
+        <div class="timeline-header">Investigation Progress</div>
+        <div class="timeline-item completed" id="tl-anomaly">
+          <div class="timeline-icon">⚡</div>
+          <div class="timeline-content">
+            <div class="timeline-title">Anomaly Detected</div>
+            <div class="timeline-subtitle" id="tl-anomaly-time">Cascading failure across 3 regions</div>
+          </div>
+        </div>
+        <div class="timeline-item completed" id="tl-swarm">
+          <div class="timeline-icon">🚀</div>
+          <div class="timeline-content">
+            <div class="timeline-title">Agents Deployed</div>
+            <div class="timeline-subtitle" id="tl-swarm-agents">Deployed across 3 regions</div>
+          </div>
+        </div>
+        <div class="timeline-item active" id="tl-analysis">
+          <div class="timeline-icon">🔍</div>
+          <div class="timeline-content">
+            <div class="timeline-title">Investigating</div>
+            <div class="timeline-subtitle" id="tl-analysis-status">Searching for root cause...</div>
+          </div>
+        </div>
+        <div class="timeline-item pending" id="tl-resolution">
+          <div class="timeline-icon">✅</div>
+          <div class="timeline-content">
+            <div class="timeline-title">Resolution</div>
+            <div class="timeline-subtitle">Remediation pending</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Investigation Info (hidden when idle) -->
+      <div id="investigation-info" style="display: none">
+        <div class="info-grid">
+          <div class="info-item full-width">
+            <div class="info-label">Investigation ID</div>
+            <div class="info-value" id="investigation-id">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Approval Section (shown when approval needed) -->
+      <div id="approval-section" class="approval-box read-approval" style="display: none">
+        <h3 id="approval-title">🔑 Credential Access Required</h3>
+        <div class="write-warning" id="write-warning" style="display: none">
+          <span>⚠️</span>
+          <span>This action will modify production systems</span>
+        </div>
+        <p id="approval-message">The agent needs access to these credentials:</p>
+        <div class="action-description" id="action-description" style="display: none"></div>
+        <ul class="credential-list" id="credential-list"></ul>
+        <div class="approval-actions">
+          <button id="approve-btn" class="btn btn-primary">✓ Approve</button>
+          <button id="deny-btn" class="btn btn-danger">✗ Deny</button>
+        </div>
+      </div>
+
+      <!-- Root Cause Banner (shown when diagnosis complete) -->
+      <div class="root-cause-banner" id="root-cause-banner" style="display: none">
+        <div class="root-cause-header">
+          <span>🎯</span>
+          <span>Root Cause Identified</span>
+        </div>
+        <div class="root-cause-text" id="root-cause-text">
+          Feature flag <code>read_from_replica</code> enabled, causing cascading failures and runaway queries.
+        </div>
+        <div class="root-cause-actions" id="root-cause-actions">
+          <!-- Remediation items will be populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Remediation Progress Panel (shown during remediation) -->
+      <div class="remediation-progress-panel" id="remediation-progress-panel" style="display: none">
+        <div class="remediation-progress-header">
+          <span>🔧</span>
+          <span>Remediation In Progress</span>
+        </div>
+        <div class="remediation-progress-message" id="remediation-progress-message">Executing remediation...</div>
+        <div class="remediation-progress-bar-container">
+          <div class="remediation-progress-bar" id="remediation-progress-bar" style="width: 0%"></div>
+        </div>
+        <div class="remediation-error-rate">
+          <span class="remediation-error-rate-label">Error Rate:</span>
+          <span class="remediation-error-rate-value high" id="remediation-error-rate-value">+340%</span>
+        </div>
+      </div>
+
+      <!-- Credential Audit Trail -->
+      <div class="audit-trail" id="audit-trail" style="display: none">
+        <div class="audit-header">
+          <span class="audit-title">Credential Audit Trail</span>
+          <span class="audit-count" id="audit-count">0 events</span>
+        </div>
+        <div id="audit-list">
+          <!-- Audit items populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Findings Section -->
+      <div class="findings-section" id="findings-section">
+        <div class="findings-header">Findings</div>
+        <div id="findings-list"></div>
+      </div>
+    </div>
+
+    <!-- Demo Buttons (Top Right) -->
+    <div class="demo-buttons" id="demo-buttons">
+      <button class="demo-btn" id="menu-simulate-btn" onclick="simulateAnomaly()" title="Simulate Anomaly">⚡</button>
+      <button class="demo-btn danger" id="menu-reset-btn" onclick="resetAgent()" title="Reset Demo">🔄</button>
+    </div>
+
+    <!-- Graph Stats Overlay -->
+    <div class="graph-stats" id="graph-stats" style="display: none">
+      <div class="graph-stat">
+        <div class="graph-stat-value" id="stat-total">0</div>
+        <div class="graph-stat-label">Agents</div>
+      </div>
+      <div class="graph-stat">
+        <div class="graph-stat-value" id="stat-running">0</div>
+        <div class="graph-stat-label">Running</div>
+      </div>
+      <div class="graph-stat">
+        <div class="graph-stat-value" id="stat-completed">0</div>
+        <div class="graph-stat-label">Done</div>
+      </div>
+    </div>
+
+    <!-- Graph Legend -->
+    <div class="graph-legend" id="graph-legend">
+      <div class="legend-item">
+        <div class="legend-color" style="background: #4269d0"></div>
+        OnCall Agent
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #a463f2"></div>
+        Investigation
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #64748b"></div>
+        Region
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #f97316"></div>
+        Service
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: #efb118"></div>
+        Investigator
+      </div>
+    </div>
+
+    <!-- Node Tooltip -->
+    <div class="node-tooltip" id="node-tooltip">
+      <h4 id="tooltip-name">Node Name</h4>
+      <div class="detail-row">
+        <span class="detail-label">Type:</span>
+        <span class="detail-value" id="tooltip-type">-</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Status:</span>
+        <span class="detail-value" id="tooltip-status">-</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Created:</span>
+        <span class="detail-value" id="tooltip-created">-</span>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = "";
+      let currentAgentStatus = "inactive";
+      let shownApprovalActionId = null; // Track which approval prompt we've shown
+      let pendingApprovalSubmission = false; // Track when we've submitted an approval and are waiting for server state to change
+      let incidentResolvedAt = null; // Track when incident was resolved to freeze timer
+
+      function updateDemoMenuButtons() {
+        const simulateBtn = document.getElementById("menu-simulate-btn");
+        const resetBtn = document.getElementById("menu-reset-btn");
+
+        // Simulate only available in monitoring state
+        const canSimulate = currentAgentStatus === "monitoring";
+        simulateBtn.disabled = !canSimulate;
+
+        // Reset available in most states except inactive
+        const canReset = currentAgentStatus !== "inactive" && currentAgentStatus !== "waiting_for_activation_approval";
+        resetBtn.disabled = !canReset;
+      }
+
+      // State
+      let graphNodes = [];
+      let graphEdges = [];
+      let simulation = null;
+      let graphPollInterval = null;
+      let investigationPollInterval = null;
+      let currentSessionId = null;
+      let investigationStartTime = null;
+      let auditTrailEvents = [];
+
+      // Node type colors - chosen for visual hierarchy and meaning
+      const typeColors = {
+        "oncall-agent": "#4269d0", // Blue - authority, trust (the orchestrator)
+        root: "#a463f2", // Purple - urgency, importance (the incident)
+        region: "#64748b", // Slate - neutral (infrastructure/geography)
+        service: "#f97316", // Orange - services within regions
+        runner: "#a463f2",
+        "diagnostic-agent": "#efb118", // Gold - activity, energy (the workers)
+        "sub-agent": "#efb118",
+        synthesis: "#a463f2",
+        "remediation-agent": "#ef4444", // Red - remediation action
+      };
+
+      // Get fill color - investigators change color based on status
+      function getNodeFillColor(node) {
+        // Investigators (diagnostic-agent, sub-agent) change color based on status
+        if (node.type === "diagnostic-agent" || node.type === "sub-agent") {
+          if (node.status === "completed") return "#22c55e"; // Green - done
+          if (node.status === "error") return "#ef4444"; // Red - failed
+          return "#efb118"; // Gold - running/pending
+        }
+        // Remediation agent changes color based on status
+        if (node.type === "remediation-agent") {
+          if (node.status === "completed") return "#22c55e"; // Green - done
+          if (node.status === "error") return "#ef4444"; // Red - failed
+          return "#f97316"; // Orange - running
+        }
+        // Other nodes use type-based colors
+        return typeColors[node.type] || "#94a3b8";
+      }
+
+      // === Graph Visualization ===
+
+      function initGraph() {
+        const container = document.getElementById("graph-container");
+        const svg = d3.select("#graph-svg");
+
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        svg.attr("viewBox", [0, 0, width, height]);
+        svg.selectAll("*").remove();
+
+        // Create groups for links and nodes
+        svg.append("g").attr("class", "links");
+        svg.append("g").attr("class", "nodes");
+
+        // Setup zoom
+        const zoom = d3
+          .zoom()
+          .scaleExtent([0.1, 4])
+          .on("zoom", (event) => {
+            svg.selectAll("g").attr("transform", event.transform);
+          });
+        svg.call(zoom);
+
+        // Start more zoomed in (1.5x zoom centered)
+        const initialTransform = d3.zoomIdentity
+          .translate(width / 2, height / 2)
+          .scale(1.5)
+          .translate(-width / 2, -height / 2);
+        svg.call(zoom.transform, initialTransform);
+
+        // Initialize force simulation
+        simulation = d3
+          .forceSimulation()
+          .force(
+            "link",
+            d3
+              .forceLink()
+              .id((d) => d.id)
+              .distance((d) => {
+                // More distance between oncall-agent and root node
+                const sourceId = d.source.id || d.source;
+                const targetId = d.target.id || d.target;
+                if (sourceId === "oncall-agent" || targetId === "oncall-agent") {
+                  return 200;
+                }
+                // Increase distance between different node types
+                const sourceType = d.source.type || "";
+                const targetType = d.target.type || "";
+                // Root to region links - spread regions out more
+                if (sourceType === "root" || targetType === "root") {
+                  return 100;
+                }
+                // Region to service links
+                if (sourceType === "region" || targetType === "region") {
+                  return 80;
+                }
+                // Service to diagnostic agent links
+                if (
+                  (sourceType === "service" && targetType === "diagnostic-agent") ||
+                  (sourceType === "diagnostic-agent" && targetType === "service")
+                ) {
+                  return 60;
+                }
+                return 50;
+              })
+              .strength(0.4),
+          )
+          .force(
+            "charge",
+            d3
+              .forceManyBody()
+              .strength((d) => {
+                // Much stronger repulsion for oncall-agent to push it away from clusters
+                if (d.type === "oncall-agent") return -500;
+                // Root and region nodes need stronger repulsion to spread out
+                if (d.type === "root") return -300;
+                if (d.type === "region") return -200;
+                if (d.type === "service") return -150;
+                return -80;
+              })
+              .distanceMax(400),
+          )
+          .force("center", d3.forceCenter(width / 2, height / 2))
+          .force(
+            "collision",
+            d3.forceCollide().radius((d) => {
+              // Large collision radius for oncall-agent to keep it separate
+              if (d.type === "oncall-agent") return 70;
+              // Root node needs space
+              if (d.type === "root") return 40;
+              // Regions need space to spread their children
+              if (d.type === "region") return 35;
+              // Services need moderate space
+              if (d.type === "service") return 25;
+              // Diagnostic agents can be closer together
+              if (d.type === "diagnostic-agent" || d.type === "sub-agent") return 14;
+              return 18;
+            }),
+          )
+          .force("x", d3.forceX(width / 2).strength(0.05))
+          .force("y", d3.forceY(height / 2).strength(0.05))
+          .velocityDecay(0.5)
+          .alphaDecay(0.06)
+          .alphaMin(0.005)
+          .on("tick", ticked);
+      }
+
+      function reinitGraphIfNeeded() {
+        const container = document.getElementById("graph-container");
+        const svg = d3.select("#graph-svg");
+        const width = container.clientWidth || 400;
+        const height = container.clientHeight || 400;
+
+        if (width > 0 && height > 0 && simulation) {
+          svg.attr("viewBox", [0, 0, width, height]);
+          simulation.force("center", d3.forceCenter(width / 2, height / 2));
+          simulation.force("x", d3.forceX(width / 2).strength(0.03));
+          simulation.force("y", d3.forceY(height / 2).strength(0.03));
+          // Don't restart on resize - let it settle
+        }
+      }
+
+      function updateSimulationForces() {
+        const nodeCount = graphNodes.length;
+        const container = document.getElementById("graph-container");
+        const width = container.clientWidth || 400;
+        const height = container.clientHeight || 400;
+
+        const area = width * height;
+        const nodeArea = area / Math.max(nodeCount, 1);
+        const idealSpacing = Math.sqrt(nodeArea) * 0.4;
+
+        let baseCharge = -100;
+        let baseLinkDistance = 60;
+        let baseCollisionRadius = 18;
+        let positionStrength = 0.05;
+
+        if (nodeCount > 150) {
+          baseCharge = -60;
+          baseLinkDistance = Math.max(40, idealSpacing * 0.5);
+          baseCollisionRadius = 12;
+          positionStrength = 0.06;
+        } else if (nodeCount > 100) {
+          baseCharge = -70;
+          baseLinkDistance = Math.max(50, idealSpacing * 0.6);
+          baseCollisionRadius = 14;
+          positionStrength = 0.055;
+        } else if (nodeCount > 50) {
+          baseCharge = -80;
+          baseLinkDistance = Math.max(55, idealSpacing * 0.7);
+          baseCollisionRadius = 16;
+          positionStrength = 0.05;
+        }
+
+        simulation
+          .force(
+            "charge",
+            d3
+              .forceManyBody()
+              .strength((d) => {
+                // Type-based repulsion for better separation
+                if (d.type === "oncall-agent") return -500;
+                if (d.type === "root") return -300;
+                if (d.type === "region") return -200;
+                if (d.type === "service") return -150;
+                return baseCharge;
+              })
+              .distanceMax(400),
+          )
+          .force(
+            "link",
+            d3
+              .forceLink()
+              .id((d) => d.id)
+              .distance((d) => {
+                const sourceId = d.source.id || d.source;
+                const targetId = d.target.id || d.target;
+                if (sourceId === "oncall-agent" || targetId === "oncall-agent") {
+                  return 200;
+                }
+                const sourceType = d.source.type || "";
+                const targetType = d.target.type || "";
+                if (sourceType === "root" || targetType === "root") {
+                  return baseLinkDistance * 1.5;
+                }
+                if (sourceType === "region" || targetType === "region") {
+                  return baseLinkDistance * 1.2;
+                }
+                return baseLinkDistance;
+              })
+              .strength(0.4),
+          )
+          .force(
+            "collision",
+            d3.forceCollide().radius((d) => {
+              if (d.type === "oncall-agent") return 70;
+              if (d.type === "root") return 40;
+              if (d.type === "region") return 35;
+              if (d.type === "service") return baseCollisionRadius + 7;
+              if (d.type === "diagnostic-agent" || d.type === "sub-agent") return baseCollisionRadius - 4;
+              return baseCollisionRadius;
+            }),
+          )
+          .force("x", d3.forceX(width / 2).strength(positionStrength))
+          .force("y", d3.forceY(height / 2).strength(positionStrength));
+      }
+
+      // Interpolation factor for smooth animation (0 = no smoothing, 1 = instant)
+      const INTERPOLATION_FACTOR = 0.3;
+
+      function ticked() {
+        const svg = d3.select("#graph-svg");
+
+        // Interpolate node positions for smoother animation
+        graphNodes.forEach((d) => {
+          if (d.displayX === undefined) {
+            d.displayX = d.x;
+            d.displayY = d.y;
+          } else {
+            // Lerp toward target position
+            d.displayX += (d.x - d.displayX) * INTERPOLATION_FACTOR;
+            d.displayY += (d.y - d.displayY) * INTERPOLATION_FACTOR;
+          }
+        });
+
+        svg
+          .select(".links")
+          .selectAll("line")
+          .attr("x1", (d) => d.source.displayX || d.source.x)
+          .attr("y1", (d) => d.source.displayY || d.source.y)
+          .attr("x2", (d) => d.target.displayX || d.target.x)
+          .attr("y2", (d) => d.target.displayY || d.target.y);
+
+        svg
+          .select(".nodes")
+          .selectAll(".node")
+          .attr("transform", (d) => `translate(${d.displayX || d.x}, ${d.displayY || d.y})`);
+      }
+
+      function getNodeRadius(d) {
+        const nodeCount = graphNodes.length;
+        // Scale down slightly when many nodes, but not too aggressively
+        let scale = 1;
+        if (nodeCount > 150) scale = 0.7;
+        else if (nodeCount > 100) scale = 0.8;
+        else if (nodeCount > 50) scale = 0.9;
+
+        // Visual hierarchy: OnCall = Investigation > Region > Service > Investigator
+        let baseRadius;
+        switch (d.type) {
+          case "oncall-agent":
+            baseRadius = 22; // Same as investigation - the commander
+            break;
+          case "root":
+            baseRadius = 22; // Large - the incident hub
+            break;
+          case "region":
+            baseRadius = 16; // Medium - geographic grouping
+            break;
+          case "runner":
+            baseRadius = 14;
+            break;
+          case "service":
+            baseRadius = 12; // Smaller - application services
+            break;
+          case "synthesis":
+            baseRadius = 16;
+            break;
+          case "remediation-agent":
+            baseRadius = 18; // Prominent - the remediation executor
+            break;
+          case "diagnostic-agent":
+          case "sub-agent":
+            baseRadius = 8; // Small dots - the workers (many of them)
+            break;
+          default:
+            baseRadius = 8;
+        }
+        return baseRadius * scale;
+      }
+
+      function shouldShowLabel(d) {
+        const nodeCount = graphNodes.length;
+        // Always show oncall-agent and remediation-agent labels
+        if (d.type === "oncall-agent" || d.type === "remediation-agent") return true;
+        if (nodeCount > 100) {
+          return d.type === "root" || d.type === "region" || d.type === "synthesis";
+        } else if (nodeCount > 50) {
+          return d.type === "root" || d.type === "region" || d.type === "synthesis" || d.type === "runner";
+        }
+        return true;
+      }
+
+      // Track child counts for radial positioning
+      const parentChildCounts = new Map();
+
+      function getRadialPosition(parent, childIndex, totalSiblings) {
+        // Distribute children radially around parent
+        const baseAngle = parent.radialAngle || 0;
+        const spreadAngle = Math.PI * 1.2; // 216 degrees spread
+        const startAngle = baseAngle - spreadAngle / 2;
+        const angleStep = totalSiblings > 1 ? spreadAngle / (totalSiblings - 1) : 0;
+        const angle = startAngle + angleStep * childIndex;
+
+        // Distance based on depth (further from center = shorter links)
+        const depth = (parent.depth || 0) + 1;
+        const distance = Math.max(60, 120 - depth * 15);
+
+        return {
+          x: parent.x + Math.cos(angle) * distance,
+          y: parent.y + Math.sin(angle) * distance,
+          radialAngle: angle,
+          depth: depth,
+        };
+      }
+
+      function updateGraph(newNodes, newEdges) {
+        const container = document.getElementById("graph-container");
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        // Create a set of node IDs from server response
+        const serverNodeIds = new Set(newNodes.map((n) => n.id));
+
+        // Remove nodes that are no longer in server response
+        const removedNodes = graphNodes.filter((n) => !serverNodeIds.has(n.id));
+        if (removedNodes.length > 0) {
+          graphNodes = graphNodes.filter((n) => serverNodeIds.has(n.id));
+          // Clear parent child counts when nodes are removed
+          if (removedNodes.length > 10) {
+            parentChildCounts.clear();
+          }
+        }
+
+        // Count children per parent for this batch
+        const newChildrenByParent = new Map();
+        newNodes.forEach((newNode) => {
+          if (newNode.parent) {
+            if (!newChildrenByParent.has(newNode.parent)) {
+              newChildrenByParent.set(newNode.parent, []);
+            }
+            newChildrenByParent.get(newNode.parent).push(newNode);
+          }
+        });
+
+        const nodeMap = new Map(graphNodes.map((n) => [n.id, n]));
+        newNodes.forEach((newNode) => {
+          const existing = nodeMap.get(newNode.id);
+          if (existing) {
+            Object.assign(existing, newNode);
+          } else {
+            const parent = graphNodes.find((n) => n.id === newNode.parent);
+            if (parent && parent.x !== undefined) {
+              // Get existing child count for this parent
+              const existingChildCount = parentChildCounts.get(newNode.parent) || 0;
+              const siblings = newChildrenByParent.get(newNode.parent) || [newNode];
+              const childIndex = siblings.indexOf(newNode);
+              const totalNewSiblings = siblings.length;
+              const totalSiblings = existingChildCount + totalNewSiblings;
+
+              // Use radial positioning
+              const pos = getRadialPosition(parent, existingChildCount + childIndex, totalSiblings);
+              newNode.x = pos.x;
+              newNode.y = pos.y;
+              newNode.radialAngle = pos.radialAngle;
+              newNode.depth = pos.depth;
+            } else {
+              // Root node or no parent - place near center
+              newNode.x = width / 2 + (Math.random() - 0.5) * 100;
+              newNode.y = height / 2 + (Math.random() - 0.5) * 100;
+              newNode.radialAngle = Math.random() * Math.PI * 2;
+              newNode.depth = 0;
+            }
+            graphNodes.push(newNode);
+          }
+        });
+
+        // Update parent child counts
+        newChildrenByParent.forEach((children, parentId) => {
+          const existingCount = parentChildCounts.get(parentId) || 0;
+          parentChildCounts.set(parentId, existingCount + children.length);
+        });
+
+        graphEdges = newEdges.map((e) => ({ source: e.source, target: e.target }));
+        renderGraph();
+      }
+
+      function renderGraph() {
+        const svg = d3.select("#graph-svg");
+
+        // Update links
+        const links = svg
+          .select(".links")
+          .selectAll("line")
+          .data(graphEdges, (d) => `${d.source.id || d.source}-${d.target.id || d.target}`);
+
+        links.exit().remove();
+        links.enter().append("line").attr("class", "link").attr("stroke", "#9ca3af").attr("stroke-width", 1.5);
+
+        // Update nodes
+        const nodes = svg
+          .select(".nodes")
+          .selectAll(".node")
+          .data(graphNodes, (d) => d.id);
+
+        nodes.exit().remove();
+
+        // Determine if agent is active based on current status
+        const isAgentActive =
+          currentAgentStatus !== "inactive" && currentAgentStatus !== "waiting_for_activation_approval";
+
+        const nodeEnter = nodes
+          .enter()
+          .append("g")
+          .attr("class", (d) => {
+            let classes = "node";
+            if (d.type === "oncall-agent") {
+              classes += " oncall-agent";
+              classes += isAgentActive ? " active" : " inactive";
+            }
+            return classes;
+          })
+          .call(d3.drag().on("start", dragStarted).on("drag", dragged).on("end", dragEnded))
+          .on("mouseenter", (event, d) => showTooltip(event, d))
+          .on("mouseleave", hideTooltip);
+
+        nodeEnter
+          .append("circle")
+          .attr("r", (d) => getNodeRadius(d))
+          .attr("fill", (d) => getNodeFillColor(d))
+          .attr("stroke", "none");
+
+        nodeEnter
+          .append("text")
+          .attr("class", (d) => `node-label ${shouldShowLabel(d) ? "" : "hidden"}`)
+          .attr("dy", (d) => getNodeRadius(d) + 20)
+          .text((d) => {
+            if (!shouldShowLabel(d)) return "";
+            return d.name.length > 12 ? d.name.substring(0, 10) + "…" : d.name;
+          });
+
+        // Update existing nodes
+        const allNodes = nodes.merge(nodeEnter);
+        allNodes.attr("class", (d) => {
+          let classes = "node";
+          if (d.type === "oncall-agent") {
+            classes += " oncall-agent";
+            classes += isAgentActive ? " active" : " inactive";
+          }
+          return classes;
+        });
+        allNodes
+          .select("circle")
+          .attr("fill", (d) => getNodeFillColor(d))
+          .attr("stroke", "none");
+
+        updateSimulationForces();
+        simulation.nodes(graphNodes);
+        simulation.force("link").links(graphEdges);
+
+        // Only restart with significant alpha if we added new nodes
+        const currentAlpha = simulation.alpha();
+        if (currentAlpha < 0.1) {
+          simulation.alpha(0.3).restart();
+        }
+
+        updateGraphStats();
+      }
+
+      function dragStarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragEnded(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+
+      function showTooltip(event, d) {
+        const tooltip = document.getElementById("node-tooltip");
+        tooltip.classList.add("visible");
+
+        document.getElementById("tooltip-name").textContent = d.name;
+        document.getElementById("tooltip-type").textContent = d.type;
+        document.getElementById("tooltip-status").textContent = d.status;
+        document.getElementById("tooltip-created").textContent = d.created_at
+          ? new Date(d.created_at).toLocaleTimeString()
+          : "-";
+
+        const x = Math.min(event.clientX + 10, window.innerWidth - 260);
+        const y = Math.min(event.clientY + 10, window.innerHeight - 100);
+        tooltip.style.left = x + "px";
+        tooltip.style.top = y + "px";
+      }
+
+      function hideTooltip() {
+        document.getElementById("node-tooltip").classList.remove("visible");
+      }
+
+      function updateGraphStats() {
+        // Exclude oncall-agent from counts - it's the orchestrator, not an investigator
+        const investigationNodes = graphNodes.filter((n) => n.type !== "oncall-agent");
+        const total = investigationNodes.length;
+        const running = investigationNodes.filter((n) => n.status === "running").length;
+        const completed = investigationNodes.filter((n) => n.status === "completed").length;
+
+        document.getElementById("stat-total").textContent = total;
+        document.getElementById("stat-running").textContent = running;
+        document.getElementById("stat-completed").textContent = completed;
+
+        // Show stats and legend when we have nodes
+        // Always show legend (oncall agent is always present)
+        document.getElementById("graph-legend").style.display = "flex";
+        // Show stats only when there are investigation nodes (more than just oncall-agent)
+        const hasInvestigation = total > 1;
+        document.getElementById("graph-stats").style.display = hasInvestigation ? "flex" : "none";
+
+        // Update swarm indicator text
+        if (hasNodes) {
+          document.getElementById("swarm-text").textContent =
+            `${total} agents investigating (${running} active, ${completed} complete)`;
+        }
+      }
+
+      async function fetchGraphData() {
+        try {
+          const response = await fetch(`${API_BASE}/graph`);
+          const data = await response.json();
+          updateGraph(data.nodes || [], data.edges || []);
+          renderGraph();
+          updateGraphStats();
+        } catch (error) {
+          console.error("Error fetching graph data:", error);
+        }
+      }
+
+      function startGraphPolling() {
+        if (graphPollInterval) clearInterval(graphPollInterval);
+        fetchGraphData();
+        graphPollInterval = setInterval(fetchGraphData, 3000);
+      }
+
+      function stopGraphPolling() {
+        if (graphPollInterval) {
+          clearInterval(graphPollInterval);
+          graphPollInterval = null;
+        }
+      }
+
+      // === OnCall Agent Status Polling ===
+
+      async function fetchOnCallStatus() {
+        try {
+          const response = await fetch(`${API_BASE}/oncall/status`);
+          const data = await response.json();
+          updateOnCallUI(data);
+          return data;
+        } catch (error) {
+          console.error("Error fetching oncall status:", error);
+        }
+      }
+
+      function updateOnCallUI(data) {
+        const status = data.status;
+        const agent = data.agent || {};
+        currentAgentStatus = status;
+
+        // Get UI elements
+        const inactiveStatus = document.getElementById("inactive-status");
+        const monitoringStatus = document.getElementById("monitoring-status");
+        const approvalSection = document.getElementById("approval-section");
+        const storyBanner = document.getElementById("story-banner");
+        const swarmIndicator = document.getElementById("swarm-indicator");
+        const anomalyCard = document.getElementById("anomaly-card");
+        const timeline = document.getElementById("investigation-timeline");
+        const auditTrail = document.getElementById("audit-trail");
+        const rootCauseBanner = document.getElementById("root-cause-banner");
+        const statusSection = document.getElementById("status-section");
+        const statusDot = document.getElementById("status-dot");
+        const statusText = document.getElementById("status-text");
+
+        // Hide everything first
+        inactiveStatus.style.display = "none";
+        monitoringStatus.style.display = "none";
+        approvalSection.style.display = "none";
+        storyBanner.style.display = "none";
+        swarmIndicator.style.display = "none";
+        anomalyCard.style.display = "none";
+        timeline.style.display = "none";
+        auditTrail.style.display = "none";
+        rootCauseBanner.style.display = "none";
+        statusSection.style.display = "none";
+        document.getElementById("remediation-progress-panel").style.display = "none";
+
+        // Remove all status classes
+        statusDot.classList.remove(
+          "idle",
+          "detecting",
+          "spawning",
+          "running",
+          "synthesizing",
+          "completed",
+          "error",
+          "waiting",
+        );
+
+        // Update demo menu button states
+        updateDemoMenuButtons();
+
+        switch (status) {
+          case "inactive":
+            inactiveStatus.style.display = "block";
+            break;
+
+          case "waiting_for_activation_approval":
+            inactiveStatus.style.display = "none";
+            // Only reset button states if this is a new activation prompt
+            if (shownApprovalActionId !== "activation") {
+              shownApprovalActionId = "activation";
+              showActivationApprovalPrompt(data.approval);
+            } else if (!pendingApprovalSubmission) {
+              // Already shown - just make sure approval section stays visible
+              // But don't re-show if user just clicked approve/deny
+              approvalSection.style.display = "block";
+            }
+            break;
+
+          case "activating":
+            statusSection.style.display = "block";
+            statusDot.classList.add("running");
+            statusText.textContent = "Activating...";
+            swarmIndicator.style.display = "flex";
+            document.getElementById("swarm-text").textContent = "Retrieving credentials...";
+            break;
+
+          case "monitoring":
+            monitoringStatus.style.display = "block";
+            break;
+
+          case "incident_detected":
+            storyBanner.style.display = "block";
+            storyBanner.classList.add("active");
+            const deployingCount = agent.agents_deployed || 150;
+            updateStoryBannerNew(agent, `Deploying ${deployingCount} agents across 3 regions...`);
+            anomalyCard.style.display = "block";
+            updateAnomalyCardNew(agent);
+            timeline.style.display = "block";
+            updateTimelineNew("incident_detected", agent);
+            break;
+
+          case "diagnosing":
+            storyBanner.style.display = "block";
+            storyBanner.classList.add("active");
+            const totalAgents = agent.agents_deployed || 150;
+            const completedAgents = agent.agents_completed || 0;
+            if (completedAgents > 0) {
+              updateStoryBannerNew(agent, `${completedAgents}/${totalAgents} agents completed across 3 regions`);
+            } else {
+              updateStoryBannerNew(agent, `${totalAgents} total agents deployed across 3 regions`);
+            }
+            anomalyCard.style.display = "block";
+            updateAnomalyCardNew(agent);
+            timeline.style.display = "block";
+            updateTimelineNew("diagnosing", agent);
+            break;
+
+          case "diagnosis_complete":
+            storyBanner.style.display = "block";
+            storyBanner.classList.add("active");
+            updateStoryBannerNew(agent, "Root cause identified - preparing remediation options");
+            anomalyCard.style.display = "block";
+            updateAnomalyCardNew(agent);
+            timeline.style.display = "block";
+            updateTimelineNew("diagnosis_complete", agent);
+            if (agent.diagnosis_result) {
+              rootCauseBanner.style.display = "block";
+              document.getElementById("root-cause-text").innerHTML = agent.diagnosis_result;
+            }
+            break;
+
+          case "waiting_for_write_approval":
+            storyBanner.style.display = "block";
+            storyBanner.classList.add("active");
+            updateStoryBannerNew(agent, "Remediation requires WRITE access");
+            anomalyCard.style.display = "block";
+            updateAnomalyCardNew(agent);
+            timeline.style.display = "block";
+            updateTimelineNew("waiting_for_write_approval", agent);
+            // Show root cause BEFORE approval prompt so user can make informed decision
+            if (agent.diagnosis_result) {
+              rootCauseBanner.style.display = "block";
+              document.getElementById("root-cause-text").innerHTML = agent.diagnosis_result;
+              document.getElementById("root-cause-actions").innerHTML = "";
+            }
+            // Always show approval section when waiting for write approval
+            // Only reset button states if this is a NEW action we haven't seen
+            const pendingActionId = agent.pending_write_action?.action_id || data.approval?.pending_action?.action_id;
+            if (pendingActionId && shownApprovalActionId !== pendingActionId) {
+              shownApprovalActionId = pendingActionId;
+              showWriteApprovalPrompt(data.approval, agent);
+            } else if (!pendingApprovalSubmission) {
+              // Already shown this action - just make sure approval section stays visible
+              // But don't re-show if user just clicked approve/deny
+              approvalSection.style.display = "block";
+            }
+            break;
+
+          case "remediating":
+            storyBanner.style.display = "block";
+            storyBanner.classList.add("active");
+            const progress = agent.remediation_progress || 0;
+            const remMessage = agent.remediation_message || "Executing remediation...";
+            updateStoryBannerNew(agent, `${remMessage} (${progress}%)`);
+            anomalyCard.style.display = "block";
+            updateAnomalyCardNew(agent);
+            timeline.style.display = "block";
+            updateTimelineNew("remediating", agent);
+            // Show root cause banner during remediation
+            if (agent.diagnosis_result) {
+              rootCauseBanner.style.display = "block";
+              document.getElementById("root-cause-text").innerHTML = agent.diagnosis_result;
+            }
+            // Show remediation progress panel
+            const remediationPanel = document.getElementById("remediation-progress-panel");
+            remediationPanel.style.display = "block";
+            document.getElementById("remediation-progress-message").textContent = remMessage;
+            document.getElementById("remediation-progress-bar").style.width = `${progress}%`;
+            // Update error rate display
+            const errorRate = agent.error_rate_current !== undefined ? agent.error_rate_current : 340;
+            const errorRateEl = document.getElementById("remediation-error-rate-value");
+            if (errorRate > 0) {
+              errorRateEl.textContent = `+${errorRate}%`;
+              errorRateEl.className = "remediation-error-rate-value " + (errorRate > 100 ? "high" : "medium");
+            } else {
+              errorRateEl.textContent = "Normal ✓";
+              errorRateEl.className = "remediation-error-rate-value low";
+            }
+            break;
+
+          case "resolved":
+            // Store resolved time to freeze the timer
+            if (!incidentResolvedAt) {
+              incidentResolvedAt = new Date();
+            }
+            storyBanner.style.display = "block";
+            storyBanner.classList.add("active");
+            storyBanner.classList.add("resolved");
+            updateStoryBannerNew(agent, "Incident closed");
+            anomalyCard.style.display = "block";
+            updateAnomalyCardNew(agent);
+            timeline.style.display = "block";
+            updateTimelineNew("resolved", agent);
+            rootCauseBanner.style.display = "block";
+            updateResolutionBanner(agent);
+            auditTrail.style.display = "block";
+            updateAuditTrailNew(agent);
+            // Hide remediation progress panel when resolved
+            document.getElementById("remediation-progress-panel").style.display = "none";
+            // Show monitoring panel again after resolution and move it to top (after story banner)
+            monitoringStatus.style.display = "block";
+            storyBanner.parentNode.insertBefore(monitoringStatus, storyBanner.nextSibling);
+            // Graph clearing is handled by backend - it returns only oncall-agent when resolved
+            break;
+
+          case "error":
+            statusSection.style.display = "block";
+            statusDot.classList.add("error");
+            statusText.textContent = "❌ Error";
+            break;
+        }
+      }
+
+      function showActivationApprovalPrompt(approval) {
+        const approvalSection = document.getElementById("approval-section");
+        const approvalTitle = document.getElementById("approval-title");
+        const approvalMessage = document.getElementById("approval-message");
+        const writeWarning = document.getElementById("write-warning");
+        const actionDesc = document.getElementById("action-description");
+        const credList = document.getElementById("credential-list");
+        const approveBtn = document.querySelector(".approval-actions .btn-primary");
+        const denyBtn = document.querySelector(".approval-actions .btn-danger");
+
+        // Reset button states
+        approveBtn.disabled = false;
+        denyBtn.disabled = false;
+        approveBtn.textContent = "✓ Approve";
+        denyBtn.textContent = "✗ Deny";
+
+        approvalSection.style.display = "block";
+        approvalSection.classList.remove("write-approval");
+        approvalSection.classList.add("read-approval");
+
+        approvalTitle.innerHTML = "🔑 Read Access Required";
+        approvalMessage.textContent = "The OnCall Agent needs READ access to monitor your infrastructure:";
+        writeWarning.style.display = "none";
+        actionDesc.style.display = "none";
+
+        credList.innerHTML = "";
+        const creds = approval?.requested_credentials || [];
+        creds.forEach((cred) => {
+          const li = document.createElement("li");
+          li.textContent = cred;
+          credList.appendChild(li);
+        });
+
+        // Update button handlers
+        document.querySelector(".approval-actions .btn-primary").onclick = () => approveOnCall(true);
+        document.querySelector(".approval-actions .btn-danger").onclick = () => approveOnCall(false);
+      }
+
+      function showWriteApprovalPrompt(approval, agent) {
+        const approvalSection = document.getElementById("approval-section");
+        const approvalTitle = document.getElementById("approval-title");
+        const approvalMessage = document.getElementById("approval-message");
+        const writeWarning = document.getElementById("write-warning");
+        const actionDesc = document.getElementById("action-description");
+        const credList = document.getElementById("credential-list");
+        const approveBtn = document.querySelector(".approval-actions .btn-primary");
+        const denyBtn = document.querySelector(".approval-actions .btn-danger");
+
+        const pendingAction = approval?.pending_action || agent?.pending_write_action || {};
+
+        // Reset button states
+        approveBtn.disabled = false;
+        denyBtn.disabled = false;
+        approveBtn.textContent = "✓ Approve";
+        denyBtn.textContent = "✗ Deny";
+
+        approvalSection.style.display = "block";
+        approvalSection.classList.remove("read-approval");
+        approvalSection.classList.add("write-approval");
+
+        approvalTitle.innerHTML = "⚠️ Write Access Required";
+        approvalMessage.textContent = "The agent wants to execute a remediation action:";
+
+        writeWarning.style.display = "block";
+        writeWarning.innerHTML = `<strong>⚠️ Warning:</strong> This action will modify production systems.`;
+
+        actionDesc.style.display = "block";
+        actionDesc.innerHTML = `<strong>Action:</strong> ${pendingAction.description || "Unknown action"}`;
+
+        credList.innerHTML = "";
+        const creds = approval?.requested_credentials || [pendingAction.credential_ref];
+        creds.forEach((cred) => {
+          const li = document.createElement("li");
+          li.textContent = cred;
+          credList.appendChild(li);
+        });
+
+        // Update button handlers
+        document.querySelector(".approval-actions .btn-primary").onclick = () => approveOnCall(true);
+        document.querySelector(".approval-actions .btn-danger").onclick = () => approveOnCall(false);
+      }
+
+      function updateStoryBannerNew(agent, message) {
+        const storyBanner = document.getElementById("story-banner");
+        const title = document.getElementById("story-banner-title");
+        const text = document.getElementById("story-banner-text");
+
+        const detectedAt = agent.incident_detected_at ? new Date(agent.incident_detected_at) : new Date();
+
+        // Check if incident is resolved/closed
+        if (agent.status === "resolved" || message === "Incident closed") {
+          // Use frozen resolved time for elapsed calculation
+          const endTime = incidentResolvedAt || new Date();
+          const elapsed = Math.floor((endTime - detectedAt) / 1000);
+          const elapsedStr = formatElapsed(elapsed);
+          title.textContent = `Incident closed after ${elapsedStr}`;
+          storyBanner.classList.add("resolved");
+        } else {
+          const elapsed = Math.floor((new Date() - detectedAt) / 1000);
+          const elapsedStr = formatElapsed(elapsed);
+          title.textContent = `Incident detected ${elapsedStr} ago`;
+          storyBanner.classList.remove("resolved");
+        }
+        text.innerHTML = message;
+      }
+
+      function updateAnomalyCardNew(agent) {
+        const anomalyCard = document.getElementById("anomaly-card");
+        const anomalyIcon = document.getElementById("anomaly-icon");
+        const anomalyTitle = document.getElementById("anomaly-title");
+
+        // Format anomaly type for display (cascading_failure -> Cascading Failure)
+        const anomalyType = agent.anomaly_type || "cascading_failure";
+        const formattedType = anomalyType
+          .split("_")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+        document.getElementById("anomaly-type").textContent = formattedType;
+        document.getElementById("anomaly-services").textContent = "api-gateway, user-service, order-service";
+
+        // Use current error rate if available (changes during remediation)
+        const errorRateEl = document.getElementById("anomaly-error-rate");
+        const errorRate = agent.error_rate_current !== undefined ? agent.error_rate_current : 340;
+        if (errorRate > 0) {
+          errorRateEl.textContent = `+${errorRate}%`;
+          errorRateEl.style.color = errorRate > 100 ? "#991b1b" : "#b45309";
+          anomalyCard.classList.remove("recovered");
+          anomalyIcon.textContent = "⚠️";
+          anomalyTitle.textContent = "Anomaly Detected";
+        } else {
+          errorRateEl.textContent = "Normal";
+          errorRateEl.style.color = "#166534";
+          anomalyCard.classList.add("recovered");
+          anomalyIcon.textContent = "✅";
+          anomalyTitle.textContent = "System Recovered";
+        }
+
+        document.getElementById("anomaly-regions").textContent = "us-east-1, us-west-2, eu-west-1";
+      }
+
+      function updateTimelineNew(status, agent) {
+        const tlAnomaly = document.getElementById("tl-anomaly");
+        const tlSwarm = document.getElementById("tl-swarm");
+        const tlAnalysis = document.getElementById("tl-analysis");
+        const tlResolution = document.getElementById("tl-resolution");
+
+        // Reset all
+        [tlAnomaly, tlSwarm, tlAnalysis, tlResolution].forEach((el) => {
+          el.classList.remove("completed", "active", "pending");
+          el.classList.add("pending");
+        });
+
+        // Update anomaly subtitle with actual anomaly info
+        const anomalyType = agent.anomaly_type || "cascading_failure";
+        const formattedType = anomalyType
+          .split("_")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+        document.getElementById("tl-anomaly-time").textContent = `${formattedType} across 3 regions`;
+
+        switch (status) {
+          case "incident_detected":
+            tlAnomaly.classList.replace("pending", "active");
+            break;
+          case "diagnosing":
+            tlAnomaly.classList.replace("pending", "completed");
+            tlSwarm.classList.replace("pending", "completed");
+            tlAnalysis.classList.replace("pending", "active");
+            break;
+          case "diagnosis_complete":
+            tlAnomaly.classList.replace("pending", "completed");
+            tlSwarm.classList.replace("pending", "completed");
+            tlAnalysis.classList.replace("pending", "completed");
+            tlResolution.classList.replace("pending", "active");
+            break;
+          case "waiting_for_write_approval":
+            tlAnomaly.classList.replace("pending", "completed");
+            tlSwarm.classList.replace("pending", "completed");
+            tlAnalysis.classList.replace("pending", "completed");
+            tlResolution.classList.replace("pending", "active");
+            break;
+          case "remediating":
+            tlAnomaly.classList.replace("pending", "completed");
+            tlSwarm.classList.replace("pending", "completed");
+            tlAnalysis.classList.replace("pending", "completed");
+            tlResolution.classList.replace("pending", "active");
+            break;
+          case "resolved":
+            [tlAnomaly, tlSwarm, tlAnalysis, tlResolution].forEach((el) => {
+              el.classList.remove("pending", "active");
+              el.classList.add("completed");
+            });
+            // Update resolution subtitle
+            tlResolution.querySelector(".timeline-subtitle").textContent = "Incident resolved";
+            break;
+        }
+
+        // Update agent subtitle
+        document.getElementById("tl-swarm-agents").textContent = `Deployed across 3 regions`;
+      }
+
+      function updateResolutionBanner(agent) {
+        const text = document.getElementById("root-cause-text");
+        const actions = document.getElementById("root-cause-actions");
+
+        text.innerHTML = agent.diagnosis_result || "Root cause identified and addressed.";
+
+        let actionsHtml = "";
+        if (agent.write_actions_denied && agent.write_actions_denied.length > 0) {
+          agent.write_actions_denied.forEach((action) => {
+            actionsHtml += `<div class="remediation-item denied"><span>✗</span><span>${action.description} (denied)</span></div>`;
+          });
+        }
+        if (agent.write_actions_completed && agent.write_actions_completed.length > 0) {
+          agent.write_actions_completed.forEach((action) => {
+            actionsHtml += `<div class="remediation-item approved"><span>✓</span><span>${action.description} (completed)</span></div>`;
+          });
+        }
+        actions.innerHTML = actionsHtml;
+      }
+
+      function updateAuditTrailNew(agent) {
+        const auditList = document.getElementById("audit-list");
+        const auditCount = document.getElementById("audit-count");
+
+        const grants = agent.credential_grants || [];
+        const deniedActions = agent.write_actions_denied || [];
+
+        // Count includes grants + denied
+        auditCount.textContent = grants.length + deniedActions.length;
+
+        auditList.innerHTML = "";
+
+        // Show granted credentials
+        grants.forEach((grant) => {
+          const item = document.createElement("div");
+          item.className = "audit-item";
+          item.innerHTML = `
+            <div class="audit-icon approved">✓</div>
+            <div class="audit-content">
+              <div class="audit-credential">${grant.reference}</div>
+              <div class="audit-meta">
+                <span class="audit-badge ${grant.category}">${grant.category.toUpperCase()}</span>
+                <span>${new Date(grant.granted_at).toLocaleTimeString()}</span>
+              </div>
+            </div>
+          `;
+          auditList.appendChild(item);
+        });
+
+        // Show denied credentials
+        deniedActions.forEach((action) => {
+          const item = document.createElement("div");
+          item.className = "audit-item";
+          item.innerHTML = `
+            <div class="audit-icon denied">✗</div>
+            <div class="audit-content">
+              <div class="audit-credential">${action.credential_ref}</div>
+              <div class="audit-meta">
+                <span class="audit-badge write" style="background: #fecaca; color: #991b1b;">DENIED</span>
+                <span>${action.description.substring(0, 40)}...</span>
+              </div>
+            </div>
+          `;
+          auditList.appendChild(item);
+        });
+      }
+
+      // === OnCall Agent Actions ===
+
+      async function activateAgent() {
+        const btn = document.getElementById("activate-btn");
+        btn.disabled = true;
+        btn.textContent = "Activating...";
+
+        try {
+          const response = await fetch(`${API_BASE}/oncall/activate`, { method: "POST" });
+          const data = await response.json();
+          console.log("Activation requested:", data);
+          // Polling will update UI
+        } catch (error) {
+          console.error("Error activating agent:", error);
+          btn.disabled = false;
+          btn.textContent = "🚀 Activate OnCall Agent";
+          alert("Failed to activate: " + error.message);
+        }
+      }
+
+      async function approveOnCall(approved) {
+        const approvalSection = document.getElementById("approval-section");
+        const approveBtn = document.querySelector(".approval-actions .btn-primary");
+        const denyBtn = document.querySelector(".approval-actions .btn-danger");
+
+        // Disable buttons immediately to prevent double-clicks
+        approveBtn.disabled = true;
+        denyBtn.disabled = true;
+        approveBtn.textContent = approved ? "Approving..." : "✓ Approve";
+        denyBtn.textContent = approved ? "✗ Deny" : "Denying...";
+
+        // Hide immediately and prevent polling from re-showing
+        approvalSection.style.display = "none";
+        pendingApprovalSubmission = true;
+
+        try {
+          const response = await fetch(`${API_BASE}/oncall/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved }),
+          });
+          const data = await response.json();
+          console.log("Approval response:", data);
+          // Reset shown action tracking so next action can be shown
+          shownApprovalActionId = null;
+          // Reset pending flag after a short delay to allow server state to update
+          setTimeout(() => {
+            pendingApprovalSubmission = false;
+          }, 500);
+          // Polling will update UI
+        } catch (error) {
+          console.error("Error approving:", error);
+          // Re-enable buttons on error
+          approveBtn.disabled = false;
+          denyBtn.disabled = false;
+          approveBtn.textContent = "✓ Approve";
+          denyBtn.textContent = "✗ Deny";
+          alert("Failed to process approval: " + error.message);
+          pendingApprovalSubmission = false;
+        }
+      }
+
+      async function simulateAnomaly() {
+        const simulateBtn = document.getElementById("menu-simulate-btn");
+        simulateBtn.disabled = true;
+
+        try {
+          const response = await fetch(`${API_BASE}/oncall/simulate-anomaly`, { method: "POST" });
+          const data = await response.json();
+          console.log("Anomaly simulated:", data);
+          investigationStartTime = new Date();
+          // Polling will update UI
+        } catch (error) {
+          console.error("Error simulating anomaly:", error);
+          simulateBtn.disabled = false;
+          alert("Failed to simulate anomaly: " + error.message);
+        }
+      }
+
+      async function resetAgent() {
+        try {
+          const response = await fetch(`${API_BASE}/oncall/reset`, { method: "POST" });
+          const data = await response.json();
+          console.log("Agent reset:", data);
+          investigationStartTime = null;
+          auditTrailEvents = [];
+          graphNodes = [];
+          graphEdges = [];
+          parentChildCounts.clear(); // Reset radial positioning tracking
+          shownApprovalActionId = null; // Reset approval tracking
+          pendingApprovalSubmission = false; // Reset pending approval flag
+          incidentResolvedAt = null; // Reset resolved timestamp
+          // Polling will update UI
+        } catch (error) {
+          console.error("Error resetting agent:", error);
+          alert("Failed to reset: " + error.message);
+        }
+      }
+
+      function startOnCallPolling() {
+        fetchOnCallStatus();
+        setInterval(fetchOnCallStatus, 2000);
+      }
+
+      // === Legacy Status and Investigation Polling ===
+
+      async function fetchInvestigationStatus() {
+        try {
+          const response = await fetch(`${API_BASE}/investigation/status`);
+          const data = await response.json();
+          updateStatusPanel(data);
+          return data;
+        } catch (error) {
+          console.error("Error fetching investigation status:", error);
+        }
+      }
+
+      function updateStatusPanel(data) {
+        const statusDot = document.getElementById("status-dot");
+        const statusText = document.getElementById("status-text");
+        const investigationInfo = document.getElementById("investigation-info");
+        const approvalSection = document.getElementById("approval-section");
+        const storyBanner = document.getElementById("story-banner");
+        const swarmIndicator = document.getElementById("swarm-indicator");
+        const anomalyCard = document.getElementById("anomaly-card");
+        const timeline = document.getElementById("investigation-timeline");
+        const auditTrail = document.getElementById("audit-trail");
+        const rootCauseBanner = document.getElementById("root-cause-banner");
+
+        // Remove all status classes
+        statusDot.classList.remove(
+          "idle",
+          "detecting",
+          "spawning",
+          "running",
+          "synthesizing",
+          "completed",
+          "error",
+          "waiting",
+          "waiting_for_read_approval",
+          "waiting_for_write_approval",
+        );
+
+        if (!data.investigation) {
+          // Check if there's a pending anomaly (detection in progress)
+          if (data.pending_anomaly) {
+            // Pending state - monitoring agent analyzing anomaly
+            statusDot.classList.add("detecting");
+            statusText.textContent = "Monitoring agent analyzing anomaly...";
+            statusText.classList.remove("muted");
+            investigationInfo.style.display = "none";
+            approvalSection.style.display = "none";
+            storyBanner.style.display = "none";
+            swarmIndicator.style.display = "none";
+            anomalyCard.style.display = "none";
+            timeline.style.display = "none";
+            auditTrail.style.display = "none";
+            rootCauseBanner.style.display = "none";
+            triggerBtn.disabled = true;
+            triggerBtn.textContent = "🔍 Analyzing Metrics...";
+            triggerBtn.classList.add("running");
+            // Show monitoring status with detecting state
+            document.getElementById("monitoring-status").style.display = "block";
+            document.getElementById("status-section").style.display = "none";
+            document.getElementById("demo-controls").style.display = "none";
+            return;
+          }
+
+          // Idle state - monitoring agent watching
+          statusDot.classList.add("idle");
+          statusText.textContent = "Monitoring agent watching metrics...";
+          statusText.classList.add("muted");
+          investigationInfo.style.display = "none";
+          approvalSection.style.display = "none";
+          storyBanner.style.display = "none";
+          swarmIndicator.style.display = "none";
+          anomalyCard.style.display = "none";
+          timeline.style.display = "none";
+          auditTrail.style.display = "none";
+          rootCauseBanner.style.display = "none";
+          triggerBtn.disabled = false;
+          triggerBtn.textContent = "⚡ Simulate Anomaly";
+          triggerBtn.classList.remove("running");
+          // Show monitoring status, hide investigation status
+          document.getElementById("monitoring-status").style.display = "block";
+          document.getElementById("status-section").style.display = "none";
+          document.getElementById("demo-controls").style.display = "block";
+          return;
+        }
+
+        // Hide monitoring status during investigation
+        document.getElementById("monitoring-status").style.display = "none";
+        document.getElementById("status-section").style.display = "block";
+
+        const investigation = data.investigation;
+        const status = investigation.status;
+
+        // Track when investigation started
+        if (!investigationStartTime && status !== "idle") {
+          investigationStartTime = new Date();
+        }
+
+        // Map waiting statuses to 'waiting' class for CSS
+        const statusClass = status.startsWith("waiting_for_") ? "waiting" : status;
+        statusDot.classList.add(statusClass);
+        statusText.textContent = formatStatus(status);
+        statusText.classList.remove("muted");
+
+        // Show story banner
+        storyBanner.style.display = "block";
+        storyBanner.classList.add("active");
+        updateStoryBanner(investigation);
+
+        // Show swarm indicator when active
+        if (status === "running" || status === "spawning" || status.startsWith("waiting_for_")) {
+          swarmIndicator.style.display = "flex";
+        } else {
+          swarmIndicator.style.display = "none";
+        }
+
+        // Show anomaly card
+        anomalyCard.style.display = "block";
+        updateAnomalyCard(investigation);
+
+        // Show timeline
+        timeline.style.display = "block";
+        updateTimeline(status, investigation);
+
+        // Show investigation info
+        investigationInfo.style.display = "block";
+        document.getElementById("investigation-id").textContent = investigation.investigation_id || "-";
+
+        // Show audit trail if we have events
+        if (auditTrailEvents.length > 0) {
+          auditTrail.style.display = "block";
+          updateAuditTrail();
+        }
+
+        // Show root cause banner if completed
+        if (status === "completed" && investigation.diagnosis) {
+          rootCauseBanner.style.display = "block";
+          updateRootCauseBanner(investigation.diagnosis);
+        } else {
+          rootCauseBanner.style.display = "none";
+        }
+
+        // Show approval section if waiting for approval
+        if (data.waiting_for_approval && data.approval) {
+          currentSessionId = data.approval.session_id;
+          const credentials = data.approval.requested_credentials || [];
+          const category = data.approval.credential_category || "read";
+          const action = data.approval.action_description || null;
+          showApprovalPrompt(credentials, category, action);
+        } else {
+          approvalSection.style.display = "none";
+        }
+
+        if (data.active || data.waiting_for_approval) {
+          triggerBtn.disabled = true;
+          triggerBtn.textContent = data.waiting_for_approval
+            ? "⏸ Waiting for Approval"
+            : "🔄 Investigation Running...";
+          triggerBtn.classList.add("running");
+          document.getElementById("demo-controls").style.display = "none";
+        } else {
+          triggerBtn.disabled = false;
+          triggerBtn.textContent = "⚡ Simulate Anomaly";
+          triggerBtn.classList.remove("running");
+          document.getElementById("demo-controls").style.display = "block";
+        }
+      }
+
+      function updateStoryBanner(investigation) {
+        const title = document.getElementById("story-banner-title");
+        const text = document.getElementById("story-banner-text");
+
+        const elapsed = investigationStartTime ? Math.floor((new Date() - investigationStartTime) / 1000) : 0;
+        const elapsedStr = formatElapsed(elapsed);
+
+        title.textContent = `Monitoring agent detected anomaly ${elapsedStr}`;
+
+        const agentCount = investigation.agents_count || graphNodes.length || 150;
+        const status = investigation.status;
+
+        if (status === "spawning") {
+          text.innerHTML = `Deploying <strong>${agentCount}+ agents</strong> across <strong>3 regions</strong>`;
+          document.getElementById("swarm-text").textContent = "Deploying agents...";
+        } else if (status === "waiting_for_read_approval") {
+          text.innerHTML = `<strong>${agentCount}+ agents</strong> ready to investigate across <strong>3 regions</strong>`;
+          document.getElementById("swarm-text").textContent = "Waiting for credential approval...";
+        } else {
+          text.innerHTML = `Investigating across <strong>3 regions</strong> with <strong>${agentCount}+ agents</strong>`;
+          document.getElementById("swarm-text").textContent = "Agents investigating...";
+        }
+      }
+
+      function updateAnomalyCard(investigation) {
+        const service = investigation.anomaly_type || "order-service";
+        const errorRate = "15.2%"; // Demo value
+        const regions = "us-east-1, us-west-2, eu-west-1";
+
+        document.getElementById("anomaly-service").textContent = service;
+        document.getElementById("anomaly-error-rate").textContent = errorRate;
+        document.getElementById("anomaly-regions").textContent = regions;
+      }
+
+      function updateTimeline(status, investigation) {
+        const tlAnomaly = document.getElementById("tl-anomaly");
+        const tlSwarm = document.getElementById("tl-swarm");
+        const tlAnalysis = document.getElementById("tl-analysis");
+        const tlResolution = document.getElementById("tl-resolution");
+
+        // Reset all
+        [tlAnomaly, tlSwarm, tlAnalysis, tlResolution].forEach((el) => {
+          el.classList.remove("completed", "active", "pending");
+          el.classList.add("pending");
+        });
+
+        // Update based on status
+        if (status === "detecting") {
+          tlAnomaly.classList.remove("pending");
+          tlAnomaly.classList.add("active");
+        } else if (status === "spawning") {
+          tlAnomaly.classList.remove("pending");
+          tlAnomaly.classList.add("completed");
+          tlSwarm.classList.remove("pending");
+          tlSwarm.classList.add("active");
+        } else if (status === "running") {
+          tlAnomaly.classList.remove("pending");
+          tlAnomaly.classList.add("completed");
+          tlSwarm.classList.remove("pending");
+          tlSwarm.classList.add("completed");
+          tlAnalysis.classList.remove("pending");
+          tlAnalysis.classList.add("active");
+        } else if (status === "waiting_for_read_approval" || status === "waiting_for_write_approval") {
+          tlAnomaly.classList.remove("pending");
+          tlAnomaly.classList.add("completed");
+          tlSwarm.classList.remove("pending");
+          tlSwarm.classList.add("completed");
+          tlAnalysis.classList.remove("pending");
+          tlAnalysis.classList.add("completed");
+          tlResolution.classList.remove("pending");
+          tlResolution.classList.add("active");
+        } else if (status === "synthesizing") {
+          tlAnomaly.classList.remove("pending");
+          tlAnomaly.classList.add("completed");
+          tlSwarm.classList.remove("pending");
+          tlSwarm.classList.add("completed");
+          tlAnalysis.classList.remove("pending");
+          tlAnalysis.classList.add("completed");
+          tlResolution.classList.remove("pending");
+          tlResolution.classList.add("active");
+        } else if (status === "completed") {
+          [tlAnomaly, tlSwarm, tlAnalysis, tlResolution].forEach((el) => {
+            el.classList.remove("pending", "active");
+            el.classList.add("completed");
+          });
+        }
+
+        // Update timeline subtitles
+        if (investigationStartTime) {
+          const elapsed = Math.floor((new Date() - investigationStartTime) / 1000);
+          document.getElementById("tl-anomaly-time").textContent = formatElapsed(elapsed) + " ago";
+        }
+
+        const agentCount = investigation.agents_count || 150;
+        document.getElementById("tl-swarm-agents").textContent = `${agentCount}+ agents across 3 regions`;
+      }
+
+      function updateRootCauseBanner(diagnosis) {
+        const text = document.getElementById("root-cause-text");
+        const actions = document.getElementById("root-cause-actions");
+
+        text.innerHTML =
+          diagnosis ||
+          "Feature flag <code>read_from_replica</code> enabled, causing cascading failures and runaway queries.";
+
+        // Show remediation options
+        actions.innerHTML = `
+          <div class="remediation-item denied">
+            <span>✗</span>
+            <span>Kill runaway queries (denied - too risky)</span>
+          </div>
+          <div class="remediation-item approved">
+            <span>✓</span>
+            <span>Disable feature flag (approved - safe, reversible)</span>
+          </div>
+        `;
+      }
+
+      function formatStatus(status) {
+        const statusMap = {
+          idle: "Ready",
+          detecting: "Detecting Anomaly...",
+          spawning: "Deploying Agents...",
+          running: "Investigation Running",
+          synthesizing: "Synthesizing Findings...",
+          completed: "Investigation Complete ✓",
+          error: "Error",
+          waiting_for_approval: "Waiting for Approval",
+          waiting_for_read_approval: "🔑 READ Access Required",
+          waiting_for_write_approval: "⚠️ WRITE Access Required",
+        };
+        return statusMap[status] || status;
+      }
+
+      function formatElapsed(seconds) {
+        if (seconds < 60) return `${seconds}s`;
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}m ${secs}s`;
+      }
+
+      // === Audit Trail ===
+
+      function addAuditEvent(credential, category, approved, agentCount) {
+        auditTrailEvents.push({
+          timestamp: new Date(),
+          credential,
+          category,
+          approved,
+          agentCount: agentCount || 1,
+        });
+        updateAuditTrail();
+      }
+
+      function updateAuditTrail() {
+        const auditTrail = document.getElementById("audit-trail");
+        const auditList = document.getElementById("audit-list");
+        const auditCount = document.getElementById("audit-count");
+
+        if (auditTrailEvents.length === 0) {
+          auditTrail.style.display = "none";
+          return;
+        }
+
+        auditTrail.style.display = "block";
+        auditCount.textContent = `${auditTrailEvents.length} events`;
+
+        auditList.innerHTML = auditTrailEvents
+          .map(
+            (event) => `
+          <div class="audit-item">
+            <div class="audit-icon ${event.approved ? "approved" : "denied"}">
+              ${event.approved ? "✓" : "✗"}
+            </div>
+            <div class="audit-content">
+              <div class="audit-credential">${event.credential}</div>
+              <div class="audit-meta">
+                ${event.approved ? "Approved" : "Denied"} •
+                ${event.agentCount > 1 ? `Used by ${event.agentCount} agents` : "Single use"}
+              </div>
+            </div>
+            <span class="audit-badge ${event.category}">${event.category.toUpperCase()}</span>
+          </div>
+        `,
+          )
+          .join("");
+      }
+
+      // === Trigger Incident ===
+
+      async function triggerIncident() {
+        const triggerBtn = document.getElementById("menu-simulate-btn");
+        if (triggerBtn) {
+          triggerBtn.disabled = true;
+          triggerBtn.textContent = "⚡ Triggering...";
+        }
+
+        // Reset state
+        investigationStartTime = new Date();
+        auditTrailEvents = [];
+        graphNodes = [];
+        parentChildCounts.clear(); // Reset radial positioning tracking
+        incidentResolvedAt = null; // Reset resolved timestamp
+        graphEdges = [];
+
+        try {
+          const response = await fetch(`${API_BASE}/incidents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              anomaly_type: "cascading_failure",
+              severity: "critical",
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log("Incident triggered:", data);
+
+          // Start polling
+          startInvestigationPolling();
+          startGraphPolling();
+        } catch (error) {
+          console.error("Error triggering incident:", error);
+          if (triggerBtn) {
+            triggerBtn.disabled = false;
+            triggerBtn.textContent = "⚡ Simulate Anomaly";
+          }
+          alert("Failed to trigger incident: " + error.message);
+        }
+      }
+
+      function startInvestigationPolling() {
+        if (investigationPollInterval) clearInterval(investigationPollInterval);
+        fetchInvestigationStatus();
+        investigationPollInterval = setInterval(fetchInvestigationStatus, 2000);
+      }
+
+      function stopInvestigationPolling() {
+        if (investigationPollInterval) {
+          clearInterval(investigationPollInterval);
+          investigationPollInterval = null;
+        }
+      }
+
+      // === Approval Handling ===
+
+      document.getElementById("approve-btn").addEventListener("click", async () => {
+        if (!currentSessionId) return;
+        try {
+          const approvalSection = document.getElementById("approval-section");
+          const category = approvalSection.classList.contains("write-approval") ? "write" : "read";
+          const credentials = Array.from(document.querySelectorAll("#credential-list li")).map((li) => li.textContent);
+
+          approvalSection.style.display = "none";
+
+          // Add to audit trail
+          credentials.forEach((cred) => {
+            addAuditEvent(cred, category, true, category === "read" ? 45 : 1);
+          });
+
+          const response = await fetch(`${API_BASE}/approve/${currentSessionId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved: true, message: "approve" }),
+          });
+
+          await streamResponse(response, (data) => {
+            if (data.type === "diagnosis_started") {
+              fetchInvestigationStatus();
+            } else if (data.type === "diagnosis_complete") {
+              fetchInvestigationStatus();
+              fetchGraphData();
+              setTimeout(() => stopGraphPolling(), 2000);
+            }
+          });
+        } catch (error) {
+          console.error("Approval failed:", error);
+        }
+      });
+
+      document.getElementById("deny-btn").addEventListener("click", async () => {
+        if (!currentSessionId) return;
+        try {
+          const approvalSection = document.getElementById("approval-section");
+          const category = approvalSection.classList.contains("write-approval") ? "write" : "read";
+          const credentials = Array.from(document.querySelectorAll("#credential-list li")).map((li) => li.textContent);
+
+          // Add to audit trail as denied
+          credentials.forEach((cred) => {
+            addAuditEvent(cred, category, false, 1);
+          });
+
+          await fetch(`${API_BASE}/approve/${currentSessionId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved: false }),
+          });
+          approvalSection.style.display = "none";
+          fetchInvestigationStatus();
+        } catch (error) {
+          console.error("Denial failed:", error);
+        }
+      });
+
+      // === Stream Response Handler ===
+
+      async function streamResponse(response, onChunk) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                onChunk(data);
+              } catch (e) {
+                console.warn("Failed to parse line:", line);
+              }
+            }
+          }
+        }
+      }
+
+      // === Approval Prompt ===
+
+      function showApprovalPrompt(credentials, category, actionDescription) {
+        const approvalSection = document.getElementById("approval-section");
+        const approvalTitle = document.getElementById("approval-title");
+        const approvalMessage = document.getElementById("approval-message");
+        const writeWarning = document.getElementById("write-warning");
+        const actionDesc = document.getElementById("action-description");
+        const credList = document.getElementById("credential-list");
+
+        approvalSection.style.display = "block";
+
+        // Reset classes
+        approvalSection.classList.remove("read-approval", "write-approval");
+
+        if (category === "write") {
+          approvalSection.classList.add("write-approval");
+          approvalTitle.innerHTML = "⚠️ WRITE Access Required";
+          approvalMessage.textContent = "The agent wants to perform a write operation:";
+          writeWarning.style.display = "flex";
+
+          if (actionDescription) {
+            actionDesc.style.display = "block";
+            actionDesc.textContent = actionDescription;
+          } else {
+            actionDesc.style.display = "none";
+          }
+        } else {
+          approvalSection.classList.add("read-approval");
+          approvalTitle.innerHTML = "🔑 Read Access Required";
+          approvalMessage.textContent = "The agent needs read access to investigate:";
+          writeWarning.style.display = "none";
+          actionDesc.style.display = "none";
+        }
+
+        // Populate credential list
+        credList.innerHTML = "";
+
+        if (credentials && credentials.length > 0) {
+          credentials.forEach((cred) => {
+            const li = document.createElement("li");
+            li.textContent = cred;
+            credList.appendChild(li);
+          });
+        } else {
+          const li = document.createElement("li");
+          li.textContent = "System credentials";
+          credList.appendChild(li);
+        }
+      }
+
+      // === Version ===
+
+      async function fetchVersion() {
+        try {
+          const response = await fetch(`${API_BASE}/health`);
+          const data = await response.json();
+          if (data.version) {
+            document.getElementById("version-badge").textContent = `v${data.version}`;
+          }
+        } catch (e) {
+          console.warn("Failed to fetch version");
+        }
+      }
+
+      // === Initialize ===
+
+      // Update "last check" timestamp
+      function updateLastCheck() {
+        const el = document.getElementById("last-check");
+        if (el) el.textContent = "just now";
+      }
+      setInterval(() => {
+        const el = document.getElementById("last-check");
+        if (el && el.textContent === "just now") {
+          el.textContent = "2s ago";
+        } else if (el && el.textContent === "2s ago") {
+          el.textContent = "5s ago";
+        }
+      }, 2000);
+
+      document.addEventListener("DOMContentLoaded", () => {
+        initGraph();
+        fetchVersion();
+        // Use new OnCall agent polling
+        startOnCallPolling();
+        // Fetch graph data immediately
+        fetchGraphData();
+        // Start polling graph to keep it updated
+        startGraphPolling();
+        // Update last check on each poll
+        setInterval(updateLastCheck, 10000);
+
+        window.addEventListener("resize", reinitGraphIfNeeded);
+      });
+    </script>
+  </body>
+</html>
