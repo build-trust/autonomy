@@ -94,19 +94,25 @@ oncall/
     |-- op-connect/           # 1Password Connect server
 ```
 </Step>
-<Step title="Create secrets.yaml">
+<Step title="Configure 1Password Connect">
+
+Create `secrets.yaml` with your 1Password Connect token:
 
 ```bash /dev/null/terminal.sh
 cp secrets.yaml.example secrets.yaml
 ```
 
-Edit `secrets.yaml` with your 1Password Connect token:
-
 ```yaml secrets.yaml
 OP_CONNECT_TOKEN: "your_1password_connect_token_here"
 ```
 
-Credentials use the standard 1Password reference format: `op://vault/item/field`
+Add your 1Password Connect credentials file. In the [1Password developer portal](https://developer.1password.com/), create a Connect server and download the credentials file. Save it to:
+
+```text /dev/null/path.txt
+images/op-connect/1password-credentials.json
+```
+
+This file is gitignored and required for the 1Password Connect container to authenticate with your vault.
 </Step>
 <Step title="Deploy">
 
