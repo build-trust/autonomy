@@ -8,11 +8,8 @@ description: "Deploy swarms of autonomous on-call agents that safely diagnose an
 
 Agent swarms require execution environments with explicit identity and strict boundaries. Autonomy treats agent identity and isolation as first-class concerns. Each agent has a unique cryptographic identity, and every action is attributable by design. In this guide, we show how agents authenticate as themselves, request access dynamically, and receive credentials from [1Password](https://1password.com/) that are scoped to intent, time-bound, and revocable.
 
-
-
 <Frame>
-  <img src="/guides/images/autonomy-1password.gif"
-      alt="OnCall Agent Swarm Visualization" />
+  ![OnCall Agent Swarm Visualization](/guides/images/autonomy-1password.gif)
 </Frame>
 
 When you go on-call, the agent requests read-only credentials from 1Password to monitor your infrastructure. A human approves access, and the agent starts watching for anomalies.
@@ -25,8 +22,6 @@ Go On-Call (Read Approval) → Monitor
 ```
 
 After the swarm identifies the root cause, it requests write credentials for specific remediation actions:kill runaway queries, disable a feature flag. Each write action requires separate human approval. Once approved, the swarm autonomously remediates the problem.
-
-<iframe width="100%" height="450" frameborder="0" src="https://www.youtube.com/embed/ZXSKPnBnV3w" title="On-Call SRE Agents with 1Password and Autonomy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen />
 
 Here's what that looks like in code. The investigation spawns a swarm of specialist agents across every region and service, then synthesizes their findings:
 
@@ -72,71 +67,67 @@ The complete source code is available in [Autonomy examples](https://github.com/
 ## Try it
 
 <Steps>
-<Step title="Sign up and install the autonomy command">
-Complete the [steps to get started](/get-started) with Autonomy.
-</Step>
-<Step title="Get the example code">
+  <Step title="Sign up and install the autonomy command">
+    Complete the [steps to get started](/get-started) with Autonomy.
+  </Step>
+  <Step title="Get the example code">
+    ```bash /dev/null/terminal.sh
+    curl -sL https://github.com/build-trust/autonomy/archive/refs/heads/main.tar.gz | \
+      tar -xz --strip-components=2 autonomy-main/examples/oncall
+    cd oncall
+    ```
 
-```bash /dev/null/terminal.sh
-curl -sL https://github.com/build-trust/autonomy/archive/refs/heads/main.tar.gz | \
-  tar -xz --strip-components=2 autonomy-main/examples/oncall
-cd oncall
-```
+    This creates the following structure:
 
-This creates the following structure:
+    ```text File Structure:
+    oncall/
+    |-- autonomy.yaml
+    |-- secrets.yaml.example
+    |-- images/
+        |-- main/
+            |-- Dockerfile
+            |-- requirements.txt
+            |-- main.py           # FastAPI + Monitoring Agent + Diagnostic Swarm
+            |-- index.html        # Real-time D3.js visualization dashboard
+        |-- op-connect/           # 1Password Connect server
+    ```
+  </Step>
+  <Step title="Configure 1Password Connect">
+    Create `secrets.yaml` with your 1Password Connect token:
 
-```text File Structure:
-oncall/
-|-- autonomy.yaml
-|-- secrets.yaml.example
-|-- images/
-    |-- main/
-        |-- Dockerfile
-        |-- requirements.txt
-        |-- main.py           # FastAPI + Monitoring Agent + Diagnostic Swarm
-        |-- index.html        # Real-time D3.js visualization dashboard
-    |-- op-connect/           # 1Password Connect server
-```
-</Step>
-<Step title="Configure 1Password Connect">
+    ```bash /dev/null/terminal.sh
+    cp secrets.yaml.example secrets.yaml
+    ```
 
-Create `secrets.yaml` with your 1Password Connect token:
+    ```yaml secrets.yaml
+    OP_CONNECT_TOKEN: "your_1password_connect_token_here"
+    ```
 
-```bash /dev/null/terminal.sh
-cp secrets.yaml.example secrets.yaml
-```
+    Add your 1Password Connect credentials file. In the [1Password developer portal](https://developer.1password.com/), create a Connect server and download the credentials file. Save it to:
 
-```yaml secrets.yaml
-OP_CONNECT_TOKEN: "your_1password_connect_token_here"
-```
+    ```text /dev/null/path.txt
+    images/op-connect/1password-credentials.json
+    ```
 
-Add your 1Password Connect credentials file. In the [1Password developer portal](https://developer.1password.com/), create a Connect server and download the credentials file. Save it to:
+    This file is gitignored and required for the 1Password Connect container to authenticate with your vault.
+  </Step>
+  <Step title="Deploy">
+    ```bash /dev/null/terminal.sh
+    autonomy
+    ```
 
-```text /dev/null/path.txt
-images/op-connect/1password-credentials.json
-```
+    Once deployed, open your zone URL in a browser to access the incident response dashboard.
+  </Step>
+  <Step title="Trigger an incident">
+    ```bash /dev/null/terminal.sh
+    # Trigger a cascading failure scenario
+    curl -X POST https://YOUR-ZONE-URL/incidents \
+      -H "Content-Type: application/json" \
+      -d '{"anomaly_type": "cascading_failure", "severity": "critical"}'
+    ```
 
-This file is gitignored and required for the 1Password Connect container to authenticate with your vault.
-</Step>
-<Step title="Deploy">
-
-```bash /dev/null/terminal.sh
-autonomy
-```
-
-Once deployed, open your zone URL in a browser to access the incident response dashboard.
-</Step>
-<Step title="Trigger an incident">
-
-```bash /dev/null/terminal.sh
-# Trigger a cascading failure scenario
-curl -X POST https://YOUR-ZONE-URL/incidents \
-  -H "Content-Type: application/json" \
-  -d '{"anomaly_type": "cascading_failure", "severity": "critical"}'
-```
-
-Watch the dashboard as 150+ agents spawn and investigate the incident in real-time.
-</Step>
+    Watch the dashboard as 150+ agents spawn and investigate the incident in real-time.
+  </Step>
 </Steps>
 
 ---
@@ -217,13 +208,13 @@ Investigation Root
 
 Each specialist agent has specific diagnostic tools:
 
-| Agent | Focus | Tools |
-|-------|-------|-------|
-| **database** | Connection pools, slow queries | `query_db_connections`, `query_slow_queries` |
-| **cache** | Hit rates, memory pressure | `check_cache_health`, `get_eviction_stats` |
-| **network** | Latency, packet loss | `check_network_latency`, `trace_route` |
-| **resources** | CPU, memory, disk | `get_cloudwatch_metrics`, `check_instance_health` |
-| **logs** | Errors, traces | `get_application_logs`, `search_errors` |
+| Agent         | Focus                          | Tools                                             |
+| ------------- | ------------------------------ | ------------------------------------------------- |
+| **database**  | Connection pools, slow queries | `query_db_connections`, `query_slow_queries`      |
+| **cache**     | Hit rates, memory pressure     | `check_cache_health`, `get_eviction_stats`        |
+| **network**   | Latency, packet loss           | `check_network_latency`, `trace_route`            |
+| **resources** | CPU, memory, disk              | `get_cloudwatch_metrics`, `check_instance_health` |
+| **logs**      | Errors, traces                 | `get_application_logs`, `search_errors`           |
 
 **Synthesis and remediation.** After all diagnostic agents complete, a synthesis agent combines findings and identifies the root cause:
 
@@ -329,7 +320,7 @@ The dashboard includes a real-time D3.js force-directed graph that visualizes al
 }
 ```
 
-**POST /approve/{session_id}** : Approve or deny credential access for an investigation.
+**POST /approve/** : Approve or deny credential access for an investigation.
 
 **Request:**
 
@@ -350,11 +341,8 @@ Additional endpoints for visualization (`/graph`), history (`/investigation/hist
 The example uses mock tools and manual triggers for demonstration. To adapt for your infrastructure:
 
 - **Connect your monitoring** : Replace the manual `/incidents` trigger with your observability stack. The `Monitor._monitor_loop()` can poll Prometheus, CloudWatch, or Datadog for anomalies.
-
 - **Implement real diagnostics** : Replace mock tool functions with actual infrastructure queries. For example, `query_db_connections` becomes a real PostgreSQL connection pool query, `get_cloudwatch_metrics` uses the AWS SDK.
-
 - **Map your infrastructure** : Update `REGIONS` and `SERVICES` to match your actual deployment topology. Add specialists for your stack (Redis, Kafka, etc.).
-
 - **Configure 1Password** : Set up vaults with your infrastructure credentials. The read/write separation ensures diagnostic queries use read-only access while remediation requires explicit approval.
 
 ---
@@ -362,16 +350,16 @@ The example uses mock tools and manual triggers for demonstration. To adapt for 
 **Learn more**
 
 <CardGroup cols={2}>
-  <Card href="/agents/models" title="Models" icon="microchip" iconType="solid">
+  <Card title="Models" icon="microchip" iconType="solid" href="/agents/models">
     Available models for agents.
   </Card>
-  <Card href="/agents/agents" title="Agents" icon="robot" iconType="solid">
+  <Card title="Agents" icon="robot" iconType="solid" href="/agents/agents">
     Build agents with custom instructions and tools.
   </Card>
-  <Card href="/agents/tools" title="Tools" icon="screwdriver-wrench" iconType="solid">
+  <Card title="Tools" icon="screwdriver-wrench" iconType="solid" href="/agents/tools">
     Give agents the ability to take actions.
   </Card>
-  <Card href="/applications/programming-interfaces" title="Programming Interfaces" icon="code" iconType="solid">
+  <Card title="Programming Interfaces" icon="code" iconType="solid" href="/applications/programming-interfaces">
     Create APIs for Autonomy applications.
   </Card>
 </CardGroup>
