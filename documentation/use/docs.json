@@ -45,7 +45,7 @@
       {
         "group": "GUIDES",
         "pages": [
-          "guides/oncall",
+          "guides/swarms-of-oncall-ai-sre-agents",
           "guides/box",
           "guides/docs-agents",
           "guides/signup-research",
@@ -138,6 +138,11 @@
     {
       "source": "/applications/structure",
       "destination": "/applications/file-structure",
+      "permanent": true
+    },
+    {
+      "source": "/guides/oncall",
+      "destination": "/guides/swarms-of-oncall-ai-sre-agents",
       "permanent": true
     }
   ]
