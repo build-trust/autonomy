@@ -44,7 +44,13 @@
       },
       {
         "group": "GUIDES",
-        "pages": ["guides/box", "guides/docs-agents", "guides/signup-research", "guides/transcribe-videos"]
+        "pages": [
+          "guides/oncall",
+          "guides/box",
+          "guides/docs-agents",
+          "guides/signup-research",
+          "guides/transcribe-videos"
+        ]
       }
     ]
   },
