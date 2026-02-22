@@ -43,6 +43,8 @@ test-tools:
 		uv run --active pytest -vv tests/tools/test_tools.py
 	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
 		uv run --active pytest -vv tests/tools/test_mcp_tools.py
+	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \
+		uv run --active pytest -vv tests/tools/test_workspace.py
 
 coverage:
 	ulimit -n 4096 && AUTONOMY_WAIT_UNTIL_INTERRUPTED=0 AUTONOMY_USE_IN_MEMORY_DATABASE=1 \

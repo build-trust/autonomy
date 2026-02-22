@@ -1,0 +1,11 @@
+# Exclude everything by default
+*
+
+# Include only what's needed for the Docker build
+!target/wheels/
+!python/
+!src/
+!Cargo.toml
+!Cargo.lock
+!pyproject.toml
+!Dockerfile

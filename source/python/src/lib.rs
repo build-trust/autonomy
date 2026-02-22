@@ -4,6 +4,7 @@ mod errors;
 mod integrations;
 mod logs;
 mod nodes;
+mod sandbox;
 
 #[pymodule]
 #[pyo3(name = "autonomy_in_rust_for_python")]
@@ -18,6 +19,9 @@ fn autonomy_in_rust_for_python(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(logs::error, module)?)?;
     module.add_function(wrap_pyfunction!(logs::warn, module)?)?;
     module.add_function(wrap_pyfunction!(logs::debug, module)?)?;
+
+    // Register sandbox submodule
+    sandbox::register(module)?;
 
     Ok(())
 }

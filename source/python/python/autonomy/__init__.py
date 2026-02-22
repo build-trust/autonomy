@@ -12,6 +12,7 @@ from .agents import (
   SummarizedHistorySection,
   ContextSummaryConfig,
 )
+from .workspace import Workspace, WorkspaceMode
 from .evals import Eval, Metric, TestCase, TestOk, TestError
 from .logs import (
   info,
@@ -40,7 +41,7 @@ from .nodes.remote import RemoteNode, NodeController, NodeRequest, NodeResponse
 from .flows import Flow, FlowOperation, START, END
 from .clusters import Cluster, Zone
 from .memory import Memory
-from .tools import McpTool, Tool, FilesystemTools, ToolFactory
+from .tools import McpTool, Tool, FilesystemTools, ToolFactory, Subagents
 from .gather import gather
 from .knowledge import (
   Knowledge,
@@ -150,6 +151,10 @@ __all__ = [
   "Tool",
   "FilesystemTools",
   "ToolFactory",
+  "Subagents",
+  # from .workspace
+  "Workspace",
+  "WorkspaceMode",
   # from .gather
   "gather",
   # from .knowledge
