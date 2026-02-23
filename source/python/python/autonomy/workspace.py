@@ -8,6 +8,7 @@ Key Features:
 - File operations inherited from FilesystemTools
 - Two modes: read-only, standard (default)
 - Visibility levels: all, agent, scope, conversation
+- Bubblewrap sandboxing when running inside gVisor
 
 Workspace Modes:
   read-only: Read files only, no terminal, no write access
@@ -35,9 +36,19 @@ Runtime Environment:
   - In Autonomy Computer: Uses /workspace directory (emptyDir volume)
   - Locally: Uses /tmp/workspace
   - Environment detection via CLUSTER/ZONE environment variables (injected by provisioner)
+
+Sandboxing:
+  When running inside gVisor with Bubblewrap available, terminal commands
+  execute inside a Bubblewrap sandbox that provides:
+  - Filesystem isolation: agent sees only its own workspace at /workspace
+  - PID namespace isolation: agent cannot see other agents' processes
+  - Read-only root filesystem: agent cannot modify system files
+  - Isolated /tmp: no shared temporary files between agents
 """
 
 import os
+import platform
+import shutil
 import subprocess
 from enum import Enum
 from typing import Optional, List
@@ -99,13 +110,32 @@ def _get_sandbox_module():
     return None
 
 
+def _detect_gvisor() -> bool:
+  """
+  Detect if we're running inside gVisor.
+
+  gVisor reports kernel version "4.4.0" via uname. This is a reliable
+  indicator because no modern EKS node runs an actual 4.4.0 kernel.
+  """
+  try:
+    return platform.release() == "4.4.0"
+  except Exception:
+    return False
+
+
+def _is_bwrap_available() -> bool:
+  """Check if the Bubblewrap (bwrap) binary is available on PATH."""
+  return shutil.which("bwrap") is not None
+
+
 class Workspace:
   """
   Unified workspace providing filesystem and shell access with sandboxing.
 
   Combines file operations (from FilesystemTools) with sandboxed shell
-  execution. The sandbox uses Landlock for filesystem isolation and
-  seccomp for syscall filtering on Linux.
+  execution. When running inside gVisor with Bubblewrap available, terminal
+  commands execute in a Bubblewrap sandbox for per-agent isolation. Otherwise,
+  commands run directly via subprocess.
 
   Attributes:
     visibility: Visibility level ("all", "agent", "scope", "conversation")
@@ -213,6 +243,10 @@ class Workspace:
     directory. State does not persist between calls (e.g., `cd` in one call
     does not affect the next call).
 
+    When running inside gVisor with Bubblewrap available, the command executes
+    in a Bubblewrap sandbox that isolates the agent's filesystem view and
+    PID namespace. Otherwise, the command runs directly via subprocess.
+
     Args:
       command: The shell command to execute.
       timeout: Command timeout in seconds. If the command exceeds this limit,
@@ -237,7 +271,140 @@ class Workspace:
     return self._execute_sandboxed(command, timeout)
 
   def _execute_sandboxed(self, command: str, timeout: int) -> str:
-    """Execute command in a sandboxed subprocess using bash."""
+    """
+    Execute command, choosing Bubblewrap or direct execution.
+
+    Uses Bubblewrap when running inside gVisor with bwrap available.
+    Falls back to direct subprocess execution otherwise.
+    """
+    if self._should_use_bubblewrap():
+      return self._execute_with_bubblewrap(command, timeout)
+    return self._execute_direct(command, timeout)
+
+  def _should_use_bubblewrap(self) -> bool:
+    """
+    Determine whether to use Bubblewrap for command execution.
+
+    Bubblewrap is used when both conditions are met:
+    1. We're running inside gVisor (detected via kernel version 4.4.0)
+    2. The bwrap binary is available on PATH
+
+    The result is cached after the first check.
+    """
+    if not hasattr(self, "_use_bubblewrap"):
+      gvisor = _detect_gvisor()
+      bwrap = _is_bwrap_available()
+      self._use_bubblewrap = gvisor and bwrap
+      if self._use_bubblewrap:
+        logger.info("Bubblewrap sandboxing enabled (gVisor detected, bwrap available)")
+      elif gvisor and not bwrap:
+        logger.warning("gVisor detected but bwrap not found — falling back to direct execution")
+      else:
+        logger.debug("Not in gVisor — using direct execution")
+    return self._use_bubblewrap
+
+  def _execute_with_bubblewrap(self, command: str, timeout: int) -> str:
+    """
+    Execute command inside a Bubblewrap sandbox.
+
+    The sandbox provides:
+    - Read-only root filesystem (--ro-bind / /)
+    - Agent's workspace bound as /workspace (read-write)
+    - Fresh /dev and /proc mounts
+    - Isolated /tmp (tmpfs)
+    - PID namespace isolation (--unshare-pid)
+
+    Network namespace isolation (--unshare-net) is NOT used because gVisor's
+    netlink implementation doesn't support loopback setup in nested network
+    namespaces. Per-agent network isolation is handled by the network proxy
+    (Phase T8).
+    """
+    bwrap_cmd = self._build_bwrap_command(command)
+
+    try:
+      logger.debug(f"Executing command in bwrap sandbox: {command[:100]}...")
+
+      result = subprocess.run(
+        bwrap_cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=self._get_bwrap_env(),
+      )
+
+      output = result.stdout
+      if result.stderr:
+        output += "\n" + result.stderr if output else result.stderr
+
+      return output.strip() if output else ""
+
+    except subprocess.TimeoutExpired:
+      raise TimeoutError(f"Command timed out after {timeout} seconds: {command}")
+    except Exception as e:
+      raise RuntimeError(f"Command execution failed: {e}")
+
+  def _build_bwrap_command(self, command: str) -> list:
+    """
+    Build the bwrap command line for sandboxed execution.
+
+    The resulting command:
+      bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp \\
+            --bind <workspace_path> /workspace --unshare-pid \\
+            --chdir /workspace -- /bin/bash -c "<command>"
+
+    This ensures:
+    - Agent A cannot read Agent B's files (workspace is re-mounted)
+    - Agent A cannot see Agent B's processes (PID namespace)
+    - Agent A cannot write to system files (read-only root)
+    - Agent A has its own /tmp (tmpfs)
+    """
+    return [
+      "bwrap",
+      "--ro-bind",
+      "/",
+      "/",
+      "--dev",
+      "/dev",
+      "--proc",
+      "/proc",
+      "--tmpfs",
+      "/tmp",
+      "--bind",
+      self.workspace_path,
+      "/workspace",
+      "--unshare-pid",
+      "--chdir",
+      "/workspace",
+      "--",
+      "/bin/bash",
+      "-c",
+      command,
+    ]
+
+  def _get_bwrap_env(self) -> dict:
+    """
+    Get environment variables for Bubblewrap execution.
+
+    Inside the sandbox, the workspace appears at /workspace regardless of
+    its actual host path.
+    """
+    env = os.environ.copy()
+
+    # Inside bwrap, workspace is always /workspace
+    env["HOME"] = "/workspace"
+    env["PWD"] = "/workspace"
+    env["WORKSPACE"] = "/workspace"
+
+    # Preserve PATH but strip the real workspace path to prevent script injection
+    if "PATH" in env:
+      paths = env["PATH"].split(os.pathsep)
+      safe_paths = [p for p in paths if not p.startswith(self.workspace_path)]
+      env["PATH"] = os.pathsep.join(safe_paths)
+
+    return env
+
+  def _execute_direct(self, command: str, timeout: int) -> str:
+    """Execute command directly via subprocess (no Bubblewrap)."""
     # Check if bash is available
     if not self._is_bash_available():
       raise RuntimeError(
@@ -271,7 +438,7 @@ class Workspace:
       raise RuntimeError(f"Command execution failed: {e}")
 
   def _get_sandboxed_env(self) -> dict:
-    """Get environment variables for sandboxed execution."""
+    """Get environment variables for direct (non-bwrap) execution."""
     env = os.environ.copy()
 
     # Set workspace-related variables
@@ -291,8 +458,6 @@ class Workspace:
   def _is_bash_available(self) -> bool:
     """Check if bash is available in the current environment."""
     if not hasattr(self, "_bash_available"):
-      import shutil
-
       self._bash_available = shutil.which("bash") is not None
     return self._bash_available
 

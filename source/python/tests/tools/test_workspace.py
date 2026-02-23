@@ -9,14 +9,18 @@ Tests workspace functionality including:
 - Terminal command execution
 - Tool factory integration
 - Environment detection
+- Bubblewrap sandboxing (gVisor detection, command construction, fallback)
 """
 
 import os
+import subprocess
 import pytest
 import tempfile
 import shutil
+from unittest.mock import patch, MagicMock
 
 from autonomy import Workspace, WorkspaceMode
+from autonomy.workspace import _detect_gvisor, _is_bwrap_available
 
 
 class TestWorkspaceInitialization:
@@ -439,3 +443,233 @@ class TestWorkspaceSandboxModule:
         assert sandbox.is_sandbox_supported() is True
       else:
         assert sandbox.is_sandbox_supported() is False
+
+
+class TestGVisorDetection:
+  """Test gVisor environment detection."""
+
+  def test_detect_gvisor_when_kernel_is_4_4_0(self):
+    """Test gVisor is detected when kernel reports 4.4.0."""
+    with patch("autonomy.workspace.platform.release", return_value="4.4.0"):
+      assert _detect_gvisor() is True
+
+  def test_detect_gvisor_on_regular_kernel(self):
+    """Test gVisor is not detected on a normal kernel."""
+    with patch("autonomy.workspace.platform.release", return_value="6.1.161"):
+      assert _detect_gvisor() is False
+
+  def test_detect_gvisor_on_fargate_kernel(self):
+    """Test gVisor is not detected on Fargate (5.10.x)."""
+    with patch("autonomy.workspace.platform.release", return_value="5.10.247-246.992.amzn2.x86_64"):
+      assert _detect_gvisor() is False
+
+  def test_detect_gvisor_handles_exception(self):
+    """Test gVisor detection returns False on exception."""
+    with patch("autonomy.workspace.platform.release", side_effect=OSError("unavailable")):
+      assert _detect_gvisor() is False
+
+
+class TestBwrapAvailability:
+  """Test Bubblewrap binary detection."""
+
+  def test_bwrap_available_when_on_path(self):
+    """Test bwrap detected when binary exists on PATH."""
+    with patch("autonomy.workspace.shutil.which", return_value="/usr/bin/bwrap"):
+      assert _is_bwrap_available() is True
+
+  def test_bwrap_not_available_when_missing(self):
+    """Test bwrap not detected when binary is absent."""
+    with patch("autonomy.workspace.shutil.which", return_value=None):
+      assert _is_bwrap_available() is False
+
+
+class TestBubblewrapSandboxing:
+  """Test Bubblewrap sandboxing in Workspace."""
+
+  @pytest.fixture
+  def workspace(self):
+    """Create a workspace for bwrap testing."""
+    ws = Workspace(
+      visibility="conversation",
+      agent_name="bwrap-test",
+      scope="scope",
+      conversation="conv",
+    )
+    yield ws
+    if ws.workspace_path and os.path.exists(ws.workspace_path):
+      shutil.rmtree(ws.workspace_path, ignore_errors=True)
+
+  def test_should_use_bubblewrap_when_gvisor_and_bwrap(self, workspace):
+    """Test _should_use_bubblewrap returns True when both conditions met."""
+    with (
+      patch("autonomy.workspace._detect_gvisor", return_value=True),
+      patch("autonomy.workspace._is_bwrap_available", return_value=True),
+    ):
+      # Clear cached result
+      if hasattr(workspace, "_use_bubblewrap"):
+        delattr(workspace, "_use_bubblewrap")
+      assert workspace._should_use_bubblewrap() is True
+
+  def test_should_not_use_bubblewrap_without_gvisor(self, workspace):
+    """Test _should_use_bubblewrap returns False when not in gVisor."""
+    with (
+      patch("autonomy.workspace._detect_gvisor", return_value=False),
+      patch("autonomy.workspace._is_bwrap_available", return_value=True),
+    ):
+      if hasattr(workspace, "_use_bubblewrap"):
+        delattr(workspace, "_use_bubblewrap")
+      assert workspace._should_use_bubblewrap() is False
+
+  def test_should_not_use_bubblewrap_without_bwrap(self, workspace):
+    """Test _should_use_bubblewrap returns False when bwrap missing."""
+    with (
+      patch("autonomy.workspace._detect_gvisor", return_value=True),
+      patch("autonomy.workspace._is_bwrap_available", return_value=False),
+    ):
+      if hasattr(workspace, "_use_bubblewrap"):
+        delattr(workspace, "_use_bubblewrap")
+      assert workspace._should_use_bubblewrap() is False
+
+  def test_should_use_bubblewrap_caches_result(self, workspace):
+    """Test _should_use_bubblewrap caches its result."""
+    with (
+      patch("autonomy.workspace._detect_gvisor", return_value=True) as mock_gvisor,
+      patch("autonomy.workspace._is_bwrap_available", return_value=True) as mock_bwrap,
+    ):
+      if hasattr(workspace, "_use_bubblewrap"):
+        delattr(workspace, "_use_bubblewrap")
+      workspace._should_use_bubblewrap()
+      workspace._should_use_bubblewrap()
+      # Detection functions should only be called once
+      mock_gvisor.assert_called_once()
+      mock_bwrap.assert_called_once()
+
+  def test_build_bwrap_command(self, workspace):
+    """Test _build_bwrap_command constructs the correct command."""
+    cmd = workspace._build_bwrap_command("echo hello")
+    assert cmd == [
+      "bwrap",
+      "--ro-bind",
+      "/",
+      "/",
+      "--dev",
+      "/dev",
+      "--proc",
+      "/proc",
+      "--tmpfs",
+      "/tmp",
+      "--bind",
+      workspace.workspace_path,
+      "/workspace",
+      "--unshare-pid",
+      "--chdir",
+      "/workspace",
+      "--",
+      "/bin/bash",
+      "-c",
+      "echo hello",
+    ]
+
+  def test_build_bwrap_command_with_complex_command(self, workspace):
+    """Test _build_bwrap_command handles complex shell commands."""
+    complex_cmd = 'ls -la && echo "done" | grep done'
+    cmd = workspace._build_bwrap_command(complex_cmd)
+    # The command should be passed as a single argument to bash -c
+    assert cmd[-1] == complex_cmd
+    assert cmd[-2] == "-c"
+    assert cmd[-3] == "/bin/bash"
+
+  def test_bwrap_env_uses_workspace_path(self, workspace):
+    """Test _get_bwrap_env sets /workspace as HOME and PWD."""
+    env = workspace._get_bwrap_env()
+    assert env["HOME"] == "/workspace"
+    assert env["PWD"] == "/workspace"
+    assert env["WORKSPACE"] == "/workspace"
+
+  def test_bwrap_env_strips_workspace_from_path(self, workspace):
+    """Test _get_bwrap_env removes workspace path from PATH."""
+    with patch.dict(os.environ, {"PATH": f"{workspace.workspace_path}:/usr/bin:/bin"}):
+      env = workspace._get_bwrap_env()
+      paths = env["PATH"].split(os.pathsep)
+      assert workspace.workspace_path not in paths
+      assert "/usr/bin" in paths
+      assert "/bin" in paths
+
+  def test_execute_sandboxed_dispatches_to_bwrap(self, workspace):
+    """Test _execute_sandboxed calls bwrap path when conditions met."""
+    with (
+      patch.object(workspace, "_should_use_bubblewrap", return_value=True),
+      patch.object(workspace, "_execute_with_bubblewrap", return_value="bwrap output") as mock_bwrap,
+    ):
+      result = workspace._execute_sandboxed("echo hello", 60)
+      mock_bwrap.assert_called_once_with("echo hello", 60)
+      assert result == "bwrap output"
+
+  def test_execute_sandboxed_dispatches_to_direct(self, workspace):
+    """Test _execute_sandboxed falls back to direct execution."""
+    with (
+      patch.object(workspace, "_should_use_bubblewrap", return_value=False),
+      patch.object(workspace, "_execute_direct", return_value="direct output") as mock_direct,
+    ):
+      result = workspace._execute_sandboxed("echo hello", 60)
+      mock_direct.assert_called_once_with("echo hello", 60)
+      assert result == "direct output"
+
+  def test_execute_with_bubblewrap_calls_subprocess(self, workspace):
+    """Test _execute_with_bubblewrap calls subprocess.run with correct args."""
+    mock_result = MagicMock()
+    mock_result.stdout = "hello\n"
+    mock_result.stderr = ""
+
+    with patch("autonomy.workspace.subprocess.run", return_value=mock_result) as mock_run:
+      result = workspace._execute_with_bubblewrap("echo hello", 60)
+
+      mock_run.assert_called_once()
+      call_args = mock_run.call_args
+      cmd = call_args[0][0]  # first positional arg
+      assert cmd[0] == "bwrap"
+      assert "--ro-bind" in cmd
+      assert "--unshare-pid" in cmd
+      assert call_args[1]["timeout"] == 60
+      assert call_args[1]["capture_output"] is True
+      assert call_args[1]["text"] is True
+      assert result == "hello"
+
+  def test_execute_with_bubblewrap_timeout(self, workspace):
+    """Test _execute_with_bubblewrap raises TimeoutError on timeout."""
+    with patch("autonomy.workspace.subprocess.run", side_effect=subprocess.TimeoutExpired("bwrap", 5)):
+      with pytest.raises(TimeoutError, match="timed out"):
+        workspace._execute_with_bubblewrap("sleep 100", 5)
+
+  def test_execute_with_bubblewrap_runtime_error(self, workspace):
+    """Test _execute_with_bubblewrap raises RuntimeError on failure."""
+    with patch("autonomy.workspace.subprocess.run", side_effect=OSError("bwrap not found")):
+      with pytest.raises(RuntimeError, match="execution failed"):
+        workspace._execute_with_bubblewrap("echo hello", 60)
+
+  def test_execute_with_bubblewrap_combines_stdout_stderr(self, workspace):
+    """Test _execute_with_bubblewrap combines stdout and stderr."""
+    mock_result = MagicMock()
+    mock_result.stdout = "output"
+    mock_result.stderr = "warning"
+
+    with patch("autonomy.workspace.subprocess.run", return_value=mock_result):
+      result = workspace._execute_with_bubblewrap("some-cmd", 60)
+      assert "output" in result
+      assert "warning" in result
+
+  def test_terminal_uses_bwrap_when_available(self, workspace):
+    """Test terminal() dispatches through bwrap when conditions met."""
+    with (
+      patch.object(workspace, "_should_use_bubblewrap", return_value=True),
+      patch.object(workspace, "_execute_with_bubblewrap", return_value="sandboxed") as mock_bwrap,
+    ):
+      result = workspace.terminal("echo hello")
+      mock_bwrap.assert_called_once_with("echo hello", workspace.command_timeout)
+      assert result == "sandboxed"
+
+  def test_terminal_falls_back_to_direct_without_gvisor(self, workspace):
+    """Test terminal() uses direct execution when not in gVisor."""
+    with patch.object(workspace, "_should_use_bubblewrap", return_value=False):
+      result = workspace.terminal("echo hello")
+      assert "hello" in result
