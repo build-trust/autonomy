@@ -377,7 +377,7 @@ class HttpServer(InfoContext):
 
   async def serve(self):
     self.logger.info(f"Starting http server at {self.host}:{self.port}")
-    config = uvicorn.Config(self.app, host=self.host, port=self.port, log_config=get_logging_config(), access_log=True)
+    config = uvicorn.Config(self.app, host=self.host, port=self.port, log_config=get_logging_config(), access_log=True, ws_ping_interval=None, ws_ping_timeout=None)
     server = uvicorn.Server(config)
     self.logger.info(f"Started http server at {self.host}:{self.port}")
     await server.serve()
