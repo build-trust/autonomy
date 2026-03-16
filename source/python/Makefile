@@ -74,6 +74,7 @@ build-images:
 		--platform linux/amd64 \
 		ghcr.io/pyo3/maturin build \
 			--release \
+			--interpreter python3.12 \
 			--target x86_64-unknown-linux-gnu \
 			--manifest-path /io/Cargo.toml
 
@@ -82,6 +83,7 @@ build-images:
 		--platform linux/arm64 \
 		ghcr.io/pyo3/maturin build \
 			--release \
+			--interpreter python3.12 \
 			--target aarch64-unknown-linux-gnu \
 			--manifest-path /io/Cargo.toml
 
