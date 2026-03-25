@@ -61,19 +61,9 @@
   "navbar": {
     "links": [
       {
-        "label": "Autonomy Website",
-        "icon": "/logo/icon-white.svg",
-        "href": "https://autonomy.computer"
-      },
-      {
         "label": "Star us on Github",
         "icon": "github",
         "href": "https://autonomy.computer/github"
-      },
-      {
-        "label": "Join us on Discord",
-        "icon": "discord",
-        "href": "https://autonomy.computer/discord"
       },
       {
         "label": "Get Help",
@@ -92,8 +82,7 @@
     "socials": {
       "linkedin": "https://www.linkedin.com/company/autonomy-computer",
       "github": "https://github.com/build-trust/autonomy",
-      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng",
-      "discord": "https://autonomy.computer/discord"
+      "youtube": "https://www.youtube.com/channel/UCyPS6RqJU_sznRROEGcetng"
     }
   },
   "seo": {
